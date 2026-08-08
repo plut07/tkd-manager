@@ -8,8 +8,6 @@ Built with Next.js 14 (App Router), TypeScript, Tailwind CSS, and Supabase
 
 ## What's included
 
-- **Login** with a seeded Super Admin account (User ID `Admin`, password
-  `SuperAdmin@225588` — change this after your first login).
 - **Role-based access control** with three roles out of the box (Super
   Admin, Event Manager, Club User) and a visual **access-rights matrix**
   (Users & Access → Access rights matrix) where a Super Admin can toggle,
@@ -17,7 +15,7 @@ Built with Next.js 14 (App Router), TypeScript, Tailwind CSS, and Supabase
 - **Clubs** management (Super Admin only) — the base data students and
   Club User accounts attach to.
 - **Students** page with Club, First/Last name, Email, Birthday, Weight
-  (KG), Height (cm), Gup (1–10), Dan (1–9), Gender, Nationality, ID number,
+  (KG), Height (cm), Gender, Nationality, ID number,
   Passport ID, and Active/Inactive. Club User accounts only ever see and
   edit their own club's students.
 - **Events** page inspired by sportdata.org's event-info layout: header
@@ -131,7 +129,7 @@ npm install
 npm run dev
 ```
 
-Visit http://localhost:3000, sign in as `Admin` / `SuperAdmin@225588`, then:
+Visit http://localhost:3000, sign in then:
 
 1. Go to **Clubs** and add your clubs.
 2. Go to **Users & Access** and create a Club User account per club (or an
@@ -164,22 +162,3 @@ re-uploading the whole tree.
 
 After the first deploy, set `APP_BASE_URL` to the real production URL and
 redeploy, so Tally webhooks point at the right place.
-
-### Connecting to the existing `tkd-manager` Vercel project
-
-If you want to keep the current production URLs rather than create a new
-project, open the existing **tkd-manager** project in Vercel → **Settings →
-Git → Connect Git Repository** and point it at the new repo. The aliases
-(`tkd-manager-tkdtta.vercel.app` and friends) and existing environment
-variables carry over; only the deploy mechanism changes.
-
-## Known limitations / good next steps
-
-- Event "documents" are stored as links (title + URL) rather than file
-  uploads. Wiring up Supabase Storage for direct PDF/image uploads is a
-  natural next step.
-- No password-reset-by-email flow (admin resets passwords manually from
-  the Users page, or via `npm run seed`).
-- No automated tests yet.
-- Results/medal tables and officials management from the sportdata.org
-  reference aren't built yet — draws and grading registration are.
