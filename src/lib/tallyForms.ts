@@ -31,15 +31,27 @@ const FIELDS: FieldSpec[] = [
   { label: "National ID or passport number", type: "INPUT_TEXT", required: true },
   { label: "Club name", type: "INPUT_TEXT", required: true },
 ];
+// Tally's block model is flat: each block carries its own uuid plus a groupUuid
+// saying which question it belongs to. Two rules matter here:
+//   1. A TITLE (label) block must sit in its OWN group — it cannot share a
+//      groupUuid with the input it labels, or the API rejects the form.
+//   2. A multiple-choice question is expressed purely as MULTIPLE_CHOICE_OPTION
+//      blocks sharing one groupUuid; there is no separate parent input block.
 function buildBlocks(formTitle: string) {
   const blocks: Record<string, unknown>[] = [];
   const titleUuid = randomUUID();
   blocks.push({ uuid: titleUuid, type: "FORM_TITLE", groupUuid: titleUuid, groupType: "FORM_TITLE", payload: { html: formTitle } });
   for (const field of FIELDS) {
-    const groupUuid = randomUUID();
-    blocks.push({ uuid: randomUUID(), type: "TITLE", groupUuid, groupType: field.type, payload: { html: field.label } });
-    blocks.push({ uuid: randomUUID(), type: field.type, groupUuid, groupType: field.type, payload: { isRequired: field.required } });
-    if (field.type === "MULTIPLE_CHOICE") { (field.options ?? []).forEach((opt) => { blocks.push({ uuid: randomUUID(), type: "MULTIPLE_CHOICE_OPTION", groupUuid, groupType: field.type, payload: { text: opt } }); }); }
+    const labelGroupUuid = randomUUID();
+    blocks.push({ uuid: randomUUID(), type: "TITLE", groupUuid: labelGroupUuid, groupType: "TITLE", payload: { html: field.label } });
+    const inputGroupUuid = randomUUID();
+    if (field.type === "MULTIPLE_CHOICE") {
+      (field.options ?? []).forEach((opt) => {
+        blocks.push({ uuid: randomUUID(), type: "MULTIPLE_CHOICE_OPTION", groupUuid: inputGroupUuid, groupType: "MULTIPLE_CHOICE", payload: { text: opt, isRequired: field.required } });
+      });
+    } else {
+      blocks.push({ uuid: randomUUID(), type: field.type, groupUuid: inputGroupUuid, groupType: field.type, payload: { isRequired: field.required } });
+    }
   }
   return blocks;
 }
@@ -63,12 +75,20 @@ export function parseTallyFields(fields: TallySubmissionField[]): ParsedGradingR
   const byLabel = new Map(fields.map((f) => [f.label.trim().toLowerCase(), f]));
   const str = (label: string) => { const v = byLabel.get(label.toLowerCase())?.value; return typeof v === "string" && v.trim() ? v.trim() : null; };
   const num = (label: string) => { const v = byLabel.get(label.toLowerCase())?.value; if (v == null || v === "") return null; const n = Number(v); return Number.isFinite(n) ? n : null; };
+  // Tally reports a choice answer as an array of selected option IDs, but a
+  // backfilled submission can arrive as the plain option text. Accept either.
   const genderField = byLabel.get("gender");
   let gender: string | null = null;
-  if (genderField && Array.isArray(genderField.value) && genderField.options) {
-    const selectedId = (genderField.value as string[])[0];
-    const opt = genderField.options.find((o) => o.id === selectedId);
-    gender = opt ? opt.text.toLowerCase() : null;
+  if (genderField) {
+    const raw = genderField.value;
+    if (Array.isArray(raw) && raw.length > 0) {
+      const selectedId = String(raw[0]);
+      const opt = (genderField.options ?? []).find((o) => o.id === selectedId);
+      gender = (opt ? opt.text : selectedId).toLowerCase();
+    } else if (typeof raw === "string" && raw.trim()) {
+      gender = raw.trim().toLowerCase();
+    }
+    if (gender && !["male", "female", "other"].includes(gender)) gender = null;
   }
   return {
     firstName: str("First name") ?? "", lastName: str("Last name") ?? "", email: str("Email"),
