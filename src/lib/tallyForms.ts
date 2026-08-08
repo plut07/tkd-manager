@@ -16,13 +16,13 @@ async function tallyFetch(path: string, init: RequestInit) {
   if (!res.ok) { const text = await res.text().catch(() => ""); throw new Error(`Tally API error (${res.status}): ${text || res.statusText}`); }
   return res.json();
 }
-type FieldSpec = { label: string; type: "INPUT_TEXT" | "INPUT_EMAIL" | "INPUT_DATE" | "INPUT_NUMBER" | "MULTIPLE_CHOICE"; required: boolean; options?: string[] };
+type FieldSpec = { label: string; type: "INPUT_TEXT" | "INPUT_EMAIL" | "INPUT_DATE" | "INPUT_NUMBER"; required: boolean };
 const FIELDS: FieldSpec[] = [
   { label: "First name", type: "INPUT_TEXT", required: true },
   { label: "Last name", type: "INPUT_TEXT", required: true },
   { label: "Email", type: "INPUT_EMAIL", required: false },
   { label: "Date of birth", type: "INPUT_DATE", required: false },
-  { label: "Gender", type: "MULTIPLE_CHOICE", required: false, options: ["male", "female", "other"] },
+  { label: "Gender (male, female or other)", type: "INPUT_TEXT", required: false },
   { label: "Weight (kg)", type: "INPUT_NUMBER", required: false },
   { label: "Height (cm)", type: "INPUT_NUMBER", required: false },
   { label: "Current Gup (1-10, leave blank if black belt)", type: "INPUT_NUMBER", required: false },
@@ -32,12 +32,12 @@ const FIELDS: FieldSpec[] = [
   { label: "Club name", type: "INPUT_TEXT", required: true },
 ];
 // Tally's block model is flat: each block carries its own uuid plus a groupUuid
-// saying which question it belongs to. Three rules matter here:
-//   1. A TITLE (label) block must sit in its OWN group — it cannot share a
-//      groupUuid with the input it labels, or the API rejects the form.
-//   2. A multiple-choice question is expressed purely as MULTIPLE_CHOICE_OPTION
-//      blocks sharing one groupUuid; there is no separate parent input block.
-//   3. Each option must carry its own zero-based `index` in the payload.
+// saying which question it belongs to. A TITLE (label) block must sit in its OWN
+// group — it cannot share a groupUuid with the input it labels.
+//
+// Every field is a plain input. Choice questions (MULTIPLE_CHOICE_OPTION) carry
+// extra positional metadata that Tally validates strictly, so Gender is a
+// free-text box instead; parseTallyFields normalises whatever gets typed.
 function buildBlocks(formTitle: string) {
   const blocks: Record<string, unknown>[] = [];
   const titleUuid = randomUUID();
@@ -46,13 +46,7 @@ function buildBlocks(formTitle: string) {
     const labelGroupUuid = randomUUID();
     blocks.push({ uuid: randomUUID(), type: "TITLE", groupUuid: labelGroupUuid, groupType: "TITLE", payload: { html: field.label } });
     const inputGroupUuid = randomUUID();
-    if (field.type === "MULTIPLE_CHOICE") {
-      (field.options ?? []).forEach((opt, optionIndex) => {
-        blocks.push({ uuid: randomUUID(), type: "MULTIPLE_CHOICE_OPTION", groupUuid: inputGroupUuid, groupType: "MULTIPLE_CHOICE", payload: { text: opt, index: optionIndex, isRequired: field.required } });
-      });
-    } else {
-      blocks.push({ uuid: randomUUID(), type: field.type, groupUuid: inputGroupUuid, groupType: field.type, payload: { isRequired: field.required } });
-    }
+    blocks.push({ uuid: randomUUID(), type: field.type, groupUuid: inputGroupUuid, groupType: field.type, payload: { isRequired: field.required } });
   }
   return blocks;
 }
@@ -76,9 +70,10 @@ export function parseTallyFields(fields: TallySubmissionField[]): ParsedGradingR
   const byLabel = new Map(fields.map((f) => [f.label.trim().toLowerCase(), f]));
   const str = (label: string) => { const v = byLabel.get(label.toLowerCase())?.value; return typeof v === "string" && v.trim() ? v.trim() : null; };
   const num = (label: string) => { const v = byLabel.get(label.toLowerCase())?.value; if (v == null || v === "") return null; const n = Number(v); return Number.isFinite(n) ? n : null; };
-  // Tally reports a choice answer as an array of selected option IDs, but a
-  // backfilled submission can arrive as the plain option text. Accept either.
-  const genderField = byLabel.get("gender");
+  // Matched on prefix so the label can carry a hint ("Gender (male, female or
+  // other)"). Accepts a typed string, or an array of option IDs if the question
+  // is ever switched back to a choice field in Tally's editor.
+  const genderField = fields.find((f) => f.label.trim().toLowerCase().startsWith("gender"));
   let gender: string | null = null;
   if (genderField) {
     const raw = genderField.value;
