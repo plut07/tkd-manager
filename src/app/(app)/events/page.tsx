@@ -3,14 +3,8 @@ import { requirePermission, hasPermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { EVENT_TYPE_LABELS } from "@/lib/eventCategories";
+import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS } from "@/lib/eventStatus";
 
-const STATUS_STYLES: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-500",
-  upcoming: "bg-blue-100 text-blue-700",
-  ongoing: "bg-amber-100 text-amber-700",
-  completed: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-red-700",
-};
 
 function formatRange(start: string, end: string | null) {
   const s = new Date(start).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
@@ -60,7 +54,7 @@ export default async function EventsPage() {
               <div className="flex items-start justify-between gap-2">
                 <h2 className="font-semibold text-gray-900">{e.name}</h2>
                 <div className="flex shrink-0 flex-col items-end gap-1">
-                  <span className={`badge ${STATUS_STYLES[e.status] ?? "bg-gray-100 text-gray-500"}`}>{e.status}</span>
+                  <span className={`badge ${STATUS_STYLES[effectiveEventStatus(e)] ?? "bg-gray-100 text-gray-500"}`}>{STATUS_LABELS[effectiveEventStatus(e)] ?? effectiveEventStatus(e)}</span>
                   <span className="badge bg-brand-100 text-brand-700">{EVENT_TYPE_LABELS[e.event_type] ?? e.event_type}</span>
                 </div>
               </div>

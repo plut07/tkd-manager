@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireSession, hasPermission, clubScope } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
+import { isActiveEvent } from "@/lib/eventStatus";
 
 async function getCounts(clubId: string | null) {
   const supabase = supabaseAdmin();
@@ -9,11 +10,16 @@ async function getCounts(clubId: string | null) {
   let studentsQuery = supabase.from("students").select("id", { count: "exact", head: true }).eq("active", true);
   if (clubId) studentsQuery = studentsQuery.eq("club_id", clubId);
 
-  const [{ count: studentCount }, { count: eventCount }, { count: clubCount }] = await Promise.all([
+  // Status is derived from the dates rather than stored, so this count can't be
+  // a database filter — pull the dates of everything not manually parked and
+  // work it out here.
+  const [{ count: studentCount }, { data: eventRows }, { count: clubCount }] = await Promise.all([
     studentsQuery,
-    supabase.from("events").select("id", { count: "exact", head: true }).in("status", ["upcoming", "ongoing"]),
+    supabase.from("events").select("status, start_date, end_date").not("status", "in", "(draft,cancelled)"),
     clubId ? Promise.resolve({ count: 1 }) : supabase.from("clubs").select("id", { count: "exact", head: true }).eq("active", true),
   ]);
+
+  const eventCount = (eventRows ?? []).filter((e) => isActiveEvent(e)).length;
 
   return {
     students: studentCount ?? 0,

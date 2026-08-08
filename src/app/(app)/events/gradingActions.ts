@@ -3,8 +3,14 @@ import { revalidatePath } from "next/cache";
 import { requirePermission, requireSuperAdmin } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
-import { createGradingTallyForm, listTallySubmissions, type ParsedGradingRow } from "@/lib/tallyForms";
+import { createGradingTallyForm, updateGradingTallyFormOptions, listTallySubmissions, type FormOptions, type ParsedGradingRow } from "@/lib/tallyForms";
+import { COUNTRIES } from "@/lib/countries";
 function normalize(s: string | null | undefined) { return (s ?? "").trim().toLowerCase(); }
+/** The dropdown contents for a grading form, read fresh from the database. */
+async function currentFormOptions(supabase: ReturnType<typeof supabaseAdmin>): Promise<FormOptions> {
+  const { data: clubs } = await supabase.from("clubs").select("name").eq("active", true).order("name");
+  return { clubs: (clubs ?? []).map((c) => c.name).filter(Boolean), countries: [...COUNTRIES] };
+}
 export async function createGradingForm(formData: FormData) {
   const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
   const eventId = String(formData.get("eventId") || "");
@@ -14,7 +20,7 @@ export async function createGradingForm(formData: FormData) {
   if (existing) throw new Error("A registration form has already been created for this event.");
   const { data: event } = await supabase.from("events").select("name").eq("id", eventId).maybeSingle();
   if (!event) throw new Error("Event not found.");
-  const created = await createGradingTallyForm(eventId, `${event.name} — Grading Registration`);
+  const created = await createGradingTallyForm(eventId, `${event.name} — Grading Registration`, await currentFormOptions(supabase));
   const { error } = await supabase.from("grading_forms").insert({ event_id: eventId, tally_form_id: created.formId, form_url: created.formUrl, edit_url: created.editUrl, signing_secret: created.signingSecret, created_by: session.sub });
   if (error) throw new Error("The Tally form was created, but saving it to the event failed. Please try again.");
   revalidatePath(`/events/${eventId}`);
@@ -45,6 +51,23 @@ async function stageRows(supabase: ReturnType<typeof supabaseAdmin>, eventId: st
   if (batchError || !batch) throw new Error("Could not record the import batch.");
   if (newCandidateRows.length > 0) await supabase.from("grading_candidates").insert(newCandidateRows.map((c) => ({ ...c, batch_id: batch.id })));
   return { matchedCount, newCount };
+}
+/**
+ * Push the current club list into an existing form. Needed because a form's
+ * dropdown options are fixed when the form is built, so a club added later
+ * wouldn't otherwise appear as a choice.
+ */
+export async function refreshGradingFormOptions(formData: FormData) {
+  await requirePermission(PERMISSIONS.EVENT_EDIT);
+  const eventId = String(formData.get("eventId") || "");
+  if (!eventId) return;
+  const supabase = supabaseAdmin();
+  const { data: gform } = await supabase.from("grading_forms").select("tally_form_id").eq("event_id", eventId).maybeSingle();
+  if (!gform) throw new Error("No registration form has been created for this event yet.");
+  const { data: event } = await supabase.from("events").select("name").eq("id", eventId).maybeSingle();
+  if (!event) throw new Error("Event not found.");
+  await updateGradingTallyFormOptions(gform.tally_form_id, `${event.name} — Grading Registration`, await currentFormOptions(supabase));
+  revalidatePath(`/events/${eventId}`);
 }
 export async function syncGradingResponses(formData: FormData) {
   const session = await requirePermission(PERMISSIONS.EVENT_EDIT);

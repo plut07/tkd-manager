@@ -3,14 +3,8 @@ import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
 import { describeCriteria, type CategoryCriteria } from "@/lib/eligibility";
+import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS } from "@/lib/eventStatus";
 
-const STATUS_STYLES: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-500",
-  upcoming: "bg-blue-100 text-blue-700",
-  ongoing: "bg-amber-100 text-amber-700",
-  completed: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-red-700",
-};
 
 function formatDate(d: string | null) {
   if (!d) return "TBA";
@@ -58,7 +52,7 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-gray-900">{event.name}</h1>
-              <span className={`badge ${STATUS_STYLES[event.status] ?? "bg-gray-100 text-gray-500"}`}>{event.status}</span>
+              <span className={`badge ${STATUS_STYLES[effectiveEventStatus(event)] ?? "bg-gray-100 text-gray-500"}`}>{STATUS_LABELS[effectiveEventStatus(event)] ?? effectiveEventStatus(event)}</span>
               <span className="badge bg-brand-100 text-brand-700">{EVENT_TYPE_LABELS[event.event_type] ?? event.event_type}</span>
             </div>
             {event.discipline && <p className="mt-1 text-sm uppercase tracking-wide text-brand-600">{event.discipline}</p>}

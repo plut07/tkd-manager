@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { createGradingForm, syncGradingResponses, approveCandidate, rejectCandidate, bulkApproveBatch } from "./gradingActions";
+import { createGradingForm, syncGradingResponses, refreshGradingFormOptions, approveCandidate, rejectCandidate, bulkApproveBatch } from "./gradingActions";
 export default async function GradingTab({ eventId, canEdit, isSuperAdmin }: { eventId: string; canEdit: boolean; isSuperAdmin: boolean }) {
   const supabase = supabaseAdmin();
   const { data: gform } = await supabase.from("grading_forms").select("*").eq("event_id", eventId).maybeSingle();
@@ -31,7 +31,14 @@ export default async function GradingTab({ eventId, canEdit, isSuperAdmin }: { e
                   <button type="submit" className="btn-secondary">Sync now (backfill)</button>
                 </form>
               )}
+              {canEdit && (
+                <form action={refreshGradingFormOptions}>
+                  <input type="hidden" name="eventId" value={eventId} />
+                  <button type="submit" className="btn-secondary">Update club list on form</button>
+                </form>
+              )}
             </div>
+            <p className="text-xs text-gray-400">The Club and Nationality questions are dropdowns built from your database. After adding a club, use &quot;Update club list on form&quot; so it appears as a choice.</p>
             <p className="break-all text-xs text-gray-400">{gform.form_url}</p>
           </div>
         )}
