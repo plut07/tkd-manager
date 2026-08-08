@@ -32,11 +32,12 @@ const FIELDS: FieldSpec[] = [
   { label: "Club name", type: "INPUT_TEXT", required: true },
 ];
 // Tally's block model is flat: each block carries its own uuid plus a groupUuid
-// saying which question it belongs to. Two rules matter here:
+// saying which question it belongs to. Three rules matter here:
 //   1. A TITLE (label) block must sit in its OWN group — it cannot share a
 //      groupUuid with the input it labels, or the API rejects the form.
 //   2. A multiple-choice question is expressed purely as MULTIPLE_CHOICE_OPTION
 //      blocks sharing one groupUuid; there is no separate parent input block.
+//   3. Each option must carry its own zero-based `index` in the payload.
 function buildBlocks(formTitle: string) {
   const blocks: Record<string, unknown>[] = [];
   const titleUuid = randomUUID();
@@ -46,8 +47,8 @@ function buildBlocks(formTitle: string) {
     blocks.push({ uuid: randomUUID(), type: "TITLE", groupUuid: labelGroupUuid, groupType: "TITLE", payload: { html: field.label } });
     const inputGroupUuid = randomUUID();
     if (field.type === "MULTIPLE_CHOICE") {
-      (field.options ?? []).forEach((opt) => {
-        blocks.push({ uuid: randomUUID(), type: "MULTIPLE_CHOICE_OPTION", groupUuid: inputGroupUuid, groupType: "MULTIPLE_CHOICE", payload: { text: opt, isRequired: field.required } });
+      (field.options ?? []).forEach((opt, optionIndex) => {
+        blocks.push({ uuid: randomUUID(), type: "MULTIPLE_CHOICE_OPTION", groupUuid: inputGroupUuid, groupType: "MULTIPLE_CHOICE", payload: { text: opt, index: optionIndex, isRequired: field.required } });
       });
     } else {
       blocks.push({ uuid: randomUUID(), type: field.type, groupUuid: inputGroupUuid, groupType: field.type, payload: { isRequired: field.required } });
