@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { EVENT_TYPE_LABELS } from "@/lib/eventCategories";
-import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS } from "@/lib/eventStatus";
+import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange, formatEventDateTime, isRegistrationOpen } from "@/lib/eventStatus";
 import CountryFlag from "@/components/CountryFlag";
+import VenueMap from "@/components/VenueMap";
 
 /**
  * Public registration page for grading events only.
@@ -18,7 +19,7 @@ export default async function PublicEventRegisterPage({ params }: { params: { id
 
   const { data: event } = await supabase
     .from("events")
-    .select("*")
+    .select("*, clubs:organizer_club_id(name)")
     .eq("id", params.id)
     .in("status", ["upcoming", "ongoing", "completed", "cancelled"])
     .maybeSingle();
@@ -47,9 +48,8 @@ export default async function PublicEventRegisterPage({ params }: { params: { id
     .maybeSingle();
 
   const status = effectiveEventStatus(event);
-  const open = status === "upcoming" || status === "ongoing";
-  const formatDate = (d: string | null) =>
-    d ? new Date(d).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : "TBA";
+  const open = isRegistrationOpen(event);
+
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -70,26 +70,26 @@ export default async function PublicEventRegisterPage({ params }: { params: { id
           <div>
             <dt className="text-gray-500">Date</dt>
             <dd className="font-medium text-gray-900">
-              {formatDate(event.start_date)}
-              {event.end_date && event.end_date !== event.start_date ? ` – ${formatDate(event.end_date)}` : ""}
+              {formatEventRange(event.start_date, event.end_date)}
             </dd>
           </div>
           <div>
             <dt className="text-gray-500">Venue</dt>
             <dd className="font-medium text-gray-900">
               {event.country && <CountryFlag country={event.country} showName={false} className="mr-1.5 align-[-2px]" />}
-              {[event.venue, event.city, event.country].filter(Boolean).join(", ") || "TBA"}
+              {[event.venue, event.venue_address, event.country].filter(Boolean).join(", ") || "TBA"}
             </dd>
           </div>
           <div>
             <dt className="text-gray-500">Registration deadline</dt>
-            <dd className="font-medium text-gray-900">{formatDate(event.registration_deadline)}</dd>
+            <dd className="font-medium text-gray-900">{formatEventDateTime(event.registration_deadline)}</dd>
           </div>
           <div>
             <dt className="text-gray-500">Organizer</dt>
-            <dd className="font-medium text-gray-900">{event.organizer || "—"}</dd>
+            <dd className="font-medium text-gray-900">{(event as any).clubs?.name || "—"}</dd>
           </div>
         </dl>
+        {event.venue_address && <VenueMap address={event.venue_address} className="mt-4" />}
       </div>
 
       <div className="card p-6">

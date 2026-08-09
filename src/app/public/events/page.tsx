@@ -1,16 +1,10 @@
 import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { EVENT_TYPE_LABELS } from "@/lib/eventCategories";
-import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS } from "@/lib/eventStatus";
+import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange } from "@/lib/eventStatus";
 import CountryFlag from "@/components/CountryFlag";
 
 
-function formatRange(start: string, end: string | null) {
-  const s = new Date(start).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-  if (!end || end === start) return s;
-  const e = new Date(end).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-  return `${s} – ${e}`;
-}
 
 // Public, unauthenticated page: anyone with the link can browse upcoming
 // and ongoing events without signing in. Draft events are never shown here.
@@ -19,7 +13,7 @@ export default async function PublicEventsPage() {
 
   const { data: events } = await supabase
     .from("events")
-    .select("id, name, discipline, start_date, end_date, venue, city, country, status, event_type")
+    .select("id, name, start_date, end_date, venue, country, status, event_type")
     .in("status", ["upcoming", "ongoing", "completed", "cancelled"])
     .order("start_date", { ascending: false });
 
@@ -44,11 +38,11 @@ export default async function PublicEventsPage() {
                 <span className="badge bg-brand-100 text-brand-700">{EVENT_TYPE_LABELS[e.event_type] ?? e.event_type}</span>
               </div>
             </div>
-            <p className="mt-1 text-sm text-gray-500">{formatRange(e.start_date, e.end_date)}</p>
+            <p className="mt-1 text-sm text-gray-500">{formatEventRange(e.start_date, e.end_date)}</p>
             <p className="mt-1 text-sm text-gray-500">
-              {e.country && <CountryFlag country={e.country} showName={false} className="mr-1.5 align-[-2px]" />}{[e.venue, e.city, e.country].filter(Boolean).join(", ") || "Venue TBA"}
+              {e.country && <CountryFlag country={e.country} showName={false} className="mr-1.5 align-[-2px]" />}{[e.venue, e.country].filter(Boolean).join(", ") || "Venue TBA"}
             </p>
-            {e.discipline && <p className="mt-2 text-xs uppercase tracking-wide text-brand-600">{e.discipline}</p>}
+            
           </Link>
         ))}
         {(events ?? []).length === 0 && (

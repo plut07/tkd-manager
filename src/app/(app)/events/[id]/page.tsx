@@ -9,14 +9,14 @@ import BracketView from "../BracketView";
 import GradingTab from "../GradingTab";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
 import { describeCriteria, type CategoryCriteria } from "@/lib/eligibility";
-import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS } from "@/lib/eventStatus";
+import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange, formatEventDateTime } from "@/lib/eventStatus";
 import { deleteEvent, addCategory, deleteCategory, addDocument, deleteDocument } from "../actions";
 import CountryFlag from "@/components/CountryFlag";
 function formatDate(d: string | null) { if (!d) return "TBA"; return new Date(d).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }); }
 export default async function EventDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { tab?: string; category?: string } }) {
   const session = await requirePermission(PERMISSIONS.EVENT_VIEW);
   const supabase = supabaseAdmin();
-  const { data: event } = await supabase.from("events").select("*").eq("id", params.id).maybeSingle();
+  const { data: event } = await supabase.from("events").select("*, clubs:organizer_club_id(name)").eq("id", params.id).maybeSingle();
   if (!event) notFound();
   const isCompetition = event.event_type === "competition";
   const isGrading = event.event_type === "grading";
@@ -54,7 +54,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
               <span className={`badge ${STATUS_STYLES[effectiveEventStatus(event)] ?? "bg-gray-100 text-gray-500"}`}>{STATUS_LABELS[effectiveEventStatus(event)] ?? effectiveEventStatus(event)}</span>
               <span className="badge bg-brand-100 text-brand-700">{EVENT_TYPE_LABELS[event.event_type] ?? event.event_type}</span>
             </div>
-            {event.discipline && <p className="mt-1 text-sm uppercase tracking-wide text-brand-600">{event.discipline}</p>}
+            
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/events" className="btn-secondary">Back to events</Link>
@@ -87,10 +87,10 @@ export default async function EventDetailPage({ params, searchParams }: { params
         <>
           <div className="card p-6">
             <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
-              <div><dt className="text-gray-500">Dates</dt><dd className="font-medium text-gray-900">{formatDate(event.start_date)}{event.end_date && event.end_date !== event.start_date ? ` – ${formatDate(event.end_date)}` : ""}</dd></div>
-              <div><dt className="text-gray-500">Venue</dt><dd className="font-medium text-gray-900">{event.country && <CountryFlag country={event.country} showName={false} className="mr-1.5 align-[-2px]" />}{[event.venue, event.city, event.country].filter(Boolean).join(", ") || "TBA"}</dd></div>
-              <div><dt className="text-gray-500">Organizer</dt><dd className="font-medium text-gray-900">{event.organizer || "—"}</dd></div>
-              <div><dt className="text-gray-500">Registration deadline</dt><dd className="font-medium text-gray-900">{formatDate(event.registration_deadline)}</dd></div>
+              <div><dt className="text-gray-500">Dates</dt><dd className="font-medium text-gray-900">{formatEventRange(event.start_date, event.end_date)}</dd></div>
+              <div><dt className="text-gray-500">Venue</dt><dd className="font-medium text-gray-900">{event.country && <CountryFlag country={event.country} showName={false} className="mr-1.5 align-[-2px]" />}{[event.venue, event.venue_address, event.country].filter(Boolean).join(", ") || "TBA"}</dd></div>
+              <div><dt className="text-gray-500">Organizer</dt><dd className="font-medium text-gray-900">{(event as any).clubs?.name || "—"}</dd></div>
+              <div><dt className="text-gray-500">Registration deadline</dt><dd className="font-medium text-gray-900">{formatEventDateTime(event.registration_deadline)}</dd></div>
               <div className="sm:col-span-2 lg:col-span-4"><dt className="text-gray-500">Eligible countries</dt><dd className="font-medium text-gray-900">{event.allowed_countries && event.allowed_countries.length > 0 ? event.allowed_countries.join(", ") : "Open to every country"}</dd></div>
             </dl>
             {event.description && <p className="mt-4 whitespace-pre-line text-sm text-gray-700">{event.description}</p>}

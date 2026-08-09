@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
 import { describeCriteria, type CategoryCriteria } from "@/lib/eligibility";
-import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS } from "@/lib/eventStatus";
+import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange, formatEventDateTime } from "@/lib/eventStatus";
 import CountryFlag from "@/components/CountryFlag";
+import VenueMap from "@/components/VenueMap";
 
 
 function formatDate(d: string | null) {
@@ -20,7 +21,7 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
 
   const { data: event } = await supabase
     .from("events")
-    .select("*")
+    .select("*, clubs:organizer_club_id(name)")
     .eq("id", params.id)
     .in("status", ["upcoming", "ongoing", "completed", "cancelled"])
     .maybeSingle();
@@ -67,7 +68,6 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
               <span className={`badge ${STATUS_STYLES[effectiveEventStatus(event)] ?? "bg-gray-100 text-gray-500"}`}>{STATUS_LABELS[effectiveEventStatus(event)] ?? effectiveEventStatus(event)}</span>
               <span className="badge bg-brand-100 text-brand-700">{EVENT_TYPE_LABELS[event.event_type] ?? event.event_type}</span>
             </div>
-            {event.discipline && <p className="mt-1 text-sm uppercase tracking-wide text-brand-600">{event.discipline}</p>}
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/public/events" className="btn-secondary">
@@ -97,16 +97,16 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
           <div>
             <dt className="text-gray-500">Venue</dt>
             <dd className="font-medium text-gray-900">
-              {event.country && <CountryFlag country={event.country} showName={false} className="mr-1.5 align-[-2px]" />}{[event.venue, event.city, event.country].filter(Boolean).join(", ") || "TBA"}
+              {event.country && <CountryFlag country={event.country} showName={false} className="mr-1.5 align-[-2px]" />}{[event.venue, event.venue_address, event.country].filter(Boolean).join(", ") || "TBA"}
             </dd>
           </div>
           <div>
             <dt className="text-gray-500">Organizer</dt>
-            <dd className="font-medium text-gray-900">{event.organizer || "—"}</dd>
+            <dd className="font-medium text-gray-900">{(event as any).clubs?.name || "—"}</dd>
           </div>
           <div>
             <dt className="text-gray-500">Registration deadline</dt>
-            <dd className="font-medium text-gray-900">{formatDate(event.registration_deadline)}</dd>
+            <dd className="font-medium text-gray-900">{formatEventDateTime(event.registration_deadline)}</dd>
           </div>
           <div className="sm:col-span-2 lg:col-span-4">
             <dt className="text-gray-500">Eligible countries</dt>
@@ -117,6 +117,7 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
             </dd>
           </div>
         </dl>
+        {event.venue_address && <VenueMap address={event.venue_address} className="mt-4" />}
 
         {event.description && <p className="mt-4 whitespace-pre-line text-sm text-gray-700">{event.description}</p>}
       </div>

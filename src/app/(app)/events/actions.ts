@@ -8,7 +8,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { checkEligibility, checkCountryEligibility, type CategoryCriteria, type StudentLite } from "@/lib/eligibility";
 import { sortForNumbering, formatCompetitionNumber, type NumberingStudent } from "@/lib/numbering";
-import { effectiveEventStatus } from "@/lib/eventStatus";
+import { effectiveEventStatus, isRegistrationOpen, canOverrideLocks, fromLocalInputValue } from "@/lib/eventStatus";
 
 export type FormState = { error?: string } | undefined;
 
@@ -54,19 +54,36 @@ function storedStatus(d: { isDraft: boolean; isCancelled: boolean }): string {
 }
 
 /**
- * Completed events are read-only for everyone except a Super Admin, so results
- * and entries can't be quietly altered after the fact.
+ * Event details lock once the event has finished. A Super Admin, or whoever
+ * created the event, can still correct things afterwards.
  */
-async function assertEventEditable(session: { role: string }, eventId: string) {
-  if (session.role === "super_admin") return;
+async function assertEventEditable(session: { role: string; sub: string }, eventId: string) {
   const { data: event } = await supabaseAdmin()
     .from("events")
-    .select("status, start_date, end_date")
+    .select("status, start_date, end_date, registration_deadline, created_by")
     .eq("id", eventId)
     .maybeSingle();
   if (!event) return;
+  if (canOverrideLocks({ sub: session.sub, role: session.role }, event)) return;
   if (effectiveEventStatus(event) === "completed") {
-    throw new Error("This event has finished. Only a Super Admin can change it now.");
+    throw new Error("This event has finished. Only a Super Admin or the person who created it can change it now.");
+  }
+}
+
+/**
+ * Entries lock at the registration deadline — earlier than the event itself, so
+ * organisers can finalise numbers. Same two people can override.
+ */
+async function assertRegistrationOpen(session: { role: string; sub: string }, eventId: string) {
+  const { data: event } = await supabaseAdmin()
+    .from("events")
+    .select("status, start_date, end_date, registration_deadline, created_by")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (!event) return;
+  if (canOverrideLocks({ sub: session.sub, role: session.role }, event)) return;
+  if (!isRegistrationOpen(event)) {
+    throw new Error("Registration for this event has closed. Contact the organizer if an entry still needs changing.");
   }
 }
 
@@ -75,13 +92,12 @@ const eventSchema = z.object({
   eventType: z.enum(["competition", "grading", "seminar", "course"], {
     errorMap: () => ({ message: "Choose an event type." }),
   }),
-  discipline: z.string().trim().optional().or(z.literal("")),
-  startDate: z.string().min(1, "Start date is required."),
+  startDate: z.string().min(1, "Start date and time are required."),
   endDate: z.string().optional().or(z.literal("")),
   venue: z.string().trim().optional().or(z.literal("")),
-  city: z.string().trim().optional().or(z.literal("")),
   country: z.string().trim().optional().or(z.literal("")),
-  organizer: z.string().trim().optional().or(z.literal("")),
+  organizerClubId: z.string().uuid("Choose the organizing club."),
+  venueAddress: z.string().trim().optional().or(z.literal("")),
   description: z.string().trim().optional().or(z.literal("")),
   registrationDeadline: z.string().optional().or(z.literal("")),
   isDraft: z.boolean(),
@@ -93,13 +109,12 @@ function readEventForm(formData: FormData) {
   return {
     name: formData.get("name"),
     eventType: formData.get("eventType"),
-    discipline: formData.get("discipline"),
     startDate: formData.get("startDate"),
     endDate: formData.get("endDate"),
     venue: formData.get("venue"),
-    city: formData.get("city"),
     country: formData.get("country"),
-    organizer: formData.get("organizer"),
+    organizerClubId: formData.get("organizerClubId"),
+    venueAddress: formData.get("venueAddress"),
     description: formData.get("description"),
     registrationDeadline: formData.get("registrationDeadline"),
     isDraft: formData.get("isDraft") === "on",
@@ -120,15 +135,14 @@ export async function createEvent(_prev: FormState, formData: FormData): Promise
     .insert({
       name: d.name,
       event_type: d.eventType,
-      discipline: d.discipline || null,
-      start_date: d.startDate,
-      end_date: d.endDate || null,
+      start_date: fromLocalInputValue(d.startDate),
+      end_date: fromLocalInputValue(d.endDate),
       venue: d.venue || null,
-      city: d.city || null,
+      venue_address: d.venueAddress || null,
+      organizer_club_id: d.organizerClubId,
       country: d.country || null,
-      organizer: d.organizer || null,
       description: d.description || null,
-      registration_deadline: d.registrationDeadline || null,
+      registration_deadline: fromLocalInputValue(d.registrationDeadline),
       status: storedStatus(d),
       allowed_countries: d.allowedCountries ?? [],
       created_by: session.sub,
@@ -155,15 +169,14 @@ export async function updateEvent(eventId: string, _prev: FormState, formData: F
     .update({
       name: d.name,
       event_type: d.eventType,
-      discipline: d.discipline || null,
-      start_date: d.startDate,
-      end_date: d.endDate || null,
+      start_date: fromLocalInputValue(d.startDate),
+      end_date: fromLocalInputValue(d.endDate),
       venue: d.venue || null,
-      city: d.city || null,
+      venue_address: d.venueAddress || null,
+      organizer_club_id: d.organizerClubId,
       country: d.country || null,
-      organizer: d.organizer || null,
       description: d.description || null,
-      registration_deadline: d.registrationDeadline || null,
+      registration_deadline: fromLocalInputValue(d.registrationDeadline),
       status: storedStatus(d),
       allowed_countries: d.allowedCountries ?? [],
     })
@@ -291,7 +304,7 @@ export async function deleteDocument(formData: FormData) {
 export async function registerStudent(formData: FormData) {
   const session = await requirePermission(PERMISSIONS.EVENT_VIEW);
   const eventId = String(formData.get("eventId") || "");
-  await assertEventEditable(session, eventId);
+  await assertRegistrationOpen(session, eventId);
   const studentId = String(formData.get("studentId") || "");
   const categoryId = String(formData.get("categoryId") || "") || null;
   if (!eventId || !studentId) return;
@@ -360,7 +373,7 @@ export async function unregisterStudent(formData: FormData) {
   const registrationId = String(formData.get("registrationId") || "");
   const eventId = String(formData.get("eventId") || "");
   if (!registrationId) return;
-  await assertEventEditable(session, eventId);
+  await assertRegistrationOpen(session, eventId);
 
   const supabase = supabaseAdmin();
   const { data: reg } = await supabase.from("event_registrations").select("club_id").eq("id", registrationId).maybeSingle();
@@ -390,7 +403,7 @@ export async function unregisterStudent(formData: FormData) {
 // the age -> gender -> grade ordering in lib/numbering.ts.
 export async function approveRegistration(formData: FormData) {
   const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
-  await assertEventEditable(session, String(formData.get("eventId") || ""));
+  await assertRegistrationOpen(session, String(formData.get("eventId") || ""));
   const registrationId = String(formData.get("registrationId") || "");
   const eventId = String(formData.get("eventId") || "");
   if (!registrationId) return;

@@ -41,11 +41,22 @@ export function todayInSingapore(now: Date = new Date()): string {
   }).format(now);
 }
 
-/** Normalises a date column to YYYY-MM-DD, tolerating a full timestamp. */
-function dateOnly(value: string | null | undefined): string | null {
+/**
+ * The Singapore calendar date for a value, as YYYY-MM-DD.
+ *
+ * Dates now arrive as timestamps in UTC, so slicing the first ten characters
+ * would give the UTC day — at 00:30 Singapore time that is still *yesterday*.
+ * Formatting in Asia/Singapore avoids an event flipping status eight hours late.
+ */
+function sgDate(value: string | null | undefined): string | null {
   if (!value) return null;
-  const trimmed = String(value).trim();
-  return trimmed.length >= 10 ? trimmed.slice(0, 10) : null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  // A bare YYYY-MM-DD is already a calendar date; don't re-interpret it.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw.slice(0, 10) || null;
+  return todayInSingapore(d);
 }
 
 /**
@@ -58,9 +69,9 @@ export function effectiveEventStatus(event: EventDates, now: Date = new Date()):
   const stored = (event.status ?? "").trim().toLowerCase();
   if ((MANUAL_STATUSES as readonly string[]).includes(stored)) return stored;
 
-  const start = dateOnly(event.start_date);
+  const start = sgDate(event.start_date);
   if (!start) return stored || "upcoming";
-  const end = dateOnly(event.end_date) ?? start;
+  const end = sgDate(event.end_date) ?? start;
   const today = todayInSingapore(now);
 
   if (today < start) return "upcoming";
@@ -72,4 +83,88 @@ export function effectiveEventStatus(event: EventDates, now: Date = new Date()):
 export function isActiveEvent(event: EventDates, now: Date = new Date()): boolean {
   const status = effectiveEventStatus(event, now);
   return status === "upcoming" || status === "ongoing";
+}
+
+export type EventGate = EventDates & { registration_deadline?: string | null; created_by?: string | null };
+export type Viewer = { sub?: string | null; role?: string | null } | null | undefined;
+
+/**
+ * A Super Admin, or whoever created the event, can still make changes after a
+ * cut-off. Everyone else is read-only from that point.
+ */
+export function canOverrideLocks(viewer: Viewer, event: EventGate): boolean {
+  if (!viewer) return false;
+  if (viewer.role === "super_admin") return true;
+  return Boolean(viewer.sub && event.created_by && viewer.sub === event.created_by);
+}
+
+/**
+ * Whether entries can still be added or amended.
+ *
+ * The deadline is an exact moment, so this is a straight instant comparison —
+ * no timezone juggling needed. With no deadline set, entries stay open until
+ * the event itself finishes.
+ */
+export function isRegistrationOpen(event: EventGate, now: Date = new Date()): boolean {
+  const status = effectiveEventStatus(event, now);
+  if (status === "cancelled" || status === "completed" || status === "draft") return false;
+  const deadline = event.registration_deadline ? new Date(event.registration_deadline) : null;
+  if (deadline && !Number.isNaN(deadline.getTime())) return now.getTime() <= deadline.getTime();
+  return true;
+}
+
+/** Formats an event timestamp for display, in Singapore time. */
+export function formatEventDateTime(value: string | null | undefined, withTime = true): string {
+  if (!value) return "TBA";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Singapore",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    ...(withTime ? { hour: "2-digit", minute: "2-digit", hour12: false } : {}),
+  }).format(d);
+}
+
+/** Value for an <input type="datetime-local"> in Singapore time. */
+export function toLocalInputValue(value: string | null | undefined): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Singapore",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+}
+
+/**
+ * Turn a datetime-local value (which the browser gives us with no zone) into an
+ * instant, reading it as Singapore time — that is what the organiser meant.
+ */
+export function fromLocalInputValue(value: string | null | undefined): string | null {
+  const v = (value ?? "").trim();
+  if (!v) return null;
+  const withTime = /T\d{2}:\d{2}/.test(v) ? v : `${v}T00:00`;
+  const d = new Date(`${withTime}:00+08:00`);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/**
+ * A start/end pair as one readable string. Same-day events collapse to a single
+ * date with a time range; multi-day events show both dates.
+ */
+export function formatEventRange(start: string | null | undefined, end: string | null | undefined): string {
+  if (!start) return "TBA";
+  const startDay = todayInSingapore(new Date(start));
+  const endDay = end ? todayInSingapore(new Date(end)) : null;
+  if (!end || startDay === endDay) {
+    const time = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Singapore", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(start));
+    const base = formatEventDateTime(start, false);
+    return time === "00:00" ? base : `${base}, ${time}`;
+  }
+  return `${formatEventDateTime(start, false)} – ${formatEventDateTime(end, false)}`;
 }

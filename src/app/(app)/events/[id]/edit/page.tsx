@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { updateEvent } from "../../actions";
 import EventForm from "../../EventForm";
-import { effectiveEventStatus } from "@/lib/eventStatus";
+import { effectiveEventStatus, canOverrideLocks, toLocalInputValue } from "@/lib/eventStatus";
 
 export default async function EditEventPage({ params }: { params: { id: string } }) {
   const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
@@ -14,9 +14,11 @@ export default async function EditEventPage({ params }: { params: { id: string }
   if (!event) notFound();
 
   // Mirrors the server-side guard so the form isn't even offered.
-  if (effectiveEventStatus(event) === "completed" && session.role !== "super_admin") {
-    throw new Error("This event has finished. Only a Super Admin can change it now.");
+  if (effectiveEventStatus(event) === "completed" && !canOverrideLocks({ sub: session.sub, role: session.role }, event)) {
+    throw new Error("This event has finished. Only a Super Admin or the person who created it can change it now.");
   }
+
+  const { data: clubs } = await supabase.from("clubs").select("id, name").eq("active", true).order("name");
 
   const updateEventWithId = updateEvent.bind(null, event.id);
 
@@ -27,18 +29,18 @@ export default async function EditEventPage({ params }: { params: { id: string }
         <EventForm
           action={updateEventWithId}
           submitLabel="Save changes"
+          clubs={clubs ?? []}
           defaultValues={{
             name: event.name,
             eventType: event.event_type,
-            discipline: event.discipline ?? "",
-            startDate: event.start_date,
-            endDate: event.end_date ?? "",
+            startDate: toLocalInputValue(event.start_date),
+            endDate: toLocalInputValue(event.end_date),
             venue: event.venue ?? "",
-            city: event.city ?? "",
             country: event.country ?? "",
-            organizer: event.organizer ?? "",
+            organizerClubId: event.organizer_club_id ?? "",
+            venueAddress: event.venue_address ?? "",
             description: event.description ?? "",
-            registrationDeadline: event.registration_deadline ?? "",
+            registrationDeadline: toLocalInputValue(event.registration_deadline),
             status: event.status,
             allowedCountries: event.allowed_countries ?? [],
           }}
