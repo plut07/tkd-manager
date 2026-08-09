@@ -21,7 +21,7 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
     .from("events")
     .select("*")
     .eq("id", params.id)
-    .in("status", ["upcoming", "ongoing", "completed"])
+    .in("status", ["upcoming", "ongoing", "completed", "cancelled"])
     .maybeSingle();
   if (!event) notFound();
 
@@ -37,6 +37,17 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
     .select("*")
     .eq("event_id", event.id)
     .order("uploaded_at", { ascending: false });
+
+  // Grading events register through a public Tally form, so the link can be
+  // shown to signed-out visitors. Every other event type routes through the
+  // signed-in registration flow.
+  const isGrading = event.event_type === "grading";
+  const { data: gradingForm } = isGrading
+    ? await supabase.from("grading_forms").select("form_url").eq("event_id", event.id).maybeSingle()
+    : { data: null };
+
+  const status = effectiveEventStatus(event);
+  const registrationOpen = status === "upcoming" || status === "ongoing";
 
   const { data: publishedBrackets } = await supabase
     .from("event_category_brackets")
@@ -57,9 +68,21 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
             </div>
             {event.discipline && <p className="mt-1 text-sm uppercase tracking-wide text-brand-600">{event.discipline}</p>}
           </div>
-          <Link href="/public/events" className="btn-secondary">
-            Back to events
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/public/events" className="btn-secondary">
+              Back to events
+            </Link>
+            {registrationOpen && isGrading && gradingForm?.form_url && (
+              <a href={gradingForm.form_url} target="_blank" rel="noopener noreferrer" className="btn-primary">
+                Register on the form
+              </a>
+            )}
+            {registrationOpen && !isGrading && (
+              <Link href={`/login?next=${encodeURIComponent(`/events/${event.id}/register`)}`} className="btn-primary">
+                Sign in to register
+              </Link>
+            )}
+          </div>
         </div>
 
         <dl className="mt-6 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">

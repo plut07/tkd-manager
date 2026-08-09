@@ -76,16 +76,21 @@ export default function EventForm({
           />
         </div>
         <div>
-          <label className="label" htmlFor="status">
-            Status
-          </label>
-          <select id="status" name="status" className="input" defaultValue={defaultValues?.status ?? "upcoming"}>
-            <option value="draft">Draft</option>
-            <option value="upcoming">Upcoming</option>
-            <option value="ongoing">Ongoing</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+          <span className="label">Status</span>
+          <p className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+            Set automatically from the dates (Singapore time): <strong>Upcoming</strong> before the start date,{" "}
+            <strong>Ongoing</strong> during the event, <strong>Completed</strong> afterwards.
+          </p>
+          <div className="mt-2 space-y-1">
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" name="isDraft" defaultChecked={defaultValues?.status === "draft"} />
+              Draft — hide this event from the public listing
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" name="isCancelled" defaultChecked={defaultValues?.status === "cancelled"} />
+              Cancelled — show as cancelled regardless of date
+            </label>
+          </div>
         </div>
         <div>
           <label className="label" htmlFor="startDate">

@@ -8,6 +8,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { checkEligibility, checkCountryEligibility, type CategoryCriteria, type StudentLite } from "@/lib/eligibility";
 import { sortForNumbering, formatCompetitionNumber, type NumberingStudent } from "@/lib/numbering";
+import { effectiveEventStatus } from "@/lib/eventStatus";
 
 export type FormState = { error?: string } | undefined;
 
@@ -42,6 +43,33 @@ async function renumberEventCompetitors(eventId: string) {
   );
 }
 
+// The status column is now derived, not chosen. Only two states are deliberate:
+// a draft (hidden from the public list) and a cancellation. Anything else is
+// stored as "upcoming", which effectiveEventStatus treats as "work it out from
+// the dates". The column keeps its original CHECK constraint this way.
+function storedStatus(d: { isDraft: boolean; isCancelled: boolean }): string {
+  if (d.isCancelled) return "cancelled";
+  if (d.isDraft) return "draft";
+  return "upcoming";
+}
+
+/**
+ * Completed events are read-only for everyone except a Super Admin, so results
+ * and entries can't be quietly altered after the fact.
+ */
+async function assertEventEditable(session: { role: string }, eventId: string) {
+  if (session.role === "super_admin") return;
+  const { data: event } = await supabaseAdmin()
+    .from("events")
+    .select("status, start_date, end_date")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (!event) return;
+  if (effectiveEventStatus(event) === "completed") {
+    throw new Error("This event has finished. Only a Super Admin can change it now.");
+  }
+}
+
 const eventSchema = z.object({
   name: z.string().trim().min(2, "Event name is required."),
   eventType: z.enum(["competition", "grading", "seminar", "course"], {
@@ -56,7 +84,8 @@ const eventSchema = z.object({
   organizer: z.string().trim().optional().or(z.literal("")),
   description: z.string().trim().optional().or(z.literal("")),
   registrationDeadline: z.string().optional().or(z.literal("")),
-  status: z.enum(["draft", "upcoming", "ongoing", "completed", "cancelled"]),
+  isDraft: z.boolean(),
+  isCancelled: z.boolean(),
   allowedCountries: z.array(z.string()).optional(),
 });
 
@@ -73,7 +102,8 @@ function readEventForm(formData: FormData) {
     organizer: formData.get("organizer"),
     description: formData.get("description"),
     registrationDeadline: formData.get("registrationDeadline"),
-    status: formData.get("status"),
+    isDraft: formData.get("isDraft") === "on",
+    isCancelled: formData.get("isCancelled") === "on",
     allowedCountries: formData.getAll("allowedCountries"),
   };
 }
@@ -99,7 +129,7 @@ export async function createEvent(_prev: FormState, formData: FormData): Promise
       organizer: d.organizer || null,
       description: d.description || null,
       registration_deadline: d.registrationDeadline || null,
-      status: d.status,
+      status: storedStatus(d),
       allowed_countries: d.allowedCountries ?? [],
       created_by: session.sub,
     })
@@ -113,7 +143,8 @@ export async function createEvent(_prev: FormState, formData: FormData): Promise
 }
 
 export async function updateEvent(eventId: string, _prev: FormState, formData: FormData): Promise<FormState> {
-  await requirePermission(PERMISSIONS.EVENT_EDIT);
+  const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
+  await assertEventEditable(session, eventId);
   const parsed = eventSchema.safeParse(readEventForm(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   const d = parsed.data;
@@ -133,7 +164,7 @@ export async function updateEvent(eventId: string, _prev: FormState, formData: F
       organizer: d.organizer || null,
       description: d.description || null,
       registration_deadline: d.registrationDeadline || null,
-      status: d.status,
+      status: storedStatus(d),
       allowed_countries: d.allowedCountries ?? [],
     })
     .eq("id", eventId);
@@ -146,9 +177,10 @@ export async function updateEvent(eventId: string, _prev: FormState, formData: F
 }
 
 export async function deleteEvent(formData: FormData) {
-  await requirePermission(PERMISSIONS.EVENT_DELETE);
+  const session = await requirePermission(PERMISSIONS.EVENT_DELETE);
   const eventId = String(formData.get("eventId") || "");
   if (!eventId) return;
+  await assertEventEditable(session, eventId);
   const supabase = supabaseAdmin();
   await supabase.from("events").delete().eq("id", eventId);
   revalidatePath("/events");
@@ -184,7 +216,8 @@ const categorySchema = z.object({
 });
 
 export async function addCategory(formData: FormData) {
-  await requirePermission(PERMISSIONS.EVENT_EDIT);
+  const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
+  await assertEventEditable(session, String(formData.get("eventId") || ""));
   const parsed = categorySchema.safeParse({
     eventId: formData.get("eventId"),
     name: formData.get("name"),
@@ -218,7 +251,8 @@ export async function addCategory(formData: FormData) {
 }
 
 export async function deleteCategory(formData: FormData) {
-  await requirePermission(PERMISSIONS.EVENT_EDIT);
+  const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
+  await assertEventEditable(session, String(formData.get("eventId") || ""));
   const categoryId = String(formData.get("categoryId") || "");
   const eventId = String(formData.get("eventId") || "");
   if (!categoryId) return;
@@ -230,7 +264,8 @@ export async function deleteCategory(formData: FormData) {
 // --- Documents ---
 
 export async function addDocument(formData: FormData) {
-  await requirePermission(PERMISSIONS.EVENT_EDIT);
+  const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
+  await assertEventEditable(session, String(formData.get("eventId") || ""));
   const eventId = String(formData.get("eventId") || "");
   const title = String(formData.get("title") || "").trim();
   const url = String(formData.get("url") || "").trim();
@@ -241,7 +276,8 @@ export async function addDocument(formData: FormData) {
 }
 
 export async function deleteDocument(formData: FormData) {
-  await requirePermission(PERMISSIONS.EVENT_EDIT);
+  const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
+  await assertEventEditable(session, String(formData.get("eventId") || ""));
   const documentId = String(formData.get("documentId") || "");
   const eventId = String(formData.get("eventId") || "");
   if (!documentId) return;
@@ -255,6 +291,7 @@ export async function deleteDocument(formData: FormData) {
 export async function registerStudent(formData: FormData) {
   const session = await requirePermission(PERMISSIONS.EVENT_VIEW);
   const eventId = String(formData.get("eventId") || "");
+  await assertEventEditable(session, eventId);
   const studentId = String(formData.get("studentId") || "");
   const categoryId = String(formData.get("categoryId") || "") || null;
   if (!eventId || !studentId) return;
@@ -323,6 +360,7 @@ export async function unregisterStudent(formData: FormData) {
   const registrationId = String(formData.get("registrationId") || "");
   const eventId = String(formData.get("eventId") || "");
   if (!registrationId) return;
+  await assertEventEditable(session, eventId);
 
   const supabase = supabaseAdmin();
   const { data: reg } = await supabase.from("event_registrations").select("club_id").eq("id", registrationId).maybeSingle();
@@ -351,7 +389,8 @@ export async function unregisterStudent(formData: FormData) {
 // Approving also (re)assigns competition numbers for the whole event, per
 // the age -> gender -> grade ordering in lib/numbering.ts.
 export async function approveRegistration(formData: FormData) {
-  await requirePermission(PERMISSIONS.EVENT_EDIT);
+  const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
+  await assertEventEditable(session, String(formData.get("eventId") || ""));
   const registrationId = String(formData.get("registrationId") || "");
   const eventId = String(formData.get("eventId") || "");
   if (!registrationId) return;

@@ -8,6 +8,7 @@ import ClubExportButton from "@/components/ClubExportButton";
 import { EVENT_TYPE_LABELS } from "@/lib/eventCategories";
 import { type CategoryCriteria, computeAge } from "@/lib/eligibility";
 import { registerStudent, unregisterStudent, approveRegistration } from "../../actions";
+import { effectiveEventStatus } from "@/lib/eventStatus";
 
 export default async function EventRegisterPage({ params }: { params: { id: string } }) {
   const session = await requirePermission(PERMISSIONS.EVENT_VIEW);
@@ -60,7 +61,10 @@ export default async function EventRegisterPage({ params }: { params: { id: stri
     studentOptions = (data as any) ?? [];
   }
 
-  const canEdit = hasPermission(session, PERMISSIONS.EVENT_EDIT);
+  const canEditRaw = hasPermission(session, PERMISSIONS.EVENT_EDIT);
+  // Finished events are read-only unless you are a Super Admin.
+  const locked = effectiveEventStatus(event) === "completed" && session.role !== "super_admin";
+  const canEdit = canEditRaw && !locked;
   const canManageAll = session.role === "super_admin" || session.role === "event_manager";
 
   const pending = ((registrations ?? []) as any[]).filter((r) => r.status === "pending");
@@ -98,7 +102,9 @@ export default async function EventRegisterPage({ params }: { params: { id: stri
           </Link>
         </div>
 
-        {studentOptions.length > 0 ? (
+        {locked ? (
+          <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">This event has finished. Entries are shown for reference and can no longer be changed.</p>
+        ) : studentOptions.length > 0 ? (
           <RegisterStudentForm
             action={registerStudent}
             eventId={event.id}

@@ -4,13 +4,19 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { updateEvent } from "../../actions";
 import EventForm from "../../EventForm";
+import { effectiveEventStatus } from "@/lib/eventStatus";
 
 export default async function EditEventPage({ params }: { params: { id: string } }) {
-  await requirePermission(PERMISSIONS.EVENT_EDIT);
+  const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
   const supabase = supabaseAdmin();
 
   const { data: event } = await supabase.from("events").select("*").eq("id", params.id).maybeSingle();
   if (!event) notFound();
+
+  // Mirrors the server-side guard so the form isn't even offered.
+  if (effectiveEventStatus(event) === "completed" && session.role !== "super_admin") {
+    throw new Error("This event has finished. Only a Super Admin can change it now.");
+  }
 
   const updateEventWithId = updateEvent.bind(null, event.id);
 

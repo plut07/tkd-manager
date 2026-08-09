@@ -19,7 +19,7 @@ export default async function PublicEventsPage() {
   const { data: events } = await supabase
     .from("events")
     .select("id, name, discipline, start_date, end_date, venue, city, country, status, event_type")
-    .in("status", ["upcoming", "ongoing", "completed"])
+    .in("status", ["upcoming", "ongoing", "completed", "cancelled"])
     .order("start_date", { ascending: false });
 
   return (

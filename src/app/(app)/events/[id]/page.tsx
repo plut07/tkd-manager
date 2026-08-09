@@ -26,6 +26,12 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const { count: confirmedCount } = await supabase.from("event_registrations").select("id", { count: "exact", head: true }).eq("event_id", event.id).eq("status", "confirmed");
   const canEdit = hasPermission(session, PERMISSIONS.EVENT_EDIT);
   const canDelete = hasPermission(session, PERMISSIONS.EVENT_DELETE);
+  // Once an event has finished it is read-only for everyone but a Super Admin,
+  // so entries and results can't be altered after the fact.
+  const isFinished = effectiveEventStatus(event) === "completed";
+  const locked = isFinished && session.role !== "super_admin";
+  const canEditNow = canEdit && !locked;
+  const canDeleteNow = canDelete && !locked;
   const bracketStatusMap = new Map<string, string>();
   const confirmedCountMap = new Map<string, number>();
   if (tab === "draws" && (categories ?? []).length > 0) {
@@ -51,11 +57,20 @@ export default async function EventDetailPage({ params, searchParams }: { params
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/events" className="btn-secondary">Back to events</Link>
-            <Link href={`/events/${event.id}/register`} className="btn-primary">Register</Link>
-            {canEdit && (<Link href={`/events/${event.id}/edit`} className="btn-secondary">Edit</Link>)}
-            {canDelete && (<DeleteButton action={deleteEvent} fieldName="eventId" fieldValue={event.id} confirmLabel={`Delete "${event.name}"? This cannot be undone.`} />)}
+            {locked ? (
+              <Link href={`/events/${event.id}/register`} className="btn-secondary">View entries</Link>
+            ) : (
+              <Link href={`/events/${event.id}/register`} className="btn-primary">Register</Link>
+            )}
+            {canEditNow && (<Link href={`/events/${event.id}/edit`} className="btn-secondary">Edit</Link>)}
+            {canDeleteNow && (<DeleteButton action={deleteEvent} fieldName="eventId" fieldValue={event.id} confirmLabel={`Delete "${event.name}"? This cannot be undone.`} />)}
           </div>
         </div>
+        {locked && (
+          <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            This event has finished, so it is now read-only. Ask a Super Admin if something still needs correcting.
+          </p>
+        )}
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
           <Link href={`/events/${event.id}/register`} className="rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-100">{pendingCount ?? 0} pending approval</Link>
           <Link href={`/events/${event.id}/register`} className="rounded-md border border-green-200 bg-green-50 px-3 py-1.5 font-medium text-green-700 hover:bg-green-100">{confirmedCount ?? 0} confirmed</Link>
@@ -85,12 +100,12 @@ export default async function EventDetailPage({ params, searchParams }: { params
               {(documents ?? []).map((d) => (
                 <li key={d.id} className="flex items-center justify-between py-2">
                   <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-brand-700 hover:underline">{d.title}</a>
-                  {canEdit && (<DeleteButton action={deleteDocument} fieldName="documentId" fieldValue={d.id} confirmLabel={`Remove "${d.title}"?`} label="Remove" extraFields={{ eventId: event.id }} />)}
+                  {canEditNow && (<DeleteButton action={deleteDocument} fieldName="documentId" fieldValue={d.id} confirmLabel={`Remove "${d.title}"?`} label="Remove" extraFields={{ eventId: event.id }} />)}
                 </li>
               ))}
               {(documents ?? []).length === 0 && <li className="py-4 text-center text-gray-400">No documents uploaded.</li>}
             </ul>
-            {canEdit && (
+            {canEditNow && (
               <form action={addDocument} className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-4">
                 <input type="hidden" name="eventId" value={event.id} />
                 <input name="title" placeholder="Document title" className="input max-w-xs" required />
@@ -105,7 +120,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
           <h2 className="text-lg font-semibold text-gray-900">Categories & divisions</h2>
           <div className="mt-4 overflow-x-auto">
             <table className="table-base">
-              <thead><tr><th>Name</th><th>Type</th><th>Eligibility</th><th></th>{canEdit && <th></th>}</tr></thead>
+              <thead><tr><th>Name</th><th>Type</th><th>Eligibility</th><th></th>{canEditNow && <th></th>}</tr></thead>
               <tbody>
                 {(categories ?? []).map((c) => (
                   <tr key={c.id}>
@@ -113,14 +128,14 @@ export default async function EventDetailPage({ params, searchParams }: { params
                     <td>{CATEGORY_TYPES[c.type as CategoryTypeCode]?.label ?? c.type ?? "—"}</td>
                     <td className="text-gray-600">{describeCriteria(c as CategoryCriteria)}</td>
                     <td className="text-right"><Link href={`/events/${event.id}/categories/${c.id}/bracket`} className="text-sm font-medium text-brand-700 hover:underline">Bracket</Link></td>
-                    {canEdit && (<td className="text-right"><DeleteButton action={deleteCategory} fieldName="categoryId" fieldValue={c.id} confirmLabel={`Remove category "${c.name}"?`} label="Remove" extraFields={{ eventId: event.id }} /></td>)}
+                    {canEditNow && (<td className="text-right"><DeleteButton action={deleteCategory} fieldName="categoryId" fieldValue={c.id} confirmLabel={`Remove category "${c.name}"?`} label="Remove" extraFields={{ eventId: event.id }} /></td>)}
                   </tr>
                 ))}
                 {(categories ?? []).length === 0 && (<tr><td colSpan={5} className="py-4 text-center text-gray-400">No categories added yet.</td></tr>)}
               </tbody>
             </table>
           </div>
-          {canEdit && <CategoryForm action={addCategory} eventId={event.id} />}
+          {canEditNow && <CategoryForm action={addCategory} eventId={event.id} />}
         </div>
       ) : tab === "draws" ? (
         <div className="space-y-6">
@@ -145,10 +160,10 @@ export default async function EventDetailPage({ params, searchParams }: { params
               {(categories ?? []).length === 0 && <p className="col-span-full py-4 text-center text-gray-400">No categories added yet.</p>}
             </div>
           </div>
-          {searchParams.category && (<BracketView eventId={event.id} categoryId={searchParams.category} canEdit={canEdit} backHref={`/events/${event.id}?tab=draws`} backLabel="Back to draws list" />)}
+          {searchParams.category && (<BracketView eventId={event.id} categoryId={searchParams.category} canEdit={canEditNow} backHref={`/events/${event.id}?tab=draws`} backLabel="Back to draws list" />)}
         </div>
       ) : (
-        <GradingTab eventId={event.id} canEdit={canEdit} isSuperAdmin={session.role === "super_admin"} />
+        <GradingTab eventId={event.id} canEdit={canEditNow} isSuperAdmin={session.role === "super_admin"} />
       )}
     </div>
   );
