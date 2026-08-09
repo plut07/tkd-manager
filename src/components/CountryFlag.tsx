@@ -22,7 +22,7 @@ export default function CountryFlag({
   if (!country) return <span className="text-gray-400">—</span>;
 
   const info = findCountry(country);
-  const src = flagUrl(country, 24);
+  const src = flagUrl(country, 40);
   const height = Math.round((width * 3) / 4);
 
   return (

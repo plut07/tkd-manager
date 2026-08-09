@@ -62,11 +62,17 @@ export default async function StudentsPage({
             {scope ? "Your club's registered students." : "All registered students across every club."}
           </p>
         </div>
-        {canCreate && (
-          <Link href="/students/new" className="btn-primary">
-            + New student
-          </Link>
-        )}
+        <div className="flex flex-wrap gap-2">
+          <a href="/api/export/students" className="btn-secondary">Export to Excel</a>
+          {canCreate && session.role !== "club_admin" && (
+            <Link href="/students/import" className="btn-secondary">Import from Excel</Link>
+          )}
+          {canCreate && (
+            <Link href="/students/new" className="btn-primary">
+              + New student
+            </Link>
+          )}
+        </div>
       </div>
 
       <form className="mt-4 flex flex-wrap gap-2" method="get">
@@ -94,11 +100,11 @@ export default async function StudentsPage({
               {!scope && <th>Club</th>}
               <th>Gender</th>
               <th>Age</th>
-              <th>Weight</th>
-              <th>Height</th>
+              <th className="hidden md:table-cell">Weight</th>
+              <th className="hidden md:table-cell">Height</th>
               <th>Belt</th>
-              <th>Nationality</th>
-              <th>ID / Passport</th>
+              <th className="hidden lg:table-cell">Nationality</th>
+              <th className="hidden lg:table-cell">ID / Passport</th>
               <th>Status</th>
               {(canEdit || canDelete) && <th></th>}
             </tr>
@@ -113,11 +119,11 @@ export default async function StudentsPage({
                 {!scope && <td>{s.clubs?.name}</td>}
                 <td className="capitalize">{s.gender ?? "—"}</td>
                 <td>{age(s.birthday)}</td>
-                <td>{s.weight_kg ? `${s.weight_kg} kg` : "—"}</td>
-                <td>{s.height_cm ? `${s.height_cm} cm` : "—"}</td>
+                <td className="hidden md:table-cell">{s.weight_kg ? `${s.weight_kg} kg` : "—"}</td>
+                <td className="hidden md:table-cell">{s.height_cm ? `${s.height_cm} cm` : "—"}</td>
                 <td>{beltLabel(s.gup, s.dan)}</td>
-                <td><CountryFlag country={s.nationality} /></td>
-                <td className="text-xs">
+                <td className="hidden lg:table-cell"><CountryFlag country={s.nationality} /></td>
+                <td className="hidden text-xs lg:table-cell">
                   {s.national_id && <div>ID: {s.national_id}</div>}
                   {s.passport_id && <div>Passport: {s.passport_id}</div>}
                   {!s.national_id && !s.passport_id && "—"}

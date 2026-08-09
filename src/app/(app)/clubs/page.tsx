@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireSuperAdmin } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import DeleteButton from "@/components/DeleteButton";
@@ -12,8 +13,16 @@ export default async function ClubsPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-gray-900">Clubs</h1>
-      <p className="mt-1 text-sm text-gray-500">Clubs that students and Club User accounts belong to.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Clubs</h1>
+          <p className="mt-1 text-sm text-gray-500">Clubs that students and Club User accounts belong to.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <a href="/api/export/clubs" className="btn-secondary">Export to Excel</a>
+          <Link href="/clubs/import" className="btn-secondary">Import from Excel</Link>
+        </div>
+      </div>
 
       <div className="card mt-6 overflow-x-auto">
         <table className="table-base">

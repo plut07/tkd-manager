@@ -238,13 +238,16 @@ export function countryCode(name: string | null | undefined): string | null {
 }
 
 /**
- * Flag image URL from flagcdn.com. Returns null for an unknown country so
+ * Flag image URL from flagcdn.com. Only the widths in the signature exist on
+ * the CDN — any other number (w24, say) 404s and shows a broken image.
+ *
+ * Returns null for an unknown country so
  * callers can fall back to showing just the name.
  *
  * Flag *emoji* would avoid the external request, but Windows renders them as
  * two letters rather than a flag, so images it is.
  */
-export function flagUrl(name: string | null | undefined, width: 20 | 24 | 40 | 80 = 24): string | null {
+export function flagUrl(name: string | null | undefined, width: 20 | 40 | 80 | 160 = 40): string | null {
   const code = countryCode(name);
   return code ? `https://flagcdn.com/w${width}/${code}.png` : null;
 }

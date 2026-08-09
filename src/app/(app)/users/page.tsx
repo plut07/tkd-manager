@@ -54,7 +54,7 @@ export default async function UsersPage() {
               <th>Role</th>
               <th>Club</th>
               <th>Status</th>
-              <th>Last login</th>
+              <th className="hidden md:table-cell">Last login</th>
               {(canEdit || canDelete) && <th></th>}
             </tr>
           </thead>
@@ -73,7 +73,7 @@ export default async function UsersPage() {
                     {u.active ? "Active" : "Inactive"}
                   </span>
                 </td>
-                <td className="text-gray-500">{u.last_login_at ? new Date(u.last_login_at).toLocaleString() : "Never"}</td>
+                <td className="hidden text-gray-500 md:table-cell">{u.last_login_at ? new Date(u.last_login_at).toLocaleString() : "Never"}</td>
                 {(canEdit || canDelete) && (
                   <td className="whitespace-nowrap text-right">
                     {canEdit && (
