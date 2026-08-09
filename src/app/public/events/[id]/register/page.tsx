@@ -6,6 +6,12 @@ import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange, f
 import CountryFlag from "@/components/CountryFlag";
 import VenueMap from "@/components/VenueMap";
 
+// These pages read live data but never touch cookies, so Next would otherwise
+// prerender them at build time and keep serving that snapshot — edits and
+// deletions wouldn't show until the next deploy. Force a fresh query per request.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 /**
  * Public registration page for grading events only.
  *

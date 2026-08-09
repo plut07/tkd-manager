@@ -3,6 +3,12 @@ import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { ROUND_ORDER, ROUND_LABELS } from "@/lib/bracket";
 
+// These pages read live data but never touch cookies, so Next would otherwise
+// prerender them at build time and keep serving that snapshot — edits and
+// deletions wouldn't show until the next deploy. Force a fresh query per request.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type RegInfo = { name: string; club: string | null };
 
 export default async function PublicBracketPage({ params }: { params: { id: string; categoryId: string } }) {
