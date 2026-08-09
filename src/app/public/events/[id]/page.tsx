@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
 import { describeCriteria, type CategoryCriteria } from "@/lib/eligibility";
 import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS } from "@/lib/eventStatus";
+import CountryFlag from "@/components/CountryFlag";
 
 
 function formatDate(d: string | null) {
@@ -96,7 +97,7 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
           <div>
             <dt className="text-gray-500">Venue</dt>
             <dd className="font-medium text-gray-900">
-              {[event.venue, event.city, event.country].filter(Boolean).join(", ") || "TBA"}
+              {event.country && <CountryFlag country={event.country} showName={false} className="mr-1.5 align-[-2px]" />}{[event.venue, event.city, event.country].filter(Boolean).join(", ") || "TBA"}
             </dd>
           </div>
           <div>

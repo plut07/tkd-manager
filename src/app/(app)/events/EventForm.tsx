@@ -3,7 +3,7 @@
 import { useFormState, useFormStatus } from "react-dom";
 import type { FormState } from "./actions";
 import { EVENT_TYPES } from "@/lib/eventCategories";
-import { COUNTRIES } from "@/lib/countries";
+import CountrySelect from "@/components/CountrySelect";
 
 function SubmitButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
@@ -138,14 +138,7 @@ export default function EventForm({
           <label className="label" htmlFor="country">
             Country
           </label>
-          <select id="country" name="country" className="input" defaultValue={defaultValues?.country ?? ""}>
-            <option value="">Not specified</option>
-            {COUNTRIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+          <CountrySelect id="country" name="country" defaultValue={defaultValues?.country ?? ""} />
         </div>
         <div className="sm:col-span-2">
           <label className="label" htmlFor="description">
@@ -157,19 +150,7 @@ export default function EventForm({
           <label className="label" htmlFor="allowedCountries">
             Eligible countries (clubs/students may only take part if their country is selected here — leave empty to allow every country)
           </label>
-          <select
-            id="allowedCountries"
-            name="allowedCountries"
-            className="input h-40"
-            multiple
-            defaultValue={defaultValues?.allowedCountries ?? []}
-          >
-            {COUNTRIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+          <CountrySelect id="allowedCountries" name="allowedCountries" className="input h-40" multiple defaultValues={defaultValues?.allowedCountries ?? []} />
           <p className="mt-1 text-xs text-gray-400">Hold Ctrl/Cmd (or Shift for a range) to select multiple countries.</p>
         </div>
       </div>

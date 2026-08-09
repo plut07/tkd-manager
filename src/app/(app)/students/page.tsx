@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { deleteStudent } from "./actions";
 import DeleteButton from "@/components/DeleteButton";
+import CountryFlag from "@/components/CountryFlag";
 
 function age(birthday: string | null) {
   if (!birthday) return "—";
@@ -115,7 +116,7 @@ export default async function StudentsPage({
                 <td>{s.weight_kg ? `${s.weight_kg} kg` : "—"}</td>
                 <td>{s.height_cm ? `${s.height_cm} cm` : "—"}</td>
                 <td>{beltLabel(s.gup, s.dan)}</td>
-                <td>{s.nationality ?? "—"}</td>
+                <td><CountryFlag country={s.nationality} /></td>
                 <td className="text-xs">
                   {s.national_id && <div>ID: {s.national_id}</div>}
                   {s.passport_id && <div>Passport: {s.passport_id}</div>}

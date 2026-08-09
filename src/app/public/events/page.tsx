@@ -2,6 +2,7 @@ import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { EVENT_TYPE_LABELS } from "@/lib/eventCategories";
 import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS } from "@/lib/eventStatus";
+import CountryFlag from "@/components/CountryFlag";
 
 
 function formatRange(start: string, end: string | null) {
@@ -45,7 +46,7 @@ export default async function PublicEventsPage() {
             </div>
             <p className="mt-1 text-sm text-gray-500">{formatRange(e.start_date, e.end_date)}</p>
             <p className="mt-1 text-sm text-gray-500">
-              {[e.venue, e.city, e.country].filter(Boolean).join(", ") || "Venue TBA"}
+              {e.country && <CountryFlag country={e.country} showName={false} className="mr-1.5 align-[-2px]" />}{[e.venue, e.city, e.country].filter(Boolean).join(", ") || "Venue TBA"}
             </p>
             {e.discipline && <p className="mt-2 text-xs uppercase tracking-wide text-brand-600">{e.discipline}</p>}
           </Link>

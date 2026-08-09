@@ -2,7 +2,7 @@
 
 import { useFormState, useFormStatus } from "react-dom";
 import type { FormState } from "./actions";
-import { COUNTRIES } from "@/lib/countries";
+import CountrySelect from "@/components/CountrySelect";
 
 type Club = { id: string; name: string };
 
@@ -133,14 +133,7 @@ export default function StudentForm({
           <label className="label" htmlFor="nationality">
             Nationality
           </label>
-          <select id="nationality" name="nationality" className="input" defaultValue={defaultValues?.nationality ?? ""}>
-            <option value="">Not specified</option>
-            {COUNTRIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+          <CountrySelect id="nationality" name="nationality" defaultValue={defaultValues?.nationality ?? ""} />
         </div>
         <div>
           <label className="label" htmlFor="nationalId">

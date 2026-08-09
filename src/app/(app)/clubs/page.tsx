@@ -1,8 +1,9 @@
 import { requireSuperAdmin } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import DeleteButton from "@/components/DeleteButton";
-import { COUNTRIES } from "@/lib/countries";
+import CountrySelect from "@/components/CountrySelect";
 import { createClub, toggleClubActive, deleteClub } from "./actions";
+import CountryFlag from "@/components/CountryFlag";
 
 export default async function ClubsPage() {
   await requireSuperAdmin();
@@ -31,7 +32,7 @@ export default async function ClubsPage() {
               <tr key={c.id}>
                 <td className="font-medium text-gray-900">{c.name}</td>
                 <td>{c.city ?? "—"}</td>
-                <td>{c.country ?? "—"}</td>
+                <td><CountryFlag country={c.country} /></td>
                 <td className="text-xs">
                   {c.contact_email && <div>{c.contact_email}</div>}
                   {c.contact_phone && <div>{c.contact_phone}</div>}
@@ -68,14 +69,7 @@ export default async function ClubsPage() {
       <form action={createClub} className="card mt-6 grid grid-cols-1 gap-3 p-6 sm:grid-cols-2 lg:grid-cols-5">
         <input name="name" placeholder="Club name" className="input" required />
         <input name="city" placeholder="City" className="input" />
-        <select name="country" className="input" defaultValue="">
-          <option value="">Country</option>
-          {COUNTRIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        <CountrySelect name="country" placeholder="Country" />
         <input name="contactEmail" type="email" placeholder="Contact email" className="input" />
         <input name="contactPhone" placeholder="Contact phone" className="input" />
         <button type="submit" className="btn-primary sm:col-span-2 lg:col-span-1">
