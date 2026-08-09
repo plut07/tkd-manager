@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { gradeShort } from "@/lib/belts";
 import { createGradingForm, syncGradingResponses, refreshGradingFormOptions, approveCandidate, rejectCandidate, bulkApproveBatch } from "./gradingActions";
 export default async function GradingTab({ eventId, canEdit, isSuperAdmin }: { eventId: string; canEdit: boolean; isSuperAdmin: boolean }) {
   const supabase = supabaseAdmin();
@@ -37,6 +38,7 @@ export default async function GradingTab({ eventId, canEdit, isSuperAdmin }: { e
                   <button type="submit" className="btn-secondary">Update club list on form</button>
                 </form>
               )}
+              <a href={`/api/export/grading?eventId=${eventId}`} className="btn-secondary">Export registrants to Excel</a>
             </div>
             <p className="text-xs text-gray-400">The Club and Nationality questions are dropdowns built from your database. After adding a club, use &quot;Update club list on form&quot; so it appears as a choice.</p>
             <p className="break-all text-xs text-gray-400">{gform.form_url}</p>
@@ -86,7 +88,7 @@ export default async function GradingTab({ eventId, canEdit, isSuperAdmin }: { e
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <div className="font-medium text-gray-900">{c.first_name} {c.last_name}</div>
-                  <div className="text-xs text-gray-500">{[c.nationality, c.national_id, c.gup ? `Gup ${c.gup}` : c.dan ? `Dan ${c.dan}` : null].filter(Boolean).join(" · ")}</div>
+                  <div className="text-xs text-gray-500">{[c.nationality, c.national_id, gradeShort(c.gup, c.dan)].filter((v) => v && v !== "—").join(" · ")}</div>
                   <div className="text-xs text-gray-400">Club on form: {c.club_name_raw ?? "—"}</div>
                 </div>
                 {isSuperAdmin ? (

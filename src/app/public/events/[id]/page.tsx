@@ -73,10 +73,10 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
             <Link href="/public/events" className="btn-secondary">
               Back to events
             </Link>
-            {registrationOpen && isGrading && gradingForm?.form_url && (
-              <a href={gradingForm.form_url} target="_blank" rel="noopener noreferrer" className="btn-primary">
-                Register on the form
-              </a>
+            {registrationOpen && isGrading && (
+              <Link href={`/public/events/${event.id}/register`} className="btn-primary">
+                Registration
+              </Link>
             )}
             {registrationOpen && !isGrading && (
               <Link href={`/login?next=${encodeURIComponent(`/events/${event.id}/register`)}`} className="btn-primary">

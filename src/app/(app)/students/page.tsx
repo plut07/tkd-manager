@@ -5,6 +5,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { deleteStudent } from "./actions";
 import DeleteButton from "@/components/DeleteButton";
 import CountryFlag from "@/components/CountryFlag";
+import BeltBadge from "@/components/BeltBadge";
 
 function age(birthday: string | null) {
   if (!birthday) return "—";
@@ -16,11 +17,6 @@ function age(birthday: string | null) {
   return years;
 }
 
-function beltLabel(gup: number | null, dan: number | null) {
-  if (dan) return `${dan} Dan (Black belt)`;
-  if (gup) return `${gup} Gup`;
-  return "—";
-}
 
 export default async function StudentsPage({
   searchParams,
@@ -121,7 +117,7 @@ export default async function StudentsPage({
                 <td>{age(s.birthday)}</td>
                 <td className="hidden md:table-cell">{s.weight_kg ? `${s.weight_kg} kg` : "—"}</td>
                 <td className="hidden md:table-cell">{s.height_cm ? `${s.height_cm} cm` : "—"}</td>
-                <td>{beltLabel(s.gup, s.dan)}</td>
+                <td><BeltBadge gup={s.gup} dan={s.dan} /></td>
                 <td className="hidden lg:table-cell"><CountryFlag country={s.nationality} /></td>
                 <td className="hidden text-xs lg:table-cell">
                   {s.national_id && <div>ID: {s.national_id}</div>}

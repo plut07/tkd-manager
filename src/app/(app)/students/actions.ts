@@ -20,8 +20,9 @@ const optionalNumber = (min: number, max: number) =>
 
 const studentSchema = z.object({
   clubId: z.string().uuid("Choose a club."),
-  firstName: z.string().trim().min(1, "First name is required."),
-  lastName: z.string().trim().min(1, "Last name is required."),
+  // Names are stored in capitals so lists and exports read consistently.
+  firstName: z.string().trim().min(1, "First name is required.").transform((v) => v.toUpperCase()),
+  lastName: z.string().trim().min(1, "Last name is required.").transform((v) => v.toUpperCase()),
   email: z.string().trim().email("Enter a valid email.").optional().or(z.literal("")),
   birthday: z.string().optional().or(z.literal("")),
   weightKg: optionalNumber(1, 300),

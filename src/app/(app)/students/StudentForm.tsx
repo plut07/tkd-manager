@@ -3,6 +3,7 @@
 import { useFormState, useFormStatus } from "react-dom";
 import type { FormState } from "./actions";
 import CountrySelect from "@/components/CountrySelect";
+import BeltSelect from "@/components/BeltSelect";
 
 type Club = { id: string; name: string };
 
@@ -85,13 +86,13 @@ export default function StudentForm({
           <label className="label" htmlFor="firstName">
             First name
           </label>
-          <input id="firstName" name="firstName" className="input" defaultValue={defaultValues?.firstName} required />
+          <input id="firstName" name="firstName" className="input uppercase" style={{ textTransform: "uppercase" }} defaultValue={defaultValues?.firstName} required />
         </div>
         <div>
           <label className="label" htmlFor="lastName">
             Last name
           </label>
-          <input id="lastName" name="lastName" className="input" defaultValue={defaultValues?.lastName} required />
+          <input id="lastName" name="lastName" className="input uppercase" style={{ textTransform: "uppercase" }} defaultValue={defaultValues?.lastName} required />
         </div>
         <div>
           <label className="label" htmlFor="email">
@@ -119,9 +120,9 @@ export default function StudentForm({
         </div>
         <div>
           <label className="label" htmlFor="gup">
-            Gup (1-10)
+            Belt (Gup)
           </label>
-          <input id="gup" name="gup" type="number" min="1" max="10" className="input" defaultValue={defaultValues?.gup ?? ""} />
+          <BeltSelect id="gup" name="gup" defaultValue={defaultValues?.gup ?? ""} />
         </div>
         <div>
           <label className="label" htmlFor="dan">

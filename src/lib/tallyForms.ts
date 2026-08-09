@@ -1,5 +1,6 @@
 import "server-only";
 import { randomUUID, createHmac, timingSafeEqual } from "crypto";
+import { BELT_OPTIONS, gupFromLabel } from "./belts";
 
 const TALLY_API = "https://api.tally.so";
 
@@ -40,7 +41,9 @@ function buildFields(options: FormOptions): FieldSpec[] {
     { label: "Gender (male, female or other)", kind: "input", type: "INPUT_TEXT", required: false },
     { label: "Weight (kg)", kind: "input", type: "INPUT_NUMBER", required: false },
     { label: "Height (cm)", kind: "input", type: "INPUT_NUMBER", required: false },
-    { label: "Current Gup (1-10, leave blank if black belt)", kind: "input", type: "INPUT_NUMBER", required: false },
+    ...(BELT_OPTIONS.length > 0
+      ? ([{ label: "Current belt (leave blank if black belt)", kind: "dropdown", required: false, options: BELT_OPTIONS }] as FieldSpec[])
+      : ([] as FieldSpec[])),
     { label: "Current Dan (1-9, leave blank if not black belt)", kind: "input", type: "INPUT_NUMBER", required: false },
   ];
 
@@ -161,14 +164,14 @@ export function parseTallyFields(fields: TallySubmissionField[]): ParsedGradingR
   if (gender && !["male", "female", "other"].includes(gender)) gender = null;
 
   return {
-    firstName: text("first name") ?? "",
-    lastName: text("last name") ?? "",
+    firstName: (text("first name") ?? "").toUpperCase(),
+    lastName: (text("last name") ?? "").toUpperCase(),
     email: text("email"),
     birthday: text("date of birth"),
     gender,
     weightKg: num("weight"),
     heightCm: num("height"),
-    gup: num("current gup"),
+    gup: gupFromLabel(text("current belt")) ?? num("current gup"),
     dan: num("current dan"),
     nationality: text("nationality"),
     nationalId: text("national id"),

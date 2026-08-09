@@ -1,4 +1,5 @@
 import { findCountry } from "./countries";
+import { gupFromLabel, BELT_OPTIONS } from "./belts";
 
 /**
  * Column definitions and validation for spreadsheet imports.
@@ -20,14 +21,14 @@ export type ImportOutcome<T> = {
 
 export const STUDENT_COLUMNS: ColumnSpec[] = [
   { header: "Club", required: true, example: "Dragon TKD", note: "Must already exist in Clubs" },
-  { header: "First name", required: true, example: "Wei" },
-  { header: "Last name", required: true, example: "Tan" },
+  { header: "First name", required: true, example: "WEI", note: "Saved in CAPITALS" },
+  { header: "Last name", required: true, example: "TAN", note: "Saved in CAPITALS" },
   { header: "Email", example: "wei@example.com" },
   { header: "Birthday", example: "2001-04-12", note: "YYYY-MM-DD" },
   { header: "Gender", example: "male", note: "male, female or other" },
   { header: "Weight (kg)", example: "62.5" },
   { header: "Height (cm)", example: "170" },
-  { header: "Gup", example: "4", note: "1-10, blank if black belt" },
+  { header: "Gup", example: "Blue", note: "Belt colour or 1-10, blank if black belt" },
   { header: "Dan", example: "", note: "1-9, blank if not black belt" },
   { header: "Nationality", example: "Singapore" },
   { header: "ID number", required: true, example: "S1234567D", note: "Used to detect duplicates" },
@@ -128,8 +129,8 @@ export function validateStudentRows(
     const row = rowNumbers[i];
     const errors: RowError[] = [];
 
-    const firstName = norm(raw["First name"]);
-    const lastName = norm(raw["Last name"]);
+    const firstName = norm(raw["First name"]).toUpperCase();
+    const lastName = norm(raw["Last name"]).toUpperCase();
     const nationalId = norm(raw["ID number"]);
     if (!firstName) errors.push({ row, column: "First name", value: "", problem: "Required" });
     if (!lastName) errors.push({ row, column: "Last name", value: "", problem: "Required" });
@@ -164,7 +165,14 @@ export function validateStudentRows(
     const birthday = parseDate(raw["Birthday"] ?? "", "Birthday", row, errors);
     const weight = optionalNumber(raw["Weight (kg)"] ?? "", 1, 300, "Weight (kg)", row, errors);
     const height = optionalNumber(raw["Height (cm)"] ?? "", 50, 260, "Height (cm)", row, errors);
-    const gup = optionalNumber(raw["Gup"] ?? "", 1, 10, "Gup", row, errors);
+    // The Gup column takes either the number or the belt colour name, since the
+    // export writes numbers but people type colours.
+    let gup: number | null = null;
+    const gupRaw = norm(raw["Gup"]);
+    if (gupRaw) {
+      gup = gupFromLabel(gupRaw);
+      if (gup == null) errors.push({ row, column: "Gup", value: gupRaw, problem: `Use 1-10 or a belt name (${BELT_OPTIONS[0]}, ...)` });
+    }
     const dan = optionalNumber(raw["Dan"] ?? "", 1, 9, "Dan", row, errors);
 
     // A duplicate inside the file itself would otherwise import twice.
