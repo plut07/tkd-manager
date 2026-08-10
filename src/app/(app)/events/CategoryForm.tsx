@@ -87,8 +87,10 @@ export default function CategoryForm({
             </div>
           </div>
         )}
+      </div>
+
       <p className="text-xs text-gray-400">
-        Leave a range blank or leave Gup/Dan/Gender unchecked for "no restriction" on that criterion. Students
+        Leave a range blank, or leave Grades and Gender unticked, for &quot;no restriction&quot; on that criterion. Students
         outside the ranges you set here won&apos;t be selectable when registering into this category.
       </p>
 
