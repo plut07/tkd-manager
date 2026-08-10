@@ -3,7 +3,8 @@ import { requireSuperAdmin } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import DeleteButton from "@/components/DeleteButton";
 import CountrySelect from "@/components/CountrySelect";
-import { createClub, toggleClubActive, deleteClub } from "./actions";
+import { createClub, updateClub, toggleClubActive, deleteClub } from "./actions";
+import ClubRow from "@/components/ClubRow";
 import CountryFlag from "@/components/CountryFlag";
 import ClubPhone from "@/components/ClubPhone";
 
@@ -39,36 +40,23 @@ export default async function ClubsPage() {
           </thead>
           <tbody>
             {(clubs ?? []).map((c) => (
-              <tr key={c.id}>
-                <td className="font-medium text-gray-900">{c.name}</td>
-                <td>{c.instructor_name ?? <span className="text-gray-400">—</span>}</td>
-                <td className="hidden md:table-cell">{c.city ?? "—"}</td>
-                <td><CountryFlag country={c.country} /></td>
-                <td className="text-xs">
-                  {c.contact_email && <div>{c.contact_email}</div>}
-                  {c.contact_phone && <div>{c.contact_phone}</div>}
-                  {!c.contact_email && !c.contact_phone && "—"}
-                </td>
-                <td>
+              <ClubRow
+                key={c.id}
+                club={c}
+                updateAction={updateClub}
+                toggleButton={
                   <form action={toggleClubActive}>
                     <input type="hidden" name="clubId" value={c.id} />
                     <input type="hidden" name="active" value={String(c.active)} />
-                    <button
-                      type="submit"
-                      className={`badge ${c.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
-                    >
-                      {c.active ? "Active" : "Inactive"}
-                    </button>
+                    <button type="submit" className={`badge ${c.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{c.active ? "Active" : "Inactive"}</button>
                   </form>
-                </td>
-                <td className="text-right">
-                  <DeleteButton action={deleteClub} fieldName="clubId" fieldValue={c.id} confirmLabel={`Delete club "${c.name}"?`} />
-                </td>
-              </tr>
+                }
+                deleteButton={<DeleteButton action={deleteClub} fieldName="clubId" fieldValue={c.id} confirmLabel={`Delete club "${c.name}"?`} />}
+              />
             ))}
             {(clubs ?? []).length === 0 && (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-gray-400">
+                <td colSpan={7} className="py-6 text-center text-gray-400">
                   No clubs yet — add one below.
                 </td>
               </tr>

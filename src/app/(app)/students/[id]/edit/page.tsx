@@ -50,7 +50,7 @@ export default async function EditStudentPage({ params }: { params: { id: string
             gender: student.gender ?? "",
             nationality: student.nationality ?? "",
             nationalId: student.national_id ?? "",
-            passportId: student.passport_id ?? "",
+           
             active: student.active,
           }}
         />

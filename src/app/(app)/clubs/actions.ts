@@ -40,6 +40,25 @@ export async function createClub(formData: FormData) {
   revalidatePath("/clubs");
 }
 
+export async function updateClub(formData: FormData) {
+  await requireSuperAdmin();
+  const clubId = String(formData.get("clubId") || "");
+  if (!clubId) return;
+  const parsed = clubSchema.safeParse({
+    name: formData.get("name"), city: formData.get("city"), country: formData.get("country"),
+    instructorName: formData.get("instructorName"),
+    contactEmail: formData.get("contactEmail"), contactPhone: formData.get("contactPhone"),
+  });
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid club.");
+  const d = parsed.data;
+  const { error } = await supabaseAdmin().from("clubs").update({
+    name: d.name, instructor_name: d.instructorName || null, city: d.city || null,
+    country: d.country || null, contact_email: d.contactEmail || null, contact_phone: d.contactPhone || null,
+  }).eq("id", clubId);
+  if (error) throw new Error(error.code === "23505" ? "A club with that name already exists." : "Could not update club.");
+  revalidatePath("/clubs");
+}
+
 export async function toggleClubActive(formData: FormData) {
   await requireSuperAdmin();
   const clubId = String(formData.get("clubId") || "");

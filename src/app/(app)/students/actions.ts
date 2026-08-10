@@ -32,7 +32,6 @@ const studentSchema = z.object({
   gender: z.enum(["male", "female", "other", ""]).optional(),
   nationality: z.string().trim().optional().or(z.literal("")),
   nationalId: z.string().trim().optional().or(z.literal("")),
-  passportId: z.string().trim().optional().or(z.literal("")),
   active: z.boolean(),
 });
 
@@ -49,7 +48,6 @@ function readForm(formData: FormData) {
     gender: formData.get("gender"),
     nationality: formData.get("nationality"),
     nationalId: formData.get("nationalId"),
-    passportId: formData.get("passportId"),
     active: formData.get("active") === "on",
   };
 }
@@ -67,9 +65,20 @@ function toRow(data: z.infer<typeof studentSchema>, clubIdOverride: string | nul
     gender: data.gender || null,
     nationality: data.nationality || null,
     national_id: data.nationalId || null,
-    passport_id: data.passportId || null,
     active: data.active,
   };
+}
+
+/** Next free running number within a club. */
+async function nextClubNumber(clubId: string): Promise<number> {
+  const { data } = await supabaseAdmin()
+    .from("students")
+    .select("club_number")
+    .eq("club_id", clubId)
+    .order("club_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (Number(data?.club_number) || 0) + 1;
 }
 
 export async function createStudent(_prev: FormState, formData: FormData): Promise<FormState> {
@@ -82,7 +91,8 @@ export async function createStudent(_prev: FormState, formData: FormData): Promi
   const clubOverride = session.role === "club_admin" ? session.clubId : null;
 
   const supabase = supabaseAdmin();
-  const { error } = await supabase.from("students").insert(toRow(parsed.data, clubOverride));
+  const row = toRow(parsed.data, clubOverride);
+  const { error } = await supabase.from("students").insert({ ...row, club_number: await nextClubNumber(row.club_id) });
   if (error) return { error: "Could not create student." };
 
   revalidatePath("/students");

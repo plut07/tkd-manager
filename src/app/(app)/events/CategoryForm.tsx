@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { CATEGORY_TYPE_LIST, GENDER_OPTIONS } from "@/lib/eventCategories";
+import { GRADE_OPTIONS } from "@/lib/belts";
 
-const GUP_NUMBERS = Array.from({ length: 10 }, (_, i) => i + 1);
-const DAN_NUMBERS = Array.from({ length: 9 }, (_, i) => i + 1);
 
 export default function CategoryForm({
   action,
@@ -73,39 +72,21 @@ export default function CategoryForm({
         </div>
 
         {usesBelt && (
-          <>
-            <div>
-              <label className="label">Gup (colored belt, select one or more)</label>
-              <div className="flex flex-wrap gap-2 pt-1">
-                {GUP_NUMBERS.map((n) => (
-                  <label
-                    key={n}
-                    className="flex items-center gap-1 rounded border border-gray-200 px-2 py-1 text-xs text-gray-700"
-                  >
-                    <input type="checkbox" name="gupList" value={n} className="h-3.5 w-3.5" />
-                    {n}
-                  </label>
-                ))}
-              </div>
+          <div className="sm:col-span-2">
+            <label className="label">Grades allowed (tick one or more)</label>
+            <p className="mb-2 text-xs text-gray-400">
+              Same list as a student&apos;s Current Grade / Degree — colour belts and black belts together.
+            </p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3 lg:grid-cols-4">
+              {GRADE_OPTIONS.map((g) => (
+                <label key={g.value} className="flex items-center gap-1.5 text-sm text-gray-700">
+                  <input type="checkbox" name="gradeList" value={g.value} className="h-4 w-4 rounded border-gray-300" />
+                  {g.label}
+                </label>
+              ))}
             </div>
-            <div>
-              <label className="label">Dan (black belt, select one or more)</label>
-              <div className="flex flex-wrap gap-2 pt-1">
-                {DAN_NUMBERS.map((n) => (
-                  <label
-                    key={n}
-                    className="flex items-center gap-1 rounded border border-gray-200 px-2 py-1 text-xs text-gray-700"
-                  >
-                    <input type="checkbox" name="danList" value={n} className="h-3.5 w-3.5" />
-                    {n}
-                  </label>
-                ))}
-              </div>
-            </div>
-          </>
+          </div>
         )}
-      </div>
-
       <p className="text-xs text-gray-400">
         Leave a range blank or leave Gup/Dan/Gender unchecked for "no restriction" on that criterion. Students
         outside the ranges you set here won&apos;t be selectable when registering into this category.

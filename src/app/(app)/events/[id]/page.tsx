@@ -13,7 +13,7 @@ import GradingTab from "../GradingTab";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
 import { describeCriteria, waiverAge, formatDob, type CategoryCriteria } from "@/lib/eligibility";
 import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange, formatEventDateTime } from "@/lib/eventStatus";
-import { deleteEvent, addCategory, deleteCategory, addDocument, deleteDocument } from "../actions";
+import { deleteEvent, addCategory, deleteCategory, addDocument, deleteDocument, unregisterStudent } from "../actions";
 import CountryFlag from "@/components/CountryFlag";
 function formatDate(d: string | null) { if (!d) return "TBA"; return new Date(d).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }); }
 export default async function EventDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { tab?: string; category?: string } }) {
@@ -49,7 +49,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const { data: entries } = tab === "entries"
     ? await supabase
         .from("event_registrations")
-        .select("id, status, competition_number, registered_at, clubs(name), students(first_name, last_name, birthday, gender, gup, dan, national_id, passport_id), event_categories(name)")
+        .select("id, status, competition_number, registered_at, clubs(name), students(first_name, last_name, birthday, gender, gup, dan, national_id, club_number), event_categories(name)")
         .eq("event_id", event.id)
         .order("registered_at")
     : { data: null };
@@ -207,7 +207,17 @@ export default async function EventDetailPage({ params, searchParams }: { params
                     <td className="hidden lg:table-cell">{r.event_categories?.name ?? "—"}</td>
                     <td><span className={`badge ${r.status === "confirmed" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{r.status}</span></td>
                     <td className="whitespace-nowrap text-right">
-                      <a href={`/api/export/waiver?registrationId=${r.id}`} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-brand-700 hover:underline">Waiver PDF</a>
+                      <a href={`/api/export/waiver?registrationId=${r.id}`} target="_blank" rel="noopener noreferrer" className="mr-3 text-sm font-medium text-brand-700 hover:underline">Waiver PDF</a>
+                      {canEditNow && (
+                        <DeleteButton
+                          action={unregisterStudent}
+                          fieldName="registrationId"
+                          fieldValue={r.id}
+                          confirmLabel={`Remove ${[r.students?.first_name, r.students?.last_name].filter(Boolean).join(" ")} from this event?`}
+                          label="Remove"
+                          extraFields={{ eventId: event.id }}
+                        />
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -20,7 +20,7 @@ export const TEMPLATE_FIELDS: { key: TemplateFieldKey; label: string; group: str
   { key: "participant.name", label: "Full name", group: "Participant" },
   { key: "participant.firstName", label: "First name", group: "Participant" },
   { key: "participant.lastName", label: "Last name", group: "Participant" },
-  { key: "participant.ic", label: "I.C. / Passport", group: "Participant" },
+  { key: "participant.ic", label: "NRIC / Passport ID", group: "Participant" },
   { key: "participant.age", label: "Age", group: "Participant" },
   { key: "participant.dob", label: "Date of birth", group: "Participant" },
   { key: "participant.gender", label: "Gender", group: "Participant" },
@@ -42,7 +42,7 @@ export const TEMPLATE_FIELDS: { key: TemplateFieldKey; label: string; group: str
 export type TemplateData = {
   participant: {
     firstName?: string | null; lastName?: string | null;
-    nationalId?: string | null; passportId?: string | null;
+    nationalId?: string | null;
     birthday?: string | null; gender?: string | null;
     clubName?: string | null; instructor?: string | null;
     gup?: number | null; dan?: number | null;
@@ -64,7 +64,7 @@ export function resolveTemplateField(key: string, data: TemplateData): string {
     case "participant.name": return [p?.firstName, p?.lastName].filter(Boolean).join(" ");
     case "participant.firstName": return p?.firstName ?? "";
     case "participant.lastName": return p?.lastName ?? "";
-    case "participant.ic": return (p?.passportId || p?.nationalId || "") as string;
+    case "participant.ic": return (p?.nationalId || "") as string;
     case "participant.age": return waiverAge(p?.birthday ?? null);
     case "participant.dob": { const v = formatDob(p?.birthday ?? null); return v === "—" ? "" : v; }
     case "participant.gender": return (p?.gender ?? "").toUpperCase();
@@ -88,7 +88,7 @@ export function resolveTemplateField(key: string, data: TemplateData): string {
 /** Stand-in values so the designer can show a realistic preview. */
 export const SAMPLE_DATA: TemplateData = {
   participant: {
-    firstName: "WEI", lastName: "TAN", passportId: "E1234567", nationalId: "S1234567D",
+    firstName: "WEI", lastName: "TAN", nationalId: "S1234567D",
     birthday: "2001-04-12", gender: "male", clubName: "Dragon TKD", instructor: "Mr Lim",
     gup: 4, dan: null, email: "wei@example.com", nationality: "Singapore",
     weightKg: 62.5, heightCm: 170,

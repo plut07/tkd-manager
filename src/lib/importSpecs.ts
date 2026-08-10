@@ -30,8 +30,8 @@ export const STUDENT_COLUMNS: ColumnSpec[] = [
   { header: "Height (cm)", example: "170" },
   { header: "Grade", example: "Blue", note: "Belt colour or Dan, e.g. Blue or 2nd Dan" },
   { header: "Nationality", example: "Singapore" },
-  { header: "ID number", required: true, example: "S1234567D", note: "Used to detect duplicates" },
-  { header: "Passport ID", example: "" },
+  { header: "NRIC / Passport ID", required: true, example: "S1234567D", note: "Used to detect duplicates" },
+  
   { header: "Active", example: "yes", note: "yes or no" },
 ];
 
@@ -56,7 +56,6 @@ export type StudentRow = {
   dan: number | null;
   nationality: string | null;
   national_id: string | null;
-  passport_id: string | null;
   active: boolean;
 };
 
@@ -130,10 +129,10 @@ export function validateStudentRows(
 
     const firstName = norm(raw["First name"]).toUpperCase();
     const lastName = norm(raw["Last name"]).toUpperCase();
-    const nationalId = norm(raw["ID number"]);
+    const nationalId = norm(raw["NRIC / Passport ID"]) || norm(raw["ID number"]);
     if (!firstName) errors.push({ row, column: "First name", value: "", problem: "Required" });
     if (!lastName) errors.push({ row, column: "Last name", value: "", problem: "Required" });
-    if (!nationalId) errors.push({ row, column: "ID number", value: "", problem: "Required — used to detect duplicates" });
+    if (!nationalId) errors.push({ row, column: "NRIC / Passport ID", value: "", problem: "Required — used to detect duplicates" });
 
     let clubId = forcedClubId;
     if (!clubId) {
@@ -184,7 +183,7 @@ export function validateStudentRows(
     if (nationalId) {
       const key = nationalId.toLowerCase();
       const earlier = seen.get(key);
-      if (earlier) errors.push({ row, column: "ID number", value: nationalId, problem: `Same ID appears on row ${earlier} of this file` });
+      if (earlier) errors.push({ row, column: "NRIC / Passport ID", value: nationalId, problem: `Same ID appears on row ${earlier} of this file` });
       else seen.set(key, row);
     }
 
@@ -206,7 +205,6 @@ export function validateStudentRows(
       dan,
       nationality: nationality ? findCountry(nationality)!.name : null,
       national_id: nationalId || null,
-      passport_id: norm(raw["Passport ID"]) || null,
       active: parseBoolean(raw["Active"] ?? ""),
     };
 

@@ -1,5 +1,11 @@
 import { CATEGORY_TYPES, type CategoryTypeCode } from "./eventCategories";
 
+// Kept here rather than imported so this file stays free of other dependencies.
+const GUP_NAMES: Record<number, string> = {
+  1: "Red Black / Black Tip", 2: "Red", 3: "Blue Red / Red Tip", 4: "Blue", 5: "Green Blue / Blue Tip",
+  6: "Green", 7: "Yellow Green / Green Tip", 8: "Yellow", 9: "White Yellow / Yellow Tip", 10: "White",
+};
+
 // Deliberately plain/pure — no server-only or DB imports — so this can be
 // shared between server actions (hard block on register) and client
 // components (live filtering of the student picker).

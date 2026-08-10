@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
   const fields: TallySubmissionField[] = payload?.data?.fields ?? [];
   const row = parseTallyFields(fields);
   if (!row.nationalId || !row.firstName || !row.lastName) return NextResponse.json({ ok: true, skipped: true });
-  const { data: existingStudent } = await supabase.from("students").select("id, club_id").or(`national_id.eq.${row.nationalId},passport_id.eq.${row.nationalId}`).maybeSingle();
+  const { data: existingStudent } = await supabase.from("students").select("id, club_id").eq("national_id", row.nationalId).maybeSingle();
   if (existingStudent) {
     const { data: alreadyReg } = await supabase.from("event_registrations").select("id").eq("event_id", eventId).eq("student_id", existingStudent.id).maybeSingle();
     if (!alreadyReg) await supabase.from("event_registrations").insert({ event_id: eventId, student_id: existingStudent.id, club_id: existingStudent.club_id, status: "pending" });

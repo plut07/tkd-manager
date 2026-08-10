@@ -39,7 +39,6 @@ export default function StudentForm({
     gender?: string;
     nationality?: string;
     nationalId?: string;
-    passportId?: string;
     active?: boolean;
   };
 }) {
@@ -131,15 +130,9 @@ export default function StudentForm({
         </div>
         <div>
           <label className="label" htmlFor="nationalId">
-            ID number
+            NRIC / Passport ID
           </label>
           <input id="nationalId" name="nationalId" className="input" defaultValue={defaultValues?.nationalId} />
-        </div>
-        <div>
-          <label className="label" htmlFor="passportId">
-            Passport ID
-          </label>
-          <input id="passportId" name="passportId" className="input" defaultValue={defaultValues?.passportId} />
         </div>
       </div>
 

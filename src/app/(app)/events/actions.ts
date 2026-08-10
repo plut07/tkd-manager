@@ -9,6 +9,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { checkEligibility, checkCountryEligibility, type CategoryCriteria, type StudentLite } from "@/lib/eligibility";
 import { sortForNumbering, formatCompetitionNumber, type NumberingStudent } from "@/lib/numbering";
 import { effectiveEventStatus, isRegistrationOpen, canOverrideLocks, fromLocalInputValue } from "@/lib/eventStatus";
+import { parseGradeValue } from "@/lib/belts";
 
 export type FormState = { error?: string } | undefined;
 
@@ -215,8 +216,7 @@ const categorySchema = z.object({
     "team_sparring",
     "other",
   ]),
-  gupList: z.array(z.string()).optional(),
-  danList: z.array(z.string()).optional(),
+  gradeList: z.array(z.string()).optional(),
   genderList: z.array(z.string()).optional(),
   // These fields are only rendered in the DOM for some category types (e.g.
   // weightMin/weightMax only show up for weight-based categories), so

@@ -15,7 +15,6 @@ import { waiverAge } from "./eligibility";
 export type WaiverParticipant = {
   firstName: string | null;
   lastName: string | null;
-  passportId: string | null;
   nationalId: string | null;
   birthday: string | null;
   gender: string | null;
@@ -119,7 +118,7 @@ function drawWaiverPage(page: PDFPage, event: WaiverEvent, p: WaiverParticipant 
   };
 
   const fullName = [p?.firstName, p?.lastName].filter(Boolean).join(" ").trim();
-  const ic = (p?.passportId || p?.nationalId || "").trim();
+  const ic = (p?.nationalId || "").trim();
   const gender = (p?.gender ?? "").trim();
   const genderText = gender ? gender.toUpperCase() : "MALE / FEMALE";
 

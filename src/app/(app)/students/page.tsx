@@ -6,6 +6,7 @@ import { deleteStudent } from "./actions";
 import DeleteButton from "@/components/DeleteButton";
 import CountryFlag from "@/components/CountryFlag";
 import BeltBadge from "@/components/BeltBadge";
+import { formatDob } from "@/lib/eligibility";
 
 function age(birthday: string | null) {
   if (!birthday) return "—";
@@ -29,7 +30,7 @@ export default async function StudentsPage({
 
   let query = supabase
     .from("students")
-    .select("id, first_name, last_name, email, birthday, weight_kg, height_cm, gup, dan, gender, nationality, national_id, passport_id, active, clubs(id, name)")
+    .select("id, first_name, last_name, email, birthday, weight_kg, height_cm, gup, dan, gender, nationality, national_id, club_number, active, clubs(id, name)")
     .order("last_name");
 
   if (scope) query = query.eq("club_id", scope);
@@ -92,15 +93,15 @@ export default async function StudentsPage({
         <table className="table-base">
           <thead>
             <tr>
-              <th>Name</th>
+              <th>No.</th><th>Name</th>
               {!scope && <th>Club</th>}
               <th>Gender</th>
-              <th>Age</th>
+              <th className="hidden md:table-cell">Date of birth</th><th>Age</th>
               <th className="hidden md:table-cell">Weight</th>
               <th className="hidden md:table-cell">Height</th>
               <th>Grade / Degree</th>
               <th className="hidden lg:table-cell">Nationality</th>
-              <th className="hidden lg:table-cell">ID / Passport</th>
+              <th className="hidden lg:table-cell">NRIC / Passport</th>
               <th>Status</th>
               {(canEdit || canDelete) && <th></th>}
             </tr>
@@ -108,21 +109,21 @@ export default async function StudentsPage({
           <tbody>
             {(students ?? []).map((s: any) => (
               <tr key={s.id}>
+                <td className="text-gray-500">{s.club_number ?? "—"}</td>
                 <td className="font-medium text-gray-900">
                   {s.last_name}, {s.first_name}
                   <div className="text-xs font-normal text-gray-500">{s.email}</div>
                 </td>
                 {!scope && <td>{s.clubs?.name}</td>}
                 <td className="capitalize">{s.gender ?? "—"}</td>
+                <td className="hidden md:table-cell">{formatDob(s.birthday)}</td>
                 <td>{age(s.birthday)}</td>
                 <td className="hidden md:table-cell">{s.weight_kg ? `${s.weight_kg} kg` : "—"}</td>
                 <td className="hidden md:table-cell">{s.height_cm ? `${s.height_cm} cm` : "—"}</td>
                 <td><BeltBadge gup={s.gup} dan={s.dan} /></td>
                 <td className="hidden lg:table-cell"><CountryFlag country={s.nationality} /></td>
                 <td className="hidden text-xs lg:table-cell">
-                  {s.national_id && <div>ID: {s.national_id}</div>}
-                  {s.passport_id && <div>Passport: {s.passport_id}</div>}
-                  {!s.national_id && !s.passport_id && "—"}
+                  {s.national_id ?? "—"}
                 </td>
                 <td>
                   <span className={`badge ${s.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
@@ -150,7 +151,7 @@ export default async function StudentsPage({
             ))}
             {(students ?? []).length === 0 && (
               <tr>
-                <td colSpan={10} className="py-6 text-center text-gray-400">
+                <td colSpan={13} className="py-6 text-center text-gray-400">
                   No students found.
                 </td>
               </tr>

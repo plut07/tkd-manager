@@ -5,6 +5,13 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { createGradingTallyForm, updateGradingTallyFormOptions, listTallySubmissions, type FormOptions, type ParsedGradingRow } from "@/lib/tallyForms";
 import { COUNTRIES } from "@/lib/countries";
+
+/** Next free running number within a club, so approved candidates get one too. */
+async function nextClubNumber(supabase: ReturnType<typeof supabaseAdmin>, clubId: string): Promise<number> {
+  const { data } = await supabase.from("students").select("club_number").eq("club_id", clubId)
+    .order("club_number", { ascending: false }).limit(1).maybeSingle();
+  return (Number(data?.club_number) || 0) + 1;
+}
 function normalize(s: string | null | undefined) { return (s ?? "").trim().toLowerCase(); }
 /** The dropdown contents for a grading form, read fresh from the database. */
 async function currentFormOptions(supabase: ReturnType<typeof supabaseAdmin>): Promise<FormOptions> {
@@ -36,7 +43,7 @@ async function stageRows(supabase: ReturnType<typeof supabaseAdmin>, eventId: st
   for (const row of rows) {
     const idValue = (row.nationalId ?? "").trim();
     if (!idValue || !row.firstName || !row.lastName) continue;
-    const { data: existingStudent } = await supabase.from("students").select("id, club_id").or(`national_id.eq.${idValue},passport_id.eq.${idValue}`).maybeSingle();
+    const { data: existingStudent } = await supabase.from("students").select("id, club_id").eq("national_id", idValue).maybeSingle();
     if (existingStudent) {
       // Refresh the details the form just supplied. Only non-empty answers are
       // written, so a blank box never wipes something we already knew.
@@ -104,7 +111,7 @@ export async function approveCandidate(formData: FormData) {
   const supabase = supabaseAdmin();
   const { data: candidate } = await supabase.from("grading_candidates").select("*").eq("id", candidateId).maybeSingle();
   if (!candidate || candidate.status !== "pending") throw new Error("This candidate is no longer pending.");
-  const { data: student, error: studentError } = await supabase.from("students").insert({ club_id: clubId, first_name: candidate.first_name, last_name: candidate.last_name, email: candidate.email, birthday: candidate.birthday, gender: candidate.gender, weight_kg: candidate.weight_kg, height_cm: candidate.height_cm, gup: candidate.gup, dan: candidate.dan, nationality: candidate.nationality, national_id: candidate.national_id, passport_id: candidate.passport_id, active: true }).select("id").single();
+  const { data: student, error: studentError } = await supabase.from("students").insert({ club_id: clubId, club_number: await nextClubNumber(supabase, clubId), first_name: candidate.first_name, last_name: candidate.last_name, email: candidate.email, birthday: candidate.birthday, gender: candidate.gender, weight_kg: candidate.weight_kg, height_cm: candidate.height_cm, gup: candidate.gup, dan: candidate.dan, nationality: candidate.nationality, national_id: candidate.national_id, active: true }).select("id").single();
   if (studentError || !student) throw new Error("Could not create the student record.");
   await supabase.from("event_registrations").insert({ event_id: candidate.event_id, student_id: student.id, club_id: clubId, status: "pending" });
   await supabase.from("grading_candidates").update({ status: "approved", reviewed_by: session.sub, reviewed_at: new Date().toISOString(), created_student_id: student.id }).eq("id", candidateId);
@@ -128,7 +135,7 @@ export async function bulkApproveBatch(formData: FormData) {
   const supabase = supabaseAdmin();
   const { data: candidates } = await supabase.from("grading_candidates").select("*").eq("batch_id", batchId).eq("status", "pending").not("matched_club_id", "is", null);
   for (const candidate of candidates ?? []) {
-    const { data: student } = await supabase.from("students").insert({ club_id: candidate.matched_club_id, first_name: candidate.first_name, last_name: candidate.last_name, email: candidate.email, birthday: candidate.birthday, gender: candidate.gender, weight_kg: candidate.weight_kg, height_cm: candidate.height_cm, gup: candidate.gup, dan: candidate.dan, nationality: candidate.nationality, national_id: candidate.national_id, passport_id: candidate.passport_id, active: true }).select("id").single();
+    const { data: student } = await supabase.from("students").insert({ club_id: candidate.matched_club_id, club_number: await nextClubNumber(supabase, candidate.matched_club_id), first_name: candidate.first_name, last_name: candidate.last_name, email: candidate.email, birthday: candidate.birthday, gender: candidate.gender, weight_kg: candidate.weight_kg, height_cm: candidate.height_cm, gup: candidate.gup, dan: candidate.dan, nationality: candidate.nationality, national_id: candidate.national_id, active: true }).select("id").single();
     if (!student) continue;
     await supabase.from("event_registrations").insert({ event_id: candidate.event_id, student_id: student.id, club_id: candidate.matched_club_id, status: "pending" });
     await supabase.from("grading_candidates").update({ status: "approved", reviewed_by: session.sub, reviewed_at: new Date().toISOString(), created_student_id: student.id }).eq("id", candidate.id);

@@ -14,7 +14,7 @@ export async function GET() {
 
   let query = supabase
     .from("students")
-    .select("first_name, last_name, email, birthday, gender, weight_kg, height_cm, gup, dan, nationality, national_id, passport_id, active, clubs(name)")
+    .select("first_name, last_name, email, birthday, gender, weight_kg, height_cm, gup, dan, nationality, national_id, club_number, active, clubs(name)")
     .order("last_name");
   if (scope) query = query.eq("club_id", scope);
   const { data } = await query;
@@ -31,7 +31,6 @@ export async function GET() {
     gradeLabel(s.gup ?? null, s.dan ?? null).replace(" (Black belt)", ""),
     s.nationality ?? "",
     s.national_id ?? "",
-    s.passport_id ?? "",
     s.active ? "yes" : "no",
   ]);
 

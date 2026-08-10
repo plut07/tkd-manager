@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = supabaseAdmin();
   const select =
-    "id, event_id, clubs(name, instructor_name), students(first_name, last_name, birthday, gender, gup, dan, national_id, passport_id)";
+    "id, event_id, clubs(name, instructor_name), students(first_name, last_name, birthday, gender, gup, dan, national_id)";
 
   let rows: any[] = [];
   let eventId = eventIdParam;
@@ -47,7 +47,6 @@ export async function GET(request: NextRequest) {
   const participants: WaiverParticipant[] = rows.map((r) => ({
     firstName: r.students?.first_name ?? null,
     lastName: r.students?.last_name ?? null,
-    passportId: r.students?.passport_id ?? null,
     nationalId: r.students?.national_id ?? null,
     birthday: r.students?.birthday ?? null,
     gender: r.students?.gender ?? null,
@@ -87,8 +86,7 @@ export async function GET(request: NextRequest) {
           firstName: r.students?.first_name ?? null,
           lastName: r.students?.last_name ?? null,
           nationalId: r.students?.national_id ?? null,
-          passportId: r.students?.passport_id ?? null,
-          birthday: r.students?.birthday ?? null,
+              birthday: r.students?.birthday ?? null,
           gender: r.students?.gender ?? null,
           clubName: r.clubs?.name ?? null,
           instructor: r.clubs?.instructor_name ?? null,
