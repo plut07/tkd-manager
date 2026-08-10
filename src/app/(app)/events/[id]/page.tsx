@@ -4,11 +4,13 @@ import { requirePermission, hasPermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import DeleteButton from "@/components/DeleteButton";
+import BeltBadge from "@/components/BeltBadge";
+
 import CategoryForm from "../CategoryForm";
 import BracketView from "../BracketView";
 import GradingTab from "../GradingTab";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
-import { describeCriteria, type CategoryCriteria } from "@/lib/eligibility";
+import { describeCriteria, waiverAge, type CategoryCriteria } from "@/lib/eligibility";
 import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange, formatEventDateTime } from "@/lib/eventStatus";
 import { deleteEvent, addCategory, deleteCategory, addDocument, deleteDocument } from "../actions";
 import CountryFlag from "@/components/CountryFlag";
@@ -20,7 +22,14 @@ export default async function EventDetailPage({ params, searchParams }: { params
   if (!event) notFound();
   const isCompetition = event.event_type === "competition";
   const isGrading = event.event_type === "grading";
-  const tab = isCompetition && (searchParams.tab === "categories" || searchParams.tab === "draws") ? searchParams.tab : isGrading && searchParams.tab === "grading" ? "grading" : "info";
+  const tab =
+    searchParams.tab === "entries"
+      ? "entries"
+      : isCompetition && (searchParams.tab === "categories" || searchParams.tab === "draws")
+        ? searchParams.tab
+        : isGrading && searchParams.tab === "grading"
+          ? "grading"
+          : "info";
   const { data: categories } = await supabase.from("event_categories").select("*").eq("event_id", event.id).order("sort_order").order("name");
   const { data: documents } = await supabase.from("event_documents").select("*").eq("event_id", event.id).order("uploaded_at", { ascending: false });
   const { count: pendingCount } = await supabase.from("event_registrations").select("id", { count: "exact", head: true }).eq("event_id", event.id).eq("status", "pending");
@@ -33,6 +42,15 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const locked = isFinished && session.role !== "super_admin";
   const canEditNow = canEdit && !locked;
   const canDeleteNow = canDelete && !locked;
+  // Loaded only for the entries tab so the other tabs stay cheap.
+  const { data: entries } = tab === "entries"
+    ? await supabase
+        .from("event_registrations")
+        .select("id, status, competition_number, registered_at, clubs(name), students(first_name, last_name, birthday, gender, gup, dan, national_id, passport_id), event_categories(name)")
+        .eq("event_id", event.id)
+        .order("registered_at")
+    : { data: null };
+
   const bracketStatusMap = new Map<string, string>();
   const confirmedCountMap = new Map<string, number>();
   if (tab === "draws" && (categories ?? []).length > 0) {
@@ -81,6 +99,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
         <Link href={`/events/${event.id}`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "info" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Info pack</Link>
         {isCompetition && (<Link href={`/events/${event.id}?tab=categories`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "categories" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Categories & divisions</Link>)}
         {isCompetition && (<Link href={`/events/${event.id}?tab=draws`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "draws" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Draws</Link>)}
+        <Link href={`/events/${event.id}?tab=entries`} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "entries" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Registered students</Link>
         {isGrading && (<Link href={`/events/${event.id}?tab=grading`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "grading" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Grading registration</Link>)}
       </div>
       {tab === "info" ? (
@@ -137,6 +156,54 @@ export default async function EventDetailPage({ params, searchParams }: { params
             </table>
           </div>
           {canEditNow && <CategoryForm action={addCategory} eventId={event.id} />}
+        </div>
+      ) : tab === "entries" ? (
+        <div className="card p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Registered students ({(entries ?? []).length})</h2>
+              <p className="mt-1 text-sm text-gray-500">Everyone entered for this event. Download a participation waiver for any of them.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <a href={`/api/export/grading?eventId=${event.id}`} className="btn-secondary">Export to Excel</a>
+              {(entries ?? []).length > 0 && (
+                <a href={`/api/export/waiver?eventId=${event.id}`} target="_blank" rel="noopener noreferrer" className="btn-secondary">All waivers (PDF)</a>
+              )}
+            </div>
+          </div>
+          <div className="mt-4 overflow-x-auto">
+            <table className="table-base">
+              <thead>
+                <tr>
+                  <th>No.</th><th>Name</th><th>Club</th><th>Grade</th>
+                  <th className="hidden md:table-cell">Gender</th>
+                  <th className="hidden md:table-cell">Age</th>
+                  <th className="hidden lg:table-cell">Category</th>
+                  <th>Status</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(entries ?? []).map((r: any) => (
+                  <tr key={r.id}>
+                    <td>{r.competition_number ?? "—"}</td>
+                    <td className="font-medium text-gray-900">{[r.students?.first_name, r.students?.last_name].filter(Boolean).join(" ")}</td>
+                    <td>{r.clubs?.name ?? "—"}</td>
+                    <td><BeltBadge gup={r.students?.gup ?? null} dan={r.students?.dan ?? null} /></td>
+                    <td className="hidden capitalize md:table-cell">{r.students?.gender ?? "—"}</td>
+                    <td className="hidden md:table-cell">{waiverAge(r.students?.birthday ?? null) || "—"}</td>
+                    <td className="hidden lg:table-cell">{r.event_categories?.name ?? "—"}</td>
+                    <td><span className={`badge ${r.status === "confirmed" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{r.status}</span></td>
+                    <td className="whitespace-nowrap text-right">
+                      <a href={`/api/export/waiver?registrationId=${r.id}`} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-brand-700 hover:underline">Waiver PDF</a>
+                    </td>
+                  </tr>
+                ))}
+                {(entries ?? []).length === 0 && (
+                  <tr><td colSpan={9} className="py-6 text-center text-gray-400">Nobody has registered for this event yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : tab === "draws" ? (
         <div className="space-y-6">

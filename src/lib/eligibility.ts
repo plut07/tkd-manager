@@ -128,3 +128,14 @@ export function describeCriteria(c: CategoryCriteria): string {
 
   return parts.length > 0 ? parts.join(" · ") : "No restrictions";
 }
+
+/**
+ * Age as the printed waiver form defines it: current year minus year of birth.
+ * Deliberately not the exact age — it must match what the paper form shows.
+ */
+export function waiverAge(birthday: string | null | undefined, now: Date = new Date()): string {
+  if (!birthday) return "";
+  const year = Number(String(birthday).slice(0, 4));
+  if (!Number.isFinite(year)) return "";
+  return String(now.getFullYear() - year);
+}
