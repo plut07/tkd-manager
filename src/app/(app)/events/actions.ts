@@ -235,8 +235,7 @@ export async function addCategory(formData: FormData) {
     eventId: formData.get("eventId"),
     name: formData.get("name"),
     type: formData.get("type"),
-    gupList: formData.getAll("gupList"),
-    danList: formData.getAll("danList"),
+    gradeList: formData.getAll("gradeList"),
     genderList: formData.getAll("genderList"),
     ageMin: formData.get("ageMin"),
     ageMax: formData.get("ageMax"),
@@ -251,8 +250,10 @@ export async function addCategory(formData: FormData) {
     event_id: d.eventId,
     name: d.name,
     type: d.type,
-    gup_list: (d.gupList ?? []).map(Number),
-    dan_list: (d.danList ?? []).map(Number),
+    // The single ticked grade list is split back into the two columns the
+    // eligibility check reads.
+    gup_list: (d.gradeList ?? []).map((v) => parseGradeValue(v).gup).filter((n): n is number => n != null),
+    dan_list: (d.gradeList ?? []).map((v) => parseGradeValue(v).dan).filter((n): n is number => n != null),
     gender_list: d.genderList ?? [],
     age_min: d.ageMin ? Number(d.ageMin) : null,
     age_max: d.ageMax ? Number(d.ageMax) : null,
