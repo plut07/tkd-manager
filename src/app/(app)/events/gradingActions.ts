@@ -42,7 +42,7 @@ async function stageRows(supabase: ReturnType<typeof supabaseAdmin>, eventId: st
   const newCandidateRows: Record<string, unknown>[] = [];
   for (const row of rows) {
     const idValue = (row.nationalId ?? "").trim();
-    if (!idValue || !row.firstName || !row.lastName) continue;
+    if (!idValue || !row.fullName) continue;
     const { data: existingStudent } = await supabase.from("students").select("id, club_id").eq("national_id", idValue).maybeSingle();
     if (existingStudent) {
       // Refresh the details the form just supplied. Only non-empty answers are
@@ -55,8 +55,7 @@ async function stageRows(supabase: ReturnType<typeof supabaseAdmin>, eventId: st
       if (row.gup != null || row.dan != null) { refresh.gup = row.gup; refresh.dan = row.dan; }
       if (row.nationality) refresh.nationality = row.nationality;
       if (row.email) refresh.email = row.email;
-      if (row.firstName) refresh.first_name = row.firstName.toUpperCase();
-      if (row.lastName) refresh.last_name = row.lastName.toUpperCase();
+      if (row.fullName) refresh.full_name = row.fullName.toUpperCase();
       if (Object.keys(refresh).length > 0) await supabase.from("students").update(refresh).eq("id", existingStudent.id);
 
       const { data: alreadyReg } = await supabase.from("event_registrations").select("id").eq("event_id", eventId).eq("student_id", existingStudent.id).maybeSingle();
@@ -65,7 +64,7 @@ async function stageRows(supabase: ReturnType<typeof supabaseAdmin>, eventId: st
       continue;
     }
     if (alreadyStaged.has(normalize(idValue))) continue;
-    newCandidateRows.push({ event_id: eventId, first_name: row.firstName, last_name: row.lastName, email: row.email || null, birthday: row.birthday || null, gender: row.gender || null, weight_kg: row.weightKg, height_cm: row.heightCm, gup: row.gup, dan: row.dan, nationality: row.nationality || null, national_id: idValue, club_name_raw: row.clubName || null, matched_club_id: clubByName.get(normalize(row.clubName)) ?? null });
+    newCandidateRows.push({ event_id: eventId, full_name: row.fullName, email: row.email || null, birthday: row.birthday || null, gender: row.gender || null, weight_kg: row.weightKg, height_cm: row.heightCm, gup: row.gup, dan: row.dan, nationality: row.nationality || null, national_id: idValue, club_name_raw: row.clubName || null, matched_club_id: clubByName.get(normalize(row.clubName)) ?? null });
     newCount++;
   }
   const { data: batch, error: batchError } = await supabase.from("grading_import_batches").insert({ event_id: eventId, imported_by: importedBy, row_count: rows.length, matched_count: matchedCount, new_count: newCount }).select("id").single();
@@ -111,7 +110,7 @@ export async function approveCandidate(formData: FormData) {
   const supabase = supabaseAdmin();
   const { data: candidate } = await supabase.from("grading_candidates").select("*").eq("id", candidateId).maybeSingle();
   if (!candidate || candidate.status !== "pending") throw new Error("This candidate is no longer pending.");
-  const { data: student, error: studentError } = await supabase.from("students").insert({ club_id: clubId, club_number: await nextClubNumber(supabase, clubId), first_name: candidate.first_name, last_name: candidate.last_name, email: candidate.email, birthday: candidate.birthday, gender: candidate.gender, weight_kg: candidate.weight_kg, height_cm: candidate.height_cm, gup: candidate.gup, dan: candidate.dan, nationality: candidate.nationality, national_id: candidate.national_id, active: true }).select("id").single();
+  const { data: student, error: studentError } = await supabase.from("students").insert({ club_id: clubId, club_number: await nextClubNumber(supabase, clubId), full_name: candidate.full_name, email: candidate.email, birthday: candidate.birthday, gender: candidate.gender, weight_kg: candidate.weight_kg, height_cm: candidate.height_cm, gup: candidate.gup, dan: candidate.dan, nationality: candidate.nationality, national_id: candidate.national_id, active: true }).select("id").single();
   if (studentError || !student) throw new Error("Could not create the student record.");
   await supabase.from("event_registrations").insert({ event_id: candidate.event_id, student_id: student.id, club_id: clubId, status: "pending" });
   await supabase.from("grading_candidates").update({ status: "approved", reviewed_by: session.sub, reviewed_at: new Date().toISOString(), created_student_id: student.id }).eq("id", candidateId);
@@ -135,7 +134,7 @@ export async function bulkApproveBatch(formData: FormData) {
   const supabase = supabaseAdmin();
   const { data: candidates } = await supabase.from("grading_candidates").select("*").eq("batch_id", batchId).eq("status", "pending").not("matched_club_id", "is", null);
   for (const candidate of candidates ?? []) {
-    const { data: student } = await supabase.from("students").insert({ club_id: candidate.matched_club_id, club_number: await nextClubNumber(supabase, candidate.matched_club_id), first_name: candidate.first_name, last_name: candidate.last_name, email: candidate.email, birthday: candidate.birthday, gender: candidate.gender, weight_kg: candidate.weight_kg, height_cm: candidate.height_cm, gup: candidate.gup, dan: candidate.dan, nationality: candidate.nationality, national_id: candidate.national_id, active: true }).select("id").single();
+    const { data: student } = await supabase.from("students").insert({ club_id: candidate.matched_club_id, club_number: await nextClubNumber(supabase, candidate.matched_club_id), full_name: candidate.full_name, email: candidate.email, birthday: candidate.birthday, gender: candidate.gender, weight_kg: candidate.weight_kg, height_cm: candidate.height_cm, gup: candidate.gup, dan: candidate.dan, nationality: candidate.nationality, national_id: candidate.national_id, active: true }).select("id").single();
     if (!student) continue;
     await supabase.from("event_registrations").insert({ event_id: candidate.event_id, student_id: student.id, club_id: candidate.matched_club_id, status: "pending" });
     await supabase.from("grading_candidates").update({ status: "approved", reviewed_by: session.sub, reviewed_at: new Date().toISOString(), created_student_id: student.id }).eq("id", candidate.id);

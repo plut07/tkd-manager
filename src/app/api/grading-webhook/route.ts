@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   try { payload = JSON.parse(raw); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const fields: TallySubmissionField[] = payload?.data?.fields ?? [];
   const row = parseTallyFields(fields);
-  if (!row.nationalId || !row.firstName || !row.lastName) return NextResponse.json({ ok: true, skipped: true });
+  if (!row.nationalId || !row.fullName) return NextResponse.json({ ok: true, skipped: true });
   const { data: existingStudent } = await supabase.from("students").select("id, club_id").eq("national_id", row.nationalId).maybeSingle();
   if (existingStudent) {
     const { data: alreadyReg } = await supabase.from("event_registrations").select("id").eq("event_id", eventId).eq("student_id", existingStudent.id).maybeSingle();
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
   const matchedClub = (clubs ?? []).find((c) => normalize(c.name) === normalize(row.clubName));
   const { data: batch } = await supabase.from("grading_import_batches").insert({ event_id: eventId, row_count: 1, matched_count: 0, new_count: 1 }).select("id").single();
   if (batch) {
-    await supabase.from("grading_candidates").insert({ batch_id: batch.id, event_id: eventId, first_name: row.firstName, last_name: row.lastName, email: row.email, birthday: row.birthday, gender: row.gender, weight_kg: row.weightKg, height_cm: row.heightCm, gup: row.gup, dan: row.dan, nationality: row.nationality, national_id: row.nationalId, club_name_raw: row.clubName, matched_club_id: matchedClub?.id ?? null });
+    await supabase.from("grading_candidates").insert({ batch_id: batch.id, event_id: eventId, full_name: row.fullName, email: row.email, birthday: row.birthday, gender: row.gender, weight_kg: row.weightKg, height_cm: row.heightCm, gup: row.gup, dan: row.dan, nationality: row.nationality, national_id: row.nationalId, club_name_raw: row.clubName, matched_club_id: matchedClub?.id ?? null });
   }
   return NextResponse.json({ ok: true, staged: true });
 }

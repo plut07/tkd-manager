@@ -10,14 +10,16 @@ export default function GradeSelect({
   name,
   defaultValue,
   className = "input",
+  required,
 }: {
   id?: string;
   name: string;
   defaultValue?: string | null;
   className?: string;
+  required?: boolean;
 }) {
   return (
-    <select id={id} name={name} className={className} defaultValue={defaultValue ?? ""}>
+    <select id={id} name={name} className={className} defaultValue={defaultValue ?? ""} required={required}>
       <option value="">Not graded yet</option>
       {GRADE_OPTIONS.map((g) => (
         <option key={g.value} value={g.value}>

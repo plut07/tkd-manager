@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = supabaseAdmin();
   const select =
-    "id, event_id, clubs(name, instructor_name), students(first_name, last_name, birthday, gender, gup, dan, national_id)";
+    "id, event_id, clubs(name, instructor_name), students(full_name, birthday, gender, gup, dan, national_id)";
 
   let rows: any[] = [];
   let eventId = eventIdParam;
@@ -45,8 +45,7 @@ export async function GET(request: NextRequest) {
   if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 });
 
   const participants: WaiverParticipant[] = rows.map((r) => ({
-    firstName: r.students?.first_name ?? null,
-    lastName: r.students?.last_name ?? null,
+    fullName: r.students?.full_name ?? null,
     nationalId: r.students?.national_id ?? null,
     birthday: r.students?.birthday ?? null,
     gender: r.students?.gender ?? null,
@@ -83,8 +82,7 @@ export async function GET(request: NextRequest) {
       const bytes = await downloadTemplate(template.storage_path);
       const rowsForTemplate: TemplateData[] = rows.map((r) => ({
         participant: {
-          firstName: r.students?.first_name ?? null,
-          lastName: r.students?.last_name ?? null,
+          fullName: r.students?.full_name ?? null,
           nationalId: r.students?.national_id ?? null,
               birthday: r.students?.birthday ?? null,
           gender: r.students?.gender ?? null,
@@ -120,7 +118,7 @@ export async function GET(request: NextRequest) {
   );
 
   const who = registrationId
-    ? [participants[0]?.firstName, participants[0]?.lastName].filter(Boolean).join("-")
+    ? (participants[0]?.fullName ?? "")
     : "all-participants";
   const filename = `waiver-${(who || "form").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.pdf`;
 

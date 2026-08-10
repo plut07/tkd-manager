@@ -34,8 +34,7 @@ export type FormOptions = { clubs: string[]; countries: string[] };
 // matches on them, so changing one here means changing the matcher below.
 function buildFields(options: FormOptions): FieldSpec[] {
   const fields: FieldSpec[] = [
-    { label: "First name", kind: "input", type: "INPUT_TEXT", required: true },
-    { label: "Last name", kind: "input", type: "INPUT_TEXT", required: true },
+    { label: "Full name", kind: "input", type: "INPUT_TEXT", required: true },
     { label: "Email", kind: "input", type: "INPUT_EMAIL", required: false },
     { label: "Date of birth", kind: "input", type: "INPUT_DATE", required: false },
     { label: "Gender (male, female or other)", kind: "input", type: "INPUT_TEXT", required: false },
@@ -127,7 +126,7 @@ export function verifyTallySignature(rawBody: string, signature: string | null, 
 }
 
 export type TallySubmissionField = { key: string; label: string; type: string; value: unknown; options?: { id: string; text: string }[] };
-export type ParsedGradingRow = { firstName: string; lastName: string; email: string | null; birthday: string | null; gender: string | null; weightKg: number | null; heightCm: number | null; gup: number | null; dan: number | null; nationality: string | null; nationalId: string | null; clubName: string | null };
+export type ParsedGradingRow = { fullName: string; email: string | null; birthday: string | null; gender: string | null; weightKg: number | null; heightCm: number | null; gup: number | null; dan: number | null; nationality: string | null; nationalId: string | null; clubName: string | null };
 
 /**
  * Reads one answer as text, whether it arrives as a plain string (text input)
@@ -163,8 +162,7 @@ export function parseTallyFields(fields: TallySubmissionField[]): ParsedGradingR
   if (gender && !["male", "female", "other"].includes(gender)) gender = null;
 
   return {
-    firstName: (text("first name") ?? "").toUpperCase(),
-    lastName: (text("last name") ?? "").toUpperCase(),
+    fullName: (text("full name") ?? [text("first name"), text("last name")].filter(Boolean).join(" ")).toUpperCase(),
     email: text("email"),
     birthday: text("date of birth"),
     gender,

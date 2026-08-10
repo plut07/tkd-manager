@@ -2,8 +2,7 @@
 
 type ExportRow = {
   competitionNumber: string | null;
-  firstName: string;
-  lastName: string;
+  name: string;
   gender: string | null;
   age: number | null;
   weightKg: number | null;
@@ -34,7 +33,7 @@ export default function ClubExportButton({ clubName, rows }: { clubName: string;
       lines.push(
         [
           r.competitionNumber,
-          `${r.firstName} ${r.lastName}`.trim(),
+          r.name,
           r.gender,
           r.age,
           r.weightKg,

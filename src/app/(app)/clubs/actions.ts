@@ -74,7 +74,34 @@ export async function deleteClub(formData: FormData) {
   const clubId = String(formData.get("clubId") || "");
   if (!clubId) return;
   const supabase = supabaseAdmin();
+
+  // Everything that would be orphaned, checked up front so the message can say
+  // exactly what is in the way rather than "could not delete".
+  const [{ count: students }, { count: users }, { data: organized }, { data: entries }] = await Promise.all([
+    supabase.from("students").select("id", { count: "exact", head: true }).eq("club_id", clubId),
+    supabase.from("app_users").select("id", { count: "exact", head: true }).eq("club_id", clubId),
+    supabase.from("events").select("name").eq("organizer_club_id", clubId),
+    supabase.from("event_registrations").select("events(name)").eq("club_id", clubId),
+  ]);
+
+  const blockers: string[] = [];
+  if ((students ?? 0) > 0) blockers.push(`${students} student${students === 1 ? "" : "s"}`);
+  if ((users ?? 0) > 0) blockers.push(`${users} user account${users === 1 ? "" : "s"}`);
+  if ((organized ?? []).length > 0) {
+    blockers.push(`organizer of: ${(organized ?? []).map((e: any) => e.name).join(", ")}`);
+  }
+  const entryEvents = Array.from(new Set((entries ?? []).map((r: any) => r.events?.name).filter(Boolean)));
+  if (entryEvents.length > 0) blockers.push(`entries in: ${entryEvents.join(", ")}`);
+
+  if (blockers.length > 0) {
+    throw new Error(
+      `This club can't be deleted — ${blockers.join("; ")}. ` +
+        "Move or remove those first, or mark the club Inactive instead.",
+    );
+  }
+
   const { error } = await supabase.from("clubs").delete().eq("id", clubId);
-  if (error) throw new Error("Can't delete a club that still has students or users assigned to it.");
+  if (error) throw new Error("This club could not be deleted because other records still refer to it.");
   revalidatePath("/clubs");
 }
+

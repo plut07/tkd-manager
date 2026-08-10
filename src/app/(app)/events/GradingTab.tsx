@@ -87,7 +87,7 @@ export default async function GradingTab({ eventId, canEdit, isSuperAdmin }: { e
             <div key={c.id} className="rounded-md border border-gray-200 p-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <div className="font-medium text-gray-900">{c.first_name} {c.last_name}</div>
+                  <div className="font-medium text-gray-900">{c.full_name}</div>
                   <div className="text-xs text-gray-500">{[c.nationality, c.national_id, gradeShort(c.gup, c.dan)].filter((v) => v && v !== "—").join(" · ")}</div>
                   <div className="text-xs text-gray-400">Club on form: {c.club_name_raw ?? "—"}</div>
                 </div>

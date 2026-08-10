@@ -14,15 +14,14 @@ export async function GET() {
 
   let query = supabase
     .from("students")
-    .select("first_name, last_name, email, birthday, gender, weight_kg, height_cm, gup, dan, nationality, national_id, club_number, active, clubs(name)")
-    .order("last_name");
+    .select("full_name, email, birthday, gender, weight_kg, height_cm, gup, dan, nationality, national_id, club_number, active, clubs(name)")
+    .order("full_name");
   if (scope) query = query.eq("club_id", scope);
   const { data } = await query;
 
   const rows = (data ?? []).map((s: any) => [
     s.clubs?.name ?? "",
-    s.first_name ?? "",
-    s.last_name ?? "",
+    s.full_name ?? "",
     s.email ?? "",
     s.birthday ?? "",
     s.gender ?? "",

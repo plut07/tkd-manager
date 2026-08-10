@@ -40,11 +40,11 @@ export default async function PublicBracketPage({ params }: { params: { id: stri
   if (regIds.size > 0) {
     const { data: regs } = await supabase
       .from("event_registrations")
-      .select("id, students(first_name, last_name), clubs(name)")
+      .select("id, students(full_name), clubs(name)")
       .in("id", Array.from(regIds));
     (regs ?? []).forEach((r: any) => {
       regMap.set(r.id, {
-        name: `${r.students?.first_name ?? ""} ${r.students?.last_name ?? ""}`.trim(),
+        name: r.students?.full_name ?? "",
         club: r.clubs?.name ?? null,
       });
     });

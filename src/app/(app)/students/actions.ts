@@ -22,8 +22,7 @@ const optionalNumber = (min: number, max: number) =>
 const studentSchema = z.object({
   clubId: z.string().uuid("Choose a club."),
   // Names are stored in capitals so lists and exports read consistently.
-  firstName: z.string().trim().min(1, "First name is required.").transform((v) => v.toUpperCase()),
-  lastName: z.string().trim().min(1, "Last name is required.").transform((v) => v.toUpperCase()),
+  fullName: z.string().trim().min(2, "Full name is required.").transform((v) => v.toUpperCase()),
   email: z.string().trim().email("Enter a valid email.").optional().or(z.literal("")),
   birthday: z.string().optional().or(z.literal("")),
   weightKg: optionalNumber(1, 300),
@@ -38,8 +37,7 @@ const studentSchema = z.object({
 function readForm(formData: FormData) {
   return {
     clubId: formData.get("clubId"),
-    firstName: formData.get("firstName"),
-    lastName: formData.get("lastName"),
+    fullName: formData.get("fullName"),
     email: formData.get("email"),
     birthday: formData.get("birthday"),
     weightKg: formData.get("weightKg"),
@@ -55,8 +53,7 @@ function readForm(formData: FormData) {
 function toRow(data: z.infer<typeof studentSchema>, clubIdOverride: string | null) {
   return {
     club_id: clubIdOverride ?? data.clubId,
-    first_name: data.firstName,
-    last_name: data.lastName,
+    full_name: data.fullName,
     email: data.email || null,
     birthday: data.birthday || null,
     weight_kg: data.weightKg,
@@ -125,16 +122,41 @@ export async function deleteStudent(formData: FormData) {
   const session = await requirePermission(PERMISSIONS.STUDENT_DELETE);
   const studentId = String(formData.get("studentId") || "");
   if (!studentId) return;
-
   const supabase = supabaseAdmin();
 
   if (session.role === "club_admin") {
     const { data: existing } = await supabase.from("students").select("club_id").eq("id", studentId).maybeSingle();
-    if (!existing || existing.club_id !== session.clubId) {
-      throw new Error("You can only delete students from your own club.");
-    }
+    if (!existing || existing.club_id !== session.clubId) throw new Error("You can only delete students from your own club.");
   }
 
-  await supabase.from("students").delete().eq("id", studentId);
+  // A student tied to an event must not vanish — their entries are part of that
+  // event's record. Name the events so the blockage is actionable.
+  const { data: regs } = await supabase
+    .from("event_registrations")
+    .select("events(name)")
+    .eq("student_id", studentId);
+  if ((regs ?? []).length > 0) {
+    const names = Array.from(new Set((regs ?? []).map((r: any) => r.events?.name).filter(Boolean)));
+    throw new Error(
+      `This student is registered for ${names.length} event${names.length === 1 ? "" : "s"}: ${names.join(", ")}. ` +
+        "Remove them from those events first, or set the student to Inactive instead of deleting.",
+    );
+  }
+
+  // Approved grading candidates point back at the student they created.
+  const { count: candidateCount } = await supabase
+    .from("grading_candidates")
+    .select("id", { count: "exact", head: true })
+    .eq("created_student_id", studentId);
+  if ((candidateCount ?? 0) > 0) {
+    throw new Error(
+      "This student was created from a grading registration, so their record is linked to that submission. " +
+        "Set them to Inactive instead of deleting.",
+    );
+  }
+
+  const { error } = await supabase.from("students").delete().eq("id", studentId);
+  if (error) throw new Error("This student could not be deleted because other records still refer to them.");
   revalidatePath("/students");
 }
+

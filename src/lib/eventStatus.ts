@@ -69,17 +69,37 @@ export function effectiveEventStatus(event: EventDates, now: Date = new Date()):
   const stored = (event.status ?? "").trim().toLowerCase();
   if ((MANUAL_STATUSES as readonly string[]).includes(stored)) return stored;
 
-  const start = sgDate(event.start_date);
+  const start = instant(event.start_date);
   if (!start) return stored || "upcoming";
-  const end = sgDate(event.end_date) ?? start;
-  const today = todayInSingapore(now);
 
-  if (today < start) return "upcoming";
-  if (today > end) return "completed";
+  // Compared as exact moments, not calendar days: an event becomes Ongoing at
+  // its start time and Completed once its end time has passed. Where no end
+  // time is recorded, the event is treated as running to the end of its start
+  // day in Singapore, so a morning event doesn't read as finished by lunchtime.
+  const end = instant(event.end_date) ?? endOfSingaporeDay(start);
+
+  if (now.getTime() < start.getTime()) return "upcoming";
+  if (now.getTime() > end.getTime()) return "completed";
   return "ongoing";
 }
 
-/** True when the event is upcoming or ongoing today. */
+/** Parses a timestamp (or bare date) into an instant. */
+function instant(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  // A bare date means midnight Singapore time, not midnight UTC.
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T00:00:00+08:00`) : new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** 23:59:59.999 Singapore time on the same day as the given instant. */
+function endOfSingaporeDay(d: Date): Date {
+  const day = todayInSingapore(d);
+  return new Date(`${day}T23:59:59.999+08:00`);
+}
+
+/** True when the event has not finished yet. */
 export function isActiveEvent(event: EventDates, now: Date = new Date()): boolean {
   const status = effectiveEventStatus(event, now);
   return status === "upcoming" || status === "ongoing";

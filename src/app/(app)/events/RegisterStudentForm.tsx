@@ -5,8 +5,7 @@ import { checkEligibility, checkCountryEligibility, type CategoryCriteria, type 
 
 type Student = StudentLite & {
   id: string;
-  first_name: string;
-  last_name: string;
+  full_name: string;
   nationality?: string | null;
   clubs?: { name: string; country?: string | null } | null;
 };
@@ -77,7 +76,7 @@ export default function RegisterStudentForm({
         </option>
         {decorated.map(({ student: s, eligible, reasons }) => (
           <option key={s.id} value={s.id} disabled={!eligible}>
-            {s.first_name} {s.last_name}
+            {s.full_name}
             {showClub ? ` (${s.clubs?.name ?? ""})` : ""}
             {!eligible ? ` — not eligible: ${reasons.join(", ")}` : ""}
           </option>

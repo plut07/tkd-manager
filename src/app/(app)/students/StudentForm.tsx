@@ -29,8 +29,7 @@ export default function StudentForm({
   submitLabel: string;
   defaultValues?: {
     clubId?: string;
-    firstName?: string;
-    lastName?: string;
+    fullName?: string;
     email?: string;
     birthday?: string;
     weightKg?: number | null;
@@ -73,24 +72,19 @@ export default function StudentForm({
           <label className="label" htmlFor="gender">
             Gender
           </label>
-          <select id="gender" name="gender" className="input" defaultValue={defaultValues?.gender ?? ""}>
+          <select id="gender" name="gender" className="input" defaultValue={defaultValues?.gender ?? ""} required>
             <option value="">Not specified</option>
             <option value="male">Male</option>
             <option value="female">Female</option>
             <option value="other">Other</option>
           </select>
         </div>
-        <div>
-          <label className="label" htmlFor="firstName">
-            First name
+        <div className="sm:col-span-2">
+          <label className="label" htmlFor="fullName">
+            Full name <span className="text-red-600">*</span>
           </label>
-          <input id="firstName" name="firstName" className="input uppercase" style={{ textTransform: "uppercase" }} defaultValue={defaultValues?.firstName} required />
-        </div>
-        <div>
-          <label className="label" htmlFor="lastName">
-            Last name
-          </label>
-          <input id="lastName" name="lastName" className="input uppercase" style={{ textTransform: "uppercase" }} defaultValue={defaultValues?.lastName} required />
+          <input id="fullName" name="fullName" className="input uppercase" style={{ textTransform: "uppercase" }} defaultValue={defaultValues?.fullName} required />
+          <p className="mt-1 text-xs text-gray-400">Stored in capitals, exactly as it should appear on certificates.</p>
         </div>
         <div>
           <label className="label" htmlFor="email">
@@ -102,31 +96,31 @@ export default function StudentForm({
           <label className="label" htmlFor="birthday">
             Birthday
           </label>
-          <input id="birthday" name="birthday" type="date" className="input" defaultValue={defaultValues?.birthday} />
+          <input id="birthday" name="birthday" type="date" className="input" defaultValue={defaultValues?.birthday} required />
         </div>
         <div>
           <label className="label" htmlFor="weightKg">
             Weight (KG)
           </label>
-          <input id="weightKg" name="weightKg" type="number" step="0.1" min="1" max="300" className="input" defaultValue={defaultValues?.weightKg ?? ""} />
+          <input id="weightKg" name="weightKg" type="number" step="0.1" min="1" max="300" className="input" defaultValue={defaultValues?.weightKg ?? ""} required />
         </div>
         <div>
           <label className="label" htmlFor="heightCm">
             Height (cm)
           </label>
-          <input id="heightCm" name="heightCm" type="number" step="0.1" min="50" max="260" className="input" defaultValue={defaultValues?.heightCm ?? ""} />
+          <input id="heightCm" name="heightCm" type="number" step="0.1" min="50" max="260" className="input" defaultValue={defaultValues?.heightCm ?? ""} required />
         </div>
         <div>
           <label className="label" htmlFor="grade">
             Current Grade / Degree
           </label>
-          <GradeSelect id="grade" name="grade" defaultValue={defaultValues?.grade ?? ""} />
+          <GradeSelect id="grade" name="grade" defaultValue={defaultValues?.grade ?? ""} required />
         </div>
         <div>
           <label className="label" htmlFor="nationality">
             Nationality
           </label>
-          <CountrySelect id="nationality" name="nationality" defaultValue={defaultValues?.nationality ?? ""} />
+          <CountrySelect id="nationality" name="nationality" defaultValue={defaultValues?.nationality ?? ""} required />
         </div>
         <div>
           <label className="label" htmlFor="nationalId">

@@ -9,7 +9,7 @@ import { formatEventDateTime, formatEventRange } from "./eventStatus";
  * one would orphan existing templates — add new keys rather than changing these.
  */
 export type TemplateFieldKey =
-  | "participant.name" | "participant.firstName" | "participant.lastName"
+  | "participant.name"
   | "participant.ic" | "participant.age" | "participant.dob" | "participant.gender"
   | "participant.club" | "participant.grade" | "participant.instructor"
   | "participant.email" | "participant.nationality" | "participant.weight" | "participant.height"
@@ -18,8 +18,7 @@ export type TemplateFieldKey =
 
 export const TEMPLATE_FIELDS: { key: TemplateFieldKey; label: string; group: string }[] = [
   { key: "participant.name", label: "Full name", group: "Participant" },
-  { key: "participant.firstName", label: "First name", group: "Participant" },
-  { key: "participant.lastName", label: "Last name", group: "Participant" },
+
   { key: "participant.ic", label: "NRIC / Passport ID", group: "Participant" },
   { key: "participant.age", label: "Age", group: "Participant" },
   { key: "participant.dob", label: "Date of birth", group: "Participant" },
@@ -41,7 +40,7 @@ export const TEMPLATE_FIELDS: { key: TemplateFieldKey; label: string; group: str
 
 export type TemplateData = {
   participant: {
-    firstName?: string | null; lastName?: string | null;
+    fullName?: string | null;
     nationalId?: string | null;
     birthday?: string | null; gender?: string | null;
     clubName?: string | null; instructor?: string | null;
@@ -61,9 +60,8 @@ export function resolveTemplateField(key: string, data: TemplateData): string {
   const p = data.participant;
   const e = data.event;
   switch (key) {
-    case "participant.name": return [p?.firstName, p?.lastName].filter(Boolean).join(" ");
-    case "participant.firstName": return p?.firstName ?? "";
-    case "participant.lastName": return p?.lastName ?? "";
+    case "participant.name": return p?.fullName ?? "";
+
     case "participant.ic": return (p?.nationalId || "") as string;
     case "participant.age": return waiverAge(p?.birthday ?? null);
     case "participant.dob": { const v = formatDob(p?.birthday ?? null); return v === "—" ? "" : v; }
@@ -88,7 +86,7 @@ export function resolveTemplateField(key: string, data: TemplateData): string {
 /** Stand-in values so the designer can show a realistic preview. */
 export const SAMPLE_DATA: TemplateData = {
   participant: {
-    firstName: "WEI", lastName: "TAN", nationalId: "S1234567D",
+    fullName: "WEI TAN", nationalId: "S1234567D",
     birthday: "2001-04-12", gender: "male", clubName: "Dragon TKD", instructor: "Mr Lim",
     gup: 4, dan: null, email: "wei@example.com", nationality: "Singapore",
     weightKg: 62.5, heightCm: 170,

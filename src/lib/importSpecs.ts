@@ -21,8 +21,7 @@ export type ImportOutcome<T> = {
 
 export const STUDENT_COLUMNS: ColumnSpec[] = [
   { header: "Club", required: true, example: "Dragon TKD", note: "Must already exist in Clubs" },
-  { header: "First name", required: true, example: "WEI", note: "Saved in CAPITALS" },
-  { header: "Last name", required: true, example: "TAN", note: "Saved in CAPITALS" },
+  { header: "Full name", required: true, example: "WEI TAN", note: "Saved in CAPITALS" },
   { header: "Email", example: "wei@example.com" },
   { header: "Birthday", example: "2001-04-12", note: "YYYY-MM-DD" },
   { header: "Gender", example: "male", note: "male, female or other" },
@@ -45,8 +44,7 @@ export const CLUB_COLUMNS: ColumnSpec[] = [
 
 export type StudentRow = {
   club_id: string;
-  first_name: string;
-  last_name: string;
+  full_name: string;
   email: string | null;
   birthday: string | null;
   gender: string | null;
@@ -127,11 +125,9 @@ export function validateStudentRows(
     const row = rowNumbers[i];
     const errors: RowError[] = [];
 
-    const firstName = norm(raw["First name"]).toUpperCase();
-    const lastName = norm(raw["Last name"]).toUpperCase();
+    const fullName = (norm(raw["Full name"]) || [norm(raw["First name"]), norm(raw["Last name"])].filter(Boolean).join(" ")).toUpperCase();
     const nationalId = norm(raw["NRIC / Passport ID"]) || norm(raw["ID number"]);
-    if (!firstName) errors.push({ row, column: "First name", value: "", problem: "Required" });
-    if (!lastName) errors.push({ row, column: "Last name", value: "", problem: "Required" });
+    if (!fullName) errors.push({ row, column: "Full name", value: "", problem: "Required" });
     if (!nationalId) errors.push({ row, column: "NRIC / Passport ID", value: "", problem: "Required — used to detect duplicates" });
 
     let clubId = forcedClubId;
@@ -194,8 +190,7 @@ export function validateStudentRows(
 
     const data: StudentRow = {
       club_id: clubId as string,
-      first_name: firstName,
-      last_name: lastName,
+      full_name: fullName,
       email: email || null,
       birthday,
       gender: gender || null,
@@ -208,7 +203,7 @@ export function validateStudentRows(
       active: parseBoolean(raw["Active"] ?? ""),
     };
 
-    const label = `${firstName} ${lastName}`;
+    const label = fullName;
     const existingId = existingByNationalId.get(nationalId.toLowerCase());
     if (existingId) out.update.push({ row, data, label, existingId });
     else out.create.push({ row, data, label });

@@ -49,7 +49,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const { data: entries } = tab === "entries"
     ? await supabase
         .from("event_registrations")
-        .select("id, status, competition_number, registered_at, clubs(name), students(first_name, last_name, birthday, gender, gup, dan, national_id, club_number), event_categories(name)")
+        .select("id, status, competition_number, registered_at, clubs(name), students(full_name, birthday, gender, gup, dan, national_id, club_number), event_categories(name)")
         .eq("event_id", event.id)
         .order("registered_at")
     : { data: null };
@@ -198,7 +198,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
                 {(entries ?? []).map((r: any) => (
                   <tr key={r.id}>
                     <td>{r.competition_number ?? "—"}</td>
-                    <td className="font-medium text-gray-900">{[r.students?.first_name, r.students?.last_name].filter(Boolean).join(" ")}</td>
+                    <td className="font-medium text-gray-900">{r.students?.full_name}</td>
                     <td>{r.clubs?.name ?? "—"}</td>
                     <td><BeltBadge gup={r.students?.gup ?? null} dan={r.students?.dan ?? null} /></td>
                     <td className="hidden lg:table-cell">{formatDob(r.students?.birthday ?? null)}</td>
@@ -213,7 +213,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
                           action={unregisterStudent}
                           fieldName="registrationId"
                           fieldValue={r.id}
-                          confirmLabel={`Remove ${[r.students?.first_name, r.students?.last_name].filter(Boolean).join(" ")} from this event?`}
+                          confirmLabel={`Remove ${r.students?.full_name} from this event?`}
                           label="Remove"
                           extraFields={{ eventId: event.id }}
                         />

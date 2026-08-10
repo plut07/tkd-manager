@@ -28,15 +28,14 @@ export default async function EventRegisterPage({ params }: { params: { id: stri
   const { data: registrations } = await supabase
     .from("event_registrations")
     .select(
-      "id, status, registered_at, competition_number, clubs(id, name), students(id, first_name, last_name, gender, weight_kg, height_cm, birthday, nationality), event_categories(id, name)"
+      "id, status, registered_at, competition_number, clubs(id, name), students(id, full_name, gender, weight_kg, height_cm, birthday, nationality), event_categories(id, name)"
     )
     .eq("event_id", event.id)
     .order("registered_at");
 
   let studentOptions: {
     id: string;
-    first_name: string;
-    last_name: string;
+    full_name: string;
     club_id: string;
     clubs: { name: string; country: string | null } | null;
     gup: number | null;
@@ -47,17 +46,17 @@ export default async function EventRegisterPage({ params }: { params: { id: stri
     nationality: string | null;
   }[] = [];
   const studentSelect =
-    "id, first_name, last_name, club_id, clubs(name, country), gup, dan, gender, birthday, weight_kg, nationality";
+    "id, full_name, club_id, clubs(name, country), gup, dan, gender, birthday, weight_kg, nationality";
   if (scope) {
     const { data } = await supabase
       .from("students")
       .select(studentSelect)
       .eq("club_id", scope)
       .eq("active", true)
-      .order("last_name");
+      .order("full_name");
     studentOptions = (data as any) ?? [];
   } else {
-    const { data } = await supabase.from("students").select(studentSelect).eq("active", true).order("last_name");
+    const { data } = await supabase.from("students").select(studentSelect).eq("active", true).order("full_name");
     studentOptions = (data as any) ?? [];
   }
 
@@ -146,7 +145,7 @@ export default async function EventRegisterPage({ params }: { params: { id: stri
                 <tr key={r.id}>
                   <td>{r.competition_number ?? "—"}</td>
                   <td>
-                    {r.students?.first_name} {r.students?.last_name}
+                    {r.students?.full_name}
                   </td>
                   <td>{r.clubs?.name ?? "—"}</td>
                   <td>{r.event_categories?.name ?? "Unassigned category"}</td>
@@ -203,8 +202,7 @@ export default async function EventRegisterPage({ params }: { params: { id: stri
                   clubName={group.clubName}
                   rows={group.rows.map((r: any) => ({
                     competitionNumber: r.competition_number,
-                    firstName: r.students?.first_name ?? "",
-                    lastName: r.students?.last_name ?? "",
+                    name: r.students?.full_name ?? "",
                     gender: r.students?.gender ?? null,
                     age: computeAge(r.students?.birthday ?? null),
                     weightKg: r.students?.weight_kg ?? null,
@@ -232,7 +230,7 @@ export default async function EventRegisterPage({ params }: { params: { id: stri
                       <tr key={r.id}>
                         <td className="font-medium text-gray-900">{r.competition_number ?? "—"}</td>
                         <td>
-                          {r.students?.first_name} {r.students?.last_name}
+                          {r.students?.full_name}
                         </td>
                         <td>{r.event_categories?.name ?? "Unassigned category"}</td>
                         <td>{computeAge(r.students?.birthday ?? null) ?? "—"}</td>

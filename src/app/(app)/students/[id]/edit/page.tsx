@@ -40,8 +40,7 @@ export default async function EditStudentPage({ params }: { params: { id: string
           submitLabel="Save changes"
           defaultValues={{
             clubId: student.club_id,
-            firstName: student.first_name,
-            lastName: student.last_name,
+            fullName: student.full_name ?? "",
             email: student.email ?? "",
             birthday: student.birthday ?? "",
             weightKg: student.weight_kg,

@@ -22,25 +22,68 @@ function age(birthday: string | null) {
 export default async function StudentsPage({
   searchParams,
 }: {
-  searchParams: { q?: string; club?: string };
+  searchParams: { q?: string; club?: string | string[]; gender?: string | string[]; status?: string | string[]; sort?: string; dir?: string };
 }) {
   const session = await requirePermission(PERMISSIONS.STUDENT_VIEW);
   const supabase = supabaseAdmin();
   const scope = clubScope(session);
 
+  // Filters that allow several values can't be expressed by the simple query
+  // builder, so the query stays broad and the narrowing happens below.
+  const asList = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v ? [v] : []);
+  const clubFilter = asList(searchParams.club);
+  const genderFilter = asList(searchParams.gender);
+  const statusFilter = asList(searchParams.status);
+  const q = (searchParams.q ?? "").trim().toLowerCase();
+
   let query = supabase
     .from("students")
-    .select("id, first_name, last_name, email, birthday, weight_kg, height_cm, gup, dan, gender, nationality, national_id, club_number, active, clubs(id, name)")
-    .order("last_name");
+    .select("id, full_name, email, birthday, weight_kg, height_cm, gup, dan, gender, nationality, national_id, club_number, active, clubs(id, name)");
 
   if (scope) query = query.eq("club_id", scope);
-  if (!scope && searchParams.club) query = query.eq("club_id", searchParams.club);
-  if (searchParams.q) {
-    const q = searchParams.q;
-    query = query.or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,national_id.ilike.%${q}%`);
-  }
+  const { data: allStudents } = await query;
 
-  const { data: students } = await query;
+  const students = (allStudents ?? []).filter((s: any) => {
+    if (clubFilter.length > 0 && !clubFilter.includes(s.clubs?.id)) return false;
+    if (genderFilter.length > 0 && !genderFilter.includes(s.gender ?? "")) return false;
+    if (statusFilter.length > 0 && !statusFilter.includes(s.active ? "active" : "inactive")) return false;
+    if (q) {
+      const haystack = `${s.full_name ?? ""} ${s.national_id ?? ""} ${s.club_number ?? ""}`.toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Sorting is done here too, so it can order by age (derived) as easily as by
+  // a stored column.
+  const sort = ["no", "name", "club", "age"].includes(searchParams.sort ?? "") ? searchParams.sort! : "name";
+  const dir = searchParams.dir === "desc" ? "desc" : "asc";
+  const sortValue = (s: any) => {
+    switch (sort) {
+      case "no": return Number(s.club_number) || 0;
+      case "club": return String(s.clubs?.name ?? "").toLowerCase();
+      case "age": return Number(age(s.birthday)) || 0;
+      default: return String(s.full_name ?? "").toLowerCase();
+    }
+  };
+  students.sort((a: any, b: any) => {
+    const av = sortValue(a), bv = sortValue(b);
+    const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv));
+    return dir === "desc" ? -cmp : cmp;
+  });
+
+  /** Link for a sortable column header, flipping direction when already active. */
+  const sortHref = (key: string) => {
+    const params = new URLSearchParams();
+    if (searchParams.q) params.set("q", searchParams.q);
+    clubFilter.forEach((c) => params.append("club", c));
+    genderFilter.forEach((g) => params.append("gender", g));
+    statusFilter.forEach((st) => params.append("status", st));
+    params.set("sort", key);
+    params.set("dir", sort === key && dir === "asc" ? "desc" : "asc");
+    return `/students?${params.toString()}`;
+  };
+  const arrow = (key: string) => (sort === key ? (dir === "asc" ? " ▲" : " ▼") : "");
 
   const { data: clubs } = scope
     ? { data: null }
@@ -72,31 +115,39 @@ export default async function StudentsPage({
         </div>
       </div>
 
-      <form className="mt-4 flex flex-wrap gap-2" method="get">
-        <input name="q" defaultValue={searchParams.q} placeholder="Search by name or ID..." className="input max-w-xs" />
+      <form className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5" method="get">
+        <input name="q" defaultValue={searchParams.q} placeholder="Search by name, No. or NRIC..." className="input lg:col-span-2" />
         {!scope && clubs && (
-          <select name="club" defaultValue={searchParams.club ?? ""} className="input max-w-xs">
-            <option value="">All clubs</option>
-            {clubs.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
+          <select name="club" multiple defaultValue={clubFilter} className="input h-24" title="Hold Ctrl/Cmd to pick several">
+            {clubs.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
           </select>
         )}
-        <button type="submit" className="btn-secondary">
-          Filter
-        </button>
+        <select name="gender" multiple defaultValue={genderFilter} className="input h-24" title="Hold Ctrl/Cmd to pick several">
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+          <option value="other">Other</option>
+        </select>
+        <select name="status" multiple defaultValue={statusFilter} className="input h-24" title="Hold Ctrl/Cmd to pick several">
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+        <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-5">
+          <button type="submit" className="btn-secondary">Filter</button>
+          <Link href="/students" className="btn-secondary">Reset</Link>
+          <span className="ml-auto self-center text-sm text-gray-500">{students.length} student{students.length === 1 ? "" : "s"}</span>
+        </div>
       </form>
 
       <div className="card mt-4 overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
-              <th>No.</th><th>Name</th>
-              {!scope && <th>Club</th>}
+              <th><Link href={sortHref("no")} className="hover:underline">No.{arrow("no")}</Link></th>
+              <th><Link href={sortHref("name")} className="hover:underline">Name{arrow("name")}</Link></th>
+              {!scope && <th><Link href={sortHref("club")} className="hover:underline">Club{arrow("club")}</Link></th>}
               <th>Gender</th>
-              <th className="hidden md:table-cell">Date of birth</th><th>Age</th>
+              <th className="hidden md:table-cell">Date of birth</th>
+              <th><Link href={sortHref("age")} className="hover:underline">Age{arrow("age")}</Link></th>
               <th className="hidden md:table-cell">Weight</th>
               <th className="hidden md:table-cell">Height</th>
               <th>Grade / Degree</th>
@@ -107,11 +158,11 @@ export default async function StudentsPage({
             </tr>
           </thead>
           <tbody>
-            {(students ?? []).map((s: any) => (
+            {students.map((s: any) => (
               <tr key={s.id}>
                 <td className="text-gray-500">{s.club_number ?? "—"}</td>
                 <td className="font-medium text-gray-900">
-                  {s.last_name}, {s.first_name}
+                  {s.full_name}
                   <div className="text-xs font-normal text-gray-500">{s.email}</div>
                 </td>
                 {!scope && <td>{s.clubs?.name}</td>}
@@ -142,14 +193,14 @@ export default async function StudentsPage({
                         action={deleteStudent}
                         fieldName="studentId"
                         fieldValue={s.id}
-                        confirmLabel={`Delete ${s.first_name} ${s.last_name}?`}
+                        confirmLabel={`Delete ${s.full_name}?`}
                       />
                     )}
                   </td>
                 )}
               </tr>
             ))}
-            {(students ?? []).length === 0 && (
+            {students.length === 0 && (
               <tr>
                 <td colSpan={13} className="py-6 text-center text-gray-400">
                   No students found.

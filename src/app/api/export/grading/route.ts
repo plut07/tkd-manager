@@ -20,12 +20,12 @@ export async function GET(request: NextRequest) {
   const { data: event } = await supabase.from("events").select("name").eq("id", eventId).maybeSingle();
   const { data: regs } = await supabase
     .from("event_registrations")
-    .select("status, competition_number, registered_at, clubs(name, country), students(first_name, last_name, email, birthday, gender, weight_kg, height_cm, gup, dan, nationality, national_id, club_number)")
+    .select("status, competition_number, registered_at, clubs(name, country), students(full_name, email, birthday, gender, weight_kg, height_cm, gup, dan, nationality, national_id, club_number)")
     .eq("event_id", eventId)
     .order("registered_at");
 
   const headers = [
-    "Status", "No.", "Last name", "First name", "Club", "Club country",
+    "Status", "No.", "Full name", "Club", "Club country",
     "Grade", "Gender", "Date of birth", "Age", "Weight (kg)", "Height (cm)",
     "Nationality", "NRIC / Passport ID", "Club no.", "Email", "Registered",
   ];
@@ -33,8 +33,7 @@ export async function GET(request: NextRequest) {
   const rows = (regs ?? []).map((r: any) => [
     r.status ?? "",
     r.competition_number ?? "",
-    r.students?.last_name ?? "",
-    r.students?.first_name ?? "",
+    r.students?.full_name ?? "",
     r.clubs?.name ?? "",
     r.clubs?.country ?? "",
     gradeLabel(r.students?.gup ?? null, r.students?.dan ?? null),

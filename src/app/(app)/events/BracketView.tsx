@@ -15,8 +15,8 @@ export default async function BracketView({ eventId, categoryId, canEdit, backHr
   (matches ?? []).forEach((m) => { if (m.competitor1_registration_id) regIds.add(m.competitor1_registration_id); if (m.competitor2_registration_id) regIds.add(m.competitor2_registration_id); });
   const regMap = new Map<string, RegInfo>();
   if (regIds.size > 0) {
-    const { data: regs } = await supabase.from("event_registrations").select("id, students(first_name, last_name), clubs(name)").in("id", Array.from(regIds));
-    (regs ?? []).forEach((r: any) => { regMap.set(r.id, { name: `${r.students?.first_name ?? ""} ${r.students?.last_name ?? ""}`.trim(), club: r.clubs?.name ?? null }); });
+    const { data: regs } = await supabase.from("event_registrations").select("id, students(full_name), clubs(name)").in("id", Array.from(regIds));
+    (regs ?? []).forEach((r: any) => { regMap.set(r.id, { name: r.students?.full_name ?? "", club: r.clubs?.name ?? null }); });
   }
   const nameOf = (id: string | null) => (id ? regMap.get(id) ?? null : null);
   const isPublished = bracket?.status === "published";

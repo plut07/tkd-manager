@@ -13,8 +13,7 @@ import { waiverAge } from "./eligibility";
  */
 
 export type WaiverParticipant = {
-  firstName: string | null;
-  lastName: string | null;
+  fullName: string | null;
   nationalId: string | null;
   birthday: string | null;
   gender: string | null;
@@ -117,7 +116,7 @@ function drawWaiverPage(page: PDFPage, event: WaiverEvent, p: WaiverParticipant 
     page.drawText(fitText(text, bold, 10, w - 12), { x: x + 6, y: yTop - 17, size: 10, font: bold, color: INK });
   };
 
-  const fullName = [p?.firstName, p?.lastName].filter(Boolean).join(" ").trim();
+  const fullName = (p?.fullName ?? "").trim();
   const ic = (p?.nationalId || "").trim();
   const gender = (p?.gender ?? "").trim();
   const genderText = gender ? gender.toUpperCase() : "MALE / FEMALE";
