@@ -5,6 +5,7 @@ import DeleteButton from "@/components/DeleteButton";
 import CountrySelect from "@/components/CountrySelect";
 import { createClub, toggleClubActive, deleteClub } from "./actions";
 import CountryFlag from "@/components/CountryFlag";
+import ClubPhone from "@/components/ClubPhone";
 
 export default async function ClubsPage() {
   await requireSuperAdmin();
@@ -40,7 +41,8 @@ export default async function ClubsPage() {
             {(clubs ?? []).map((c) => (
               <tr key={c.id}>
                 <td className="font-medium text-gray-900">{c.name}</td>
-                <td>{c.city ?? "—"}</td>
+                <td>{c.instructor_name ?? <span className="text-gray-400">—</span>}</td>
+                <td className="hidden md:table-cell">{c.city ?? "—"}</td>
                 <td><CountryFlag country={c.country} /></td>
                 <td className="text-xs">
                   {c.contact_email && <div>{c.contact_email}</div>}
@@ -75,11 +77,12 @@ export default async function ClubsPage() {
         </table>
       </div>
 
-      <form action={createClub} className="card mt-6 grid grid-cols-1 gap-3 p-6 sm:grid-cols-2 lg:grid-cols-5">
+      <form action={createClub} className="card mt-6 grid grid-cols-1 gap-3 p-6 sm:grid-cols-2 lg:grid-cols-6">
         <input name="name" placeholder="Club name" className="input" required />
+        <input name="instructorName" placeholder="Instructor name" className="input" />
         <input name="city" placeholder="City" className="input" />
         <CountrySelect name="country" placeholder="Country" />
-        <input name="contactEmail" type="email" placeholder="Contact email" className="input" />
+        <input name="contactEmail" type="email" placeholder="Contact email" className="input" pattern="[^@\s]+@[^@\s]+\.[A-Za-z]{2,}" title="Must look like name@example.com" />
         <input name="contactPhone" placeholder="Contact phone" className="input" />
         <button type="submit" className="btn-primary sm:col-span-2 lg:col-span-1">
           + Add club

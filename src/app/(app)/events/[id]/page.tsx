@@ -5,12 +5,13 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import DeleteButton from "@/components/DeleteButton";
 import BeltBadge from "@/components/BeltBadge";
+import TemplateTab from "@/components/TemplateTab";
 
 import CategoryForm from "../CategoryForm";
 import BracketView from "../BracketView";
 import GradingTab from "../GradingTab";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
-import { describeCriteria, waiverAge, type CategoryCriteria } from "@/lib/eligibility";
+import { describeCriteria, waiverAge, formatDob, type CategoryCriteria } from "@/lib/eligibility";
 import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange, formatEventDateTime } from "@/lib/eventStatus";
 import { deleteEvent, addCategory, deleteCategory, addDocument, deleteDocument } from "../actions";
 import CountryFlag from "@/components/CountryFlag";
@@ -25,6 +26,8 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const tab =
     searchParams.tab === "entries"
       ? "entries"
+      : searchParams.tab === "template"
+        ? "template"
       : isCompetition && (searchParams.tab === "categories" || searchParams.tab === "draws")
         ? searchParams.tab
         : isGrading && searchParams.tab === "grading"
@@ -49,6 +52,13 @@ export default async function EventDetailPage({ params, searchParams }: { params
         .select("id, status, competition_number, registered_at, clubs(name), students(first_name, last_name, birthday, gender, gup, dan, national_id, passport_id), event_categories(name)")
         .eq("event_id", event.id)
         .order("registered_at")
+    : { data: null };
+
+  const { data: template } = tab === "template"
+    ? await supabase.from("event_form_templates").select("id, name, page_count").eq("event_id", event.id).eq("is_default", true).maybeSingle()
+    : { data: null };
+  const { data: templateFields } = template
+    ? await supabase.from("event_form_fields").select("field_key, page, x, y, width, height, font_size, align").eq("template_id", template.id)
     : { data: null };
 
   const bracketStatusMap = new Map<string, string>();
@@ -100,6 +110,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
         {isCompetition && (<Link href={`/events/${event.id}?tab=categories`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "categories" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Categories & divisions</Link>)}
         {isCompetition && (<Link href={`/events/${event.id}?tab=draws`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "draws" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Draws</Link>)}
         <Link href={`/events/${event.id}?tab=entries`} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "entries" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Registered students</Link>
+        {canEdit && (<Link href={`/events/${event.id}?tab=template`} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "template" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Form template</Link>)}
         {isGrading && (<Link href={`/events/${event.id}?tab=grading`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "grading" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Grading registration</Link>)}
       </div>
       {tab === "info" ? (
@@ -175,7 +186,8 @@ export default async function EventDetailPage({ params, searchParams }: { params
             <table className="table-base">
               <thead>
                 <tr>
-                  <th>No.</th><th>Name</th><th>Club</th><th>Grade</th>
+                  <th>No.</th><th>Name</th><th>Club</th><th>Grade / Degree</th>
+                  <th className="hidden lg:table-cell">Date of birth</th>
                   <th className="hidden md:table-cell">Gender</th>
                   <th className="hidden md:table-cell">Age</th>
                   <th className="hidden lg:table-cell">Category</th>
@@ -189,6 +201,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
                     <td className="font-medium text-gray-900">{[r.students?.first_name, r.students?.last_name].filter(Boolean).join(" ")}</td>
                     <td>{r.clubs?.name ?? "—"}</td>
                     <td><BeltBadge gup={r.students?.gup ?? null} dan={r.students?.dan ?? null} /></td>
+                    <td className="hidden lg:table-cell">{formatDob(r.students?.birthday ?? null)}</td>
                     <td className="hidden capitalize md:table-cell">{r.students?.gender ?? "—"}</td>
                     <td className="hidden md:table-cell">{waiverAge(r.students?.birthday ?? null) || "—"}</td>
                     <td className="hidden lg:table-cell">{r.event_categories?.name ?? "—"}</td>
@@ -199,12 +212,14 @@ export default async function EventDetailPage({ params, searchParams }: { params
                   </tr>
                 ))}
                 {(entries ?? []).length === 0 && (
-                  <tr><td colSpan={9} className="py-6 text-center text-gray-400">Nobody has registered for this event yet.</td></tr>
+                  <tr><td colSpan={10} className="py-6 text-center text-gray-400">Nobody has registered for this event yet.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         </div>
+      ) : tab === "template" ? (
+        <TemplateTab eventId={event.id} template={template as any} fields={templateFields ?? []} canEdit={canEditNow} />
       ) : tab === "draws" ? (
         <div className="space-y-6">
           <div className="card p-6">

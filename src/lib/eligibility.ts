@@ -139,3 +139,17 @@ export function waiverAge(birthday: string | null | undefined, now: Date = new D
   if (!Number.isFinite(year)) return "";
   return String(now.getFullYear() - year);
 }
+
+/**
+ * Date of birth as the federation writes it on forms: Apr/12/2001.
+ * Returns an em dash when there's nothing recorded, so tables stay aligned.
+ */
+export function formatDob(birthday: string | null | undefined): string {
+  if (!birthday) return "—";
+  const raw = String(birthday).slice(0, 10);
+  const d = new Date(`${raw}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return raw;
+  const month = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", month: "short" }).format(d);
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${month}/${day}/${d.getUTCFullYear()}`;
+}

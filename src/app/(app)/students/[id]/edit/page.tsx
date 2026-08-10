@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { updateStudent } from "../../actions";
 import StudentForm from "../../StudentForm";
+import { gradeValue } from "@/lib/belts";
 
 export default async function EditStudentPage({ params }: { params: { id: string } }) {
   const session = await requirePermission(PERMISSIONS.STUDENT_EDIT);
@@ -45,8 +46,7 @@ export default async function EditStudentPage({ params }: { params: { id: string
             birthday: student.birthday ?? "",
             weightKg: student.weight_kg,
             heightCm: student.height_cm,
-            gup: student.gup,
-            dan: student.dan,
+            grade: gradeValue(student.gup, student.dan),
             gender: student.gender ?? "",
             nationality: student.nationality ?? "",
             nationalId: student.national_id ?? "",

@@ -9,7 +9,10 @@ const clubSchema = z.object({
   name: z.string().trim().min(2, "Club name is required."),
   city: z.string().trim().optional().or(z.literal("")),
   country: z.string().trim().optional().or(z.literal("")),
-  contactEmail: z.string().trim().email("Enter a valid email.").optional().or(z.literal("")),
+  instructorName: z.string().trim().optional().or(z.literal("")),
+  // Belt and braces: zod's email check plus an explicit domain rule, so
+  // "a@b" (which some validators accept) is rejected.
+  contactEmail: z.string().trim().email("Enter a valid email.").regex(/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/, "Email must include a domain, e.g. name@example.com").optional().or(z.literal("")),
   contactPhone: z.string().trim().optional().or(z.literal("")),
 });
 
@@ -19,7 +22,7 @@ export async function createClub(formData: FormData) {
     name: formData.get("name"),
     city: formData.get("city"),
     country: formData.get("country"),
-    contactEmail: formData.get("contactEmail"),
+    instructorName: formData.get("instructorName"), contactEmail: formData.get("contactEmail"),
     contactPhone: formData.get("contactPhone"),
   });
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid club.");

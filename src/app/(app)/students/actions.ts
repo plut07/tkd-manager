@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { requirePermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
+import { parseGradeValue } from "@/lib/belts";
 
 export type FormState = { error?: string } | undefined;
 
@@ -27,8 +28,7 @@ const studentSchema = z.object({
   birthday: z.string().optional().or(z.literal("")),
   weightKg: optionalNumber(1, 300),
   heightCm: optionalNumber(50, 260),
-  gup: optionalNumber(1, 10),
-  dan: optionalNumber(1, 9),
+  grade: z.string().optional().or(z.literal("")),
   gender: z.enum(["male", "female", "other", ""]).optional(),
   nationality: z.string().trim().optional().or(z.literal("")),
   nationalId: z.string().trim().optional().or(z.literal("")),
@@ -45,8 +45,7 @@ function readForm(formData: FormData) {
     birthday: formData.get("birthday"),
     weightKg: formData.get("weightKg"),
     heightCm: formData.get("heightCm"),
-    gup: formData.get("gup"),
-    dan: formData.get("dan"),
+    grade: formData.get("grade"),
     gender: formData.get("gender"),
     nationality: formData.get("nationality"),
     nationalId: formData.get("nationalId"),
@@ -64,8 +63,7 @@ function toRow(data: z.infer<typeof studentSchema>, clubIdOverride: string | nul
     birthday: data.birthday || null,
     weight_kg: data.weightKg,
     height_cm: data.heightCm,
-    gup: data.gup,
-    dan: data.dan,
+    ...parseGradeValue(data.grade),
     gender: data.gender || null,
     nationality: data.nationality || null,
     national_id: data.nationalId || null,

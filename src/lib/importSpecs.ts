@@ -1,5 +1,5 @@
 import { findCountry } from "./countries";
-import { gupFromLabel, BELT_OPTIONS } from "./belts";
+import { parseGradeText, GRADE_LABELS } from "./belts";
 
 /**
  * Column definitions and validation for spreadsheet imports.
@@ -28,8 +28,7 @@ export const STUDENT_COLUMNS: ColumnSpec[] = [
   { header: "Gender", example: "male", note: "male, female or other" },
   { header: "Weight (kg)", example: "62.5" },
   { header: "Height (cm)", example: "170" },
-  { header: "Gup", example: "Blue", note: "Belt colour or 1-10, blank if black belt" },
-  { header: "Dan", example: "", note: "1-9, blank if not black belt" },
+  { header: "Grade", example: "Blue", note: "Belt colour or Dan, e.g. Blue or 2nd Dan" },
   { header: "Nationality", example: "Singapore" },
   { header: "ID number", required: true, example: "S1234567D", note: "Used to detect duplicates" },
   { header: "Passport ID", example: "" },
@@ -165,15 +164,21 @@ export function validateStudentRows(
     const birthday = parseDate(raw["Birthday"] ?? "", "Birthday", row, errors);
     const weight = optionalNumber(raw["Weight (kg)"] ?? "", 1, 300, "Weight (kg)", row, errors);
     const height = optionalNumber(raw["Height (cm)"] ?? "", 50, 260, "Height (cm)", row, errors);
-    // The Gup column takes either the number or the belt colour name, since the
-    // export writes numbers but people type colours.
+    // One Grade column covers colour belts and black belts. Legacy files with
+    // separate Gup/Dan columns still import.
     let gup: number | null = null;
-    const gupRaw = norm(raw["Gup"]);
-    if (gupRaw) {
-      gup = gupFromLabel(gupRaw);
-      if (gup == null) errors.push({ row, column: "Gup", value: gupRaw, problem: `Use 1-10 or a belt name (${BELT_OPTIONS[0]}, ...)` });
+    let dan: number | null = null;
+    const gradeRaw = norm(raw["Grade"]) || norm(raw["Gup"]) || norm(raw["Dan"]);
+    if (gradeRaw) {
+      const parsed = norm(raw["Dan"]) && !norm(raw["Grade"]) && !norm(raw["Gup"])
+        ? { gup: null, dan: Number(norm(raw["Dan"])) || null }
+        : parseGradeText(gradeRaw);
+      gup = parsed.gup;
+      dan = parsed.dan;
+      if (gup == null && dan == null) {
+        errors.push({ row, column: "Grade", value: gradeRaw, problem: `Use a grade name such as ${GRADE_LABELS[0]} or ${GRADE_LABELS[GRADE_LABELS.length - 1]}` });
+      }
     }
-    const dan = optionalNumber(raw["Dan"] ?? "", 1, 9, "Dan", row, errors);
 
     // A duplicate inside the file itself would otherwise import twice.
     if (nationalId) {

@@ -3,7 +3,7 @@
 import { useFormState, useFormStatus } from "react-dom";
 import type { FormState } from "./actions";
 import CountrySelect from "@/components/CountrySelect";
-import BeltSelect from "@/components/BeltSelect";
+import GradeSelect from "@/components/GradeSelect";
 
 type Club = { id: string; name: string };
 
@@ -35,8 +35,7 @@ export default function StudentForm({
     birthday?: string;
     weightKg?: number | null;
     heightCm?: number | null;
-    gup?: number | null;
-    dan?: number | null;
+    grade?: string;
     gender?: string;
     nationality?: string;
     nationalId?: string;
@@ -119,16 +118,10 @@ export default function StudentForm({
           <input id="heightCm" name="heightCm" type="number" step="0.1" min="50" max="260" className="input" defaultValue={defaultValues?.heightCm ?? ""} />
         </div>
         <div>
-          <label className="label" htmlFor="gup">
-            Belt (Gup)
+          <label className="label" htmlFor="grade">
+            Current Grade / Degree
           </label>
-          <BeltSelect id="gup" name="gup" defaultValue={defaultValues?.gup ?? ""} />
-        </div>
-        <div>
-          <label className="label" htmlFor="dan">
-            Dan (1-9)
-          </label>
-          <input id="dan" name="dan" type="number" min="1" max="9" className="input" defaultValue={defaultValues?.dan ?? ""} />
+          <GradeSelect id="grade" name="grade" defaultValue={defaultValues?.grade ?? ""} />
         </div>
         <div>
           <label className="label" htmlFor="nationality">

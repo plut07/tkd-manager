@@ -38,6 +38,20 @@ async function stageRows(supabase: ReturnType<typeof supabaseAdmin>, eventId: st
     if (!idValue || !row.firstName || !row.lastName) continue;
     const { data: existingStudent } = await supabase.from("students").select("id, club_id").or(`national_id.eq.${idValue},passport_id.eq.${idValue}`).maybeSingle();
     if (existingStudent) {
+      // Refresh the details the form just supplied. Only non-empty answers are
+      // written, so a blank box never wipes something we already knew.
+      const refresh: Record<string, unknown> = {};
+      if (row.birthday) refresh.birthday = row.birthday;
+      if (row.gender) refresh.gender = row.gender;
+      if (row.weightKg != null) refresh.weight_kg = row.weightKg;
+      if (row.heightCm != null) refresh.height_cm = row.heightCm;
+      if (row.gup != null || row.dan != null) { refresh.gup = row.gup; refresh.dan = row.dan; }
+      if (row.nationality) refresh.nationality = row.nationality;
+      if (row.email) refresh.email = row.email;
+      if (row.firstName) refresh.first_name = row.firstName.toUpperCase();
+      if (row.lastName) refresh.last_name = row.lastName.toUpperCase();
+      if (Object.keys(refresh).length > 0) await supabase.from("students").update(refresh).eq("id", existingStudent.id);
+
       const { data: alreadyReg } = await supabase.from("event_registrations").select("id").eq("event_id", eventId).eq("student_id", existingStudent.id).maybeSingle();
       if (!alreadyReg) await supabase.from("event_registrations").insert({ event_id: eventId, student_id: existingStudent.id, club_id: existingStudent.club_id, status: "pending" });
       matchedCount++;

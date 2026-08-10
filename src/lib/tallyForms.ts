@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID, createHmac, timingSafeEqual } from "crypto";
-import { BELT_OPTIONS, gupFromLabel } from "./belts";
+import { GRADE_LABELS, parseGradeText } from "./belts";
 
 const TALLY_API = "https://api.tally.so";
 
@@ -41,10 +41,9 @@ function buildFields(options: FormOptions): FieldSpec[] {
     { label: "Gender (male, female or other)", kind: "input", type: "INPUT_TEXT", required: false },
     { label: "Weight (kg)", kind: "input", type: "INPUT_NUMBER", required: false },
     { label: "Height (cm)", kind: "input", type: "INPUT_NUMBER", required: false },
-    ...(BELT_OPTIONS.length > 0
-      ? ([{ label: "Current belt (leave blank if black belt)", kind: "dropdown", required: false, options: BELT_OPTIONS }] as FieldSpec[])
+    ...(GRADE_LABELS.length > 0
+      ? ([{ label: "Current Grade / Degree", kind: "dropdown", required: true, options: GRADE_LABELS }] as FieldSpec[])
       : ([] as FieldSpec[])),
-    { label: "Current Dan (1-9, leave blank if not black belt)", kind: "input", type: "INPUT_NUMBER", required: false },
   ];
 
   // A dropdown with no options is invalid, so fall back to free text if the
@@ -171,8 +170,7 @@ export function parseTallyFields(fields: TallySubmissionField[]): ParsedGradingR
     gender,
     weightKg: num("weight"),
     heightCm: num("height"),
-    gup: gupFromLabel(text("current belt")) ?? num("current gup"),
-    dan: num("current dan"),
+    ...parseGradeText(text("current grade") ?? text("current belt")),
     nationality: text("nationality"),
     nationalId: text("national id"),
     clubName: text("club"),

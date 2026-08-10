@@ -98,7 +98,7 @@ export default async function StudentsPage({
               <th>Age</th>
               <th className="hidden md:table-cell">Weight</th>
               <th className="hidden md:table-cell">Height</th>
-              <th>Belt</th>
+              <th>Grade / Degree</th>
               <th className="hidden lg:table-cell">Nationality</th>
               <th className="hidden lg:table-cell">ID / Passport</th>
               <th>Status</th>

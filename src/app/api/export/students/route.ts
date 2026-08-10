@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { buildWorkbook, xlsxHeaders } from "@/lib/spreadsheet";
 import { STUDENT_COLUMNS } from "@/lib/importSpecs";
+import { gradeLabel } from "@/lib/belts";
 
 // Club Users get their own club only, matching what they see on screen.
 export async function GET() {
@@ -27,8 +28,7 @@ export async function GET() {
     s.gender ?? "",
     s.weight_kg ?? "",
     s.height_cm ?? "",
-    s.gup ?? "",
-    s.dan ?? "",
+    gradeLabel(s.gup ?? null, s.dan ?? null).replace(" (Black belt)", ""),
     s.nationality ?? "",
     s.national_id ?? "",
     s.passport_id ?? "",
