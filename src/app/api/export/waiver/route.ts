@@ -3,8 +3,6 @@ import { requirePermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { buildWaiverPdf, type WaiverParticipant } from "@/lib/waiverPdf";
-import { downloadTemplate, fillTemplate } from "@/lib/pdfTemplates";
-import { type TemplateData } from "@/lib/templateFields";
 
 /**
  * Waiver form as a PDF.
@@ -22,7 +20,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = supabaseAdmin();
   const select =
-    "id, event_id, clubs(name, instructor_name), students(first_name, last_name, birthday, gender, gup, dan, national_id, passport_id)";
+    "id, event_id, clubs(name), students(first_name, last_name, birthday, gender, gup, dan, national_id, passport_id)";
 
   let rows: any[] = [];
   let eventId = eventIdParam;
@@ -55,58 +53,6 @@ export async function GET(request: NextRequest) {
     gup: r.students?.gup ?? null,
     dan: r.students?.dan ?? null,
   }));
-
-  // An uploaded template wins over the built-in layout.
-  const { data: template } = await supabase
-    .from("event_form_templates")
-    .select("id, storage_path")
-    .eq("event_id", eventId as string)
-    .eq("is_default", true)
-    .maybeSingle();
-
-  const eventInfo = {
-    name: (event as any).name,
-    organizer: (event as any).clubs?.name ?? null,
-    venue: (event as any).venue ?? null,
-    venueAddress: (event as any).venue_address ?? null,
-    country: (event as any).country ?? null,
-    startDate: (event as any).start_date ?? null,
-    endDate: (event as any).end_date ?? null,
-  };
-
-  if (template) {
-    const { data: fields } = await supabase
-      .from("event_form_fields")
-      .select("field_key, page, x, y, width, height, font_size, align")
-      .eq("template_id", template.id);
-
-    if ((fields ?? []).length > 0) {
-      const bytes = await downloadTemplate(template.storage_path);
-      const rowsForTemplate: TemplateData[] = rows.map((r) => ({
-        participant: {
-          firstName: r.students?.first_name ?? null,
-          lastName: r.students?.last_name ?? null,
-          nationalId: r.students?.national_id ?? null,
-          passportId: r.students?.passport_id ?? null,
-          birthday: r.students?.birthday ?? null,
-          gender: r.students?.gender ?? null,
-          clubName: r.clubs?.name ?? null,
-          instructor: r.clubs?.instructor_name ?? null,
-          gup: r.students?.gup ?? null,
-          dan: r.students?.dan ?? null,
-          email: r.students?.email ?? null,
-          nationality: r.students?.nationality ?? null,
-          weightKg: r.students?.weight_kg ?? null,
-          heightCm: r.students?.height_cm ?? null,
-        },
-        event: eventInfo,
-      }));
-      const filled = await fillTemplate(bytes, (fields ?? []) as any, rowsForTemplate);
-      return new NextResponse(new Uint8Array(filled), {
-        headers: { "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="form.pdf"`, "Cache-Control": "no-store" },
-      });
-    }
-  }
 
   const pdf = await buildWaiverPdf(
     {
