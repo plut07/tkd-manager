@@ -22,7 +22,7 @@ function age(birthday: string | null) {
 export default async function StudentsPage({
   searchParams,
 }: {
-  searchParams: { q?: string; club?: string | string[]; gender?: string | string[]; status?: string | string[]; sort?: string; dir?: string };
+  searchParams: { q?: string; club?: string; gender?: string; status?: string; sort?: string; dir?: string };
 }) {
   const session = await requirePermission(PERMISSIONS.STUDENT_VIEW);
   const supabase = supabaseAdmin();
@@ -30,10 +30,9 @@ export default async function StudentsPage({
 
   // Filters that allow several values can't be expressed by the simple query
   // builder, so the query stays broad and the narrowing happens below.
-  const asList = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v ? [v] : []);
-  const clubFilter = asList(searchParams.club);
-  const genderFilter = asList(searchParams.gender);
-  const statusFilter = asList(searchParams.status);
+  const clubFilter = (searchParams.club ?? "").trim();
+  const genderFilter = (searchParams.gender ?? "").trim();
+  const statusFilter = (searchParams.status ?? "all").trim();
   const q = (searchParams.q ?? "").trim().toLowerCase();
 
   let query = supabase
@@ -44,9 +43,10 @@ export default async function StudentsPage({
   const { data: allStudents } = await query;
 
   const students = (allStudents ?? []).filter((s: any) => {
-    if (clubFilter.length > 0 && !clubFilter.includes(s.clubs?.id)) return false;
-    if (genderFilter.length > 0 && !genderFilter.includes(s.gender ?? "")) return false;
-    if (statusFilter.length > 0 && !statusFilter.includes(s.active ? "active" : "inactive")) return false;
+    if (clubFilter && s.clubs?.id !== clubFilter) return false;
+    if (genderFilter && (s.gender ?? "") !== genderFilter) return false;
+    if (statusFilter === "active" && !s.active) return false;
+    if (statusFilter === "inactive" && s.active) return false;
     if (q) {
       const haystack = `${s.full_name ?? ""} ${s.national_id ?? ""} ${s.club_number ?? ""}`.toLowerCase();
       if (!haystack.includes(q)) return false;
@@ -76,9 +76,9 @@ export default async function StudentsPage({
   const sortHref = (key: string) => {
     const params = new URLSearchParams();
     if (searchParams.q) params.set("q", searchParams.q);
-    clubFilter.forEach((c) => params.append("club", c));
-    genderFilter.forEach((g) => params.append("gender", g));
-    statusFilter.forEach((st) => params.append("status", st));
+    if (clubFilter) params.set("club", clubFilter);
+    if (genderFilter) params.set("gender", genderFilter);
+    if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
     params.set("sort", key);
     params.set("dir", sort === key && dir === "asc" ? "desc" : "asc");
     return `/students?${params.toString()}`;
@@ -115,24 +115,27 @@ export default async function StudentsPage({
         </div>
       </div>
 
-      <form className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5" method="get">
+      <form method="get" className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
         <input name="q" defaultValue={searchParams.q} placeholder="Search by name, No. or NRIC..." className="input lg:col-span-2" />
         {!scope && clubs && (
-          <select name="club" multiple defaultValue={clubFilter} className="input h-24" title="Hold Ctrl/Cmd to pick several">
+          <select name="club" defaultValue={clubFilter} className="input">
+            <option value="">All clubs</option>
             {clubs.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
           </select>
         )}
-        <select name="gender" multiple defaultValue={genderFilter} className="input h-24" title="Hold Ctrl/Cmd to pick several">
+        <select name="gender" defaultValue={genderFilter} className="input">
+          <option value="">All genders</option>
           <option value="male">Male</option>
           <option value="female">Female</option>
           <option value="other">Other</option>
         </select>
-        <select name="status" multiple defaultValue={statusFilter} className="input h-24" title="Hold Ctrl/Cmd to pick several">
+        <select name="status" defaultValue={statusFilter} className="input">
+          <option value="all">All statuses</option>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
         </select>
         <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-5">
-          <button type="submit" className="btn-secondary">Filter</button>
+          <button type="submit" className="btn-secondary">Search</button>
           <Link href="/students" className="btn-secondary">Reset</Link>
           <span className="ml-auto self-center text-sm text-gray-500">{students.length} student{students.length === 1 ? "" : "s"}</span>
         </div>

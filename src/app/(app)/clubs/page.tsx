@@ -8,10 +8,34 @@ import ClubRow from "@/components/ClubRow";
 import CountryFlag from "@/components/CountryFlag";
 import ClubPhone from "@/components/ClubPhone";
 
-export default async function ClubsPage() {
+export default async function ClubsPage({ searchParams }: { searchParams: { q?: string; country?: string; status?: string; members?: string } }) {
   await requireSuperAdmin();
   const supabase = supabaseAdmin();
-  const { data: clubs } = await supabase.from("clubs").select("*").order("name");
+  const { data: allClubs } = await supabase.from("clubs").select("*").order("name");
+
+  // Member counts drive the "has students" filter and are useful on screen.
+  const { data: studentRows } = await supabase.from("students").select("club_id");
+  const memberCount = new Map<string, number>();
+  (studentRows ?? []).forEach((r: any) => memberCount.set(r.club_id, (memberCount.get(r.club_id) ?? 0) + 1));
+
+  const q = (searchParams.q ?? "").trim().toLowerCase();
+  const countryFilter = (searchParams.country ?? "").trim();
+  const statusFilter = (searchParams.status ?? "all").trim();
+  const membersFilter = (searchParams.members ?? "all").trim();
+
+  const clubs = (allClubs ?? []).filter((c: any) => {
+    if (q && !`${c.name ?? ""} ${c.instructor_name ?? ""}`.toLowerCase().includes(q)) return false;
+    if (countryFilter && c.country !== countryFilter) return false;
+    if (statusFilter === "active" && !c.active) return false;
+    if (statusFilter === "inactive" && c.active) return false;
+    const count = memberCount.get(c.id) ?? 0;
+    if (membersFilter === "with" && count === 0) return false;
+    if (membersFilter === "without" && count > 0) return false;
+    return true;
+  });
+
+  // Only countries actually in use, so the list stays short.
+  const usedCountries = Array.from(new Set((allClubs ?? []).map((c: any) => c.country).filter(Boolean))).sort();
 
   return (
     <div>
@@ -26,12 +50,36 @@ export default async function ClubsPage() {
         </div>
       </div>
 
-      <div className="card mt-6 overflow-x-auto">
+      <form method="get" className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <input name="q" defaultValue={searchParams.q} placeholder="Search club or instructor..." className="input lg:col-span-2" />
+        <select name="country" defaultValue={countryFilter} className="input">
+          <option value="">All countries</option>
+          {usedCountries.map((c) => (<option key={String(c)} value={String(c)}>{String(c)}</option>))}
+        </select>
+        <select name="status" defaultValue={statusFilter} className="input">
+          <option value="all">All statuses</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+        <select name="members" defaultValue={membersFilter} className="input">
+          <option value="all">All clubs</option>
+          <option value="with">Has students</option>
+          <option value="without">No students</option>
+        </select>
+        <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-5">
+          <button type="submit" className="btn-secondary">Search</button>
+          <Link href="/clubs" className="btn-secondary">Reset</Link>
+          <span className="ml-auto self-center text-sm text-gray-500">{clubs.length} club{clubs.length === 1 ? "" : "s"}</span>
+        </div>
+      </form>
+
+      <div className="card mt-4 overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
               <th>Name</th>
-              <th>City</th>
+              <th>Instructor</th>
+              <th className="hidden md:table-cell">City</th>
               <th>Country</th>
               <th>Contact</th>
               <th>Status</th>
@@ -39,7 +87,7 @@ export default async function ClubsPage() {
             </tr>
           </thead>
           <tbody>
-            {(clubs ?? []).map((c) => (
+            {clubs.map((c: any) => (
               <ClubRow
                 key={c.id}
                 club={c}
@@ -54,7 +102,7 @@ export default async function ClubsPage() {
                 deleteButton={<DeleteButton action={deleteClub} fieldName="clubId" fieldValue={c.id} confirmLabel={`Delete club "${c.name}"?`} />}
               />
             ))}
-            {(clubs ?? []).length === 0 && (
+            {clubs.length === 0 && (
               <tr>
                 <td colSpan={7} className="py-6 text-center text-gray-400">
                   No clubs yet — add one below.

@@ -51,9 +51,12 @@ export async function updateClub(formData: FormData) {
   });
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid club.");
   const d = parsed.data;
+  // An unticked checkbox sends nothing, so absence means inactive.
+  const active = formData.get("active") === "on";
   const { error } = await supabaseAdmin().from("clubs").update({
     name: d.name, instructor_name: d.instructorName || null, city: d.city || null,
     country: d.country || null, contact_email: d.contactEmail || null, contact_phone: d.contactPhone || null,
+    active,
   }).eq("id", clubId);
   if (error) throw new Error(error.code === "23505" ? "A club with that name already exists." : "Could not update club.");
   revalidatePath("/clubs");

@@ -63,6 +63,10 @@ export default function ClubRow({
           <input name="contactEmail" type="email" defaultValue={club.contact_email ?? ""} placeholder="Contact email"
             pattern="[^@\s]+@[^@\s]+\.[A-Za-z]{2,}" title="Must look like name@example.com" className="input" />
           <input name="contactPhone" defaultValue={club.contact_phone ?? ""} placeholder="Contact phone" className="input" />
+          <label className="flex items-center gap-2 self-center text-sm text-gray-700">
+            <input type="checkbox" name="active" defaultChecked={club.active} className="h-4 w-4 rounded border-gray-300" />
+            Active
+          </label>
           <div className="flex gap-2 sm:col-span-2 lg:col-span-6">
             <button type="submit" className="btn-primary">Save</button>
             <button type="button" className="btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
