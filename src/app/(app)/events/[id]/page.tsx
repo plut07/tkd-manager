@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import DeleteButton from "@/components/DeleteButton";
 import BeltBadge from "@/components/BeltBadge";
+import TemplateTab from "@/components/TemplateTab";
 
 import CategoryForm from "../CategoryForm";
 import BracketView from "../BracketView";
@@ -25,6 +26,8 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const tab =
     searchParams.tab === "entries"
       ? "entries"
+      : searchParams.tab === "template"
+        ? "template"
       : isCompetition && (searchParams.tab === "categories" || searchParams.tab === "draws")
         ? searchParams.tab
         : isGrading && searchParams.tab === "grading"
@@ -49,6 +52,13 @@ export default async function EventDetailPage({ params, searchParams }: { params
         .select("id, status, competition_number, registered_at, clubs(name), students(first_name, last_name, birthday, gender, gup, dan, national_id, passport_id), event_categories(name)")
         .eq("event_id", event.id)
         .order("registered_at")
+    : { data: null };
+
+  const { data: template } = tab === "template"
+    ? await supabase.from("event_form_templates").select("id, name, page_count, page_width, page_height").eq("event_id", event.id).eq("is_default", true).maybeSingle()
+    : { data: null };
+  const { data: templateFields } = template
+    ? await supabase.from("event_form_fields").select("field_key, page, x, y, width, height, font_size, align").eq("template_id", template.id)
     : { data: null };
 
   const bracketStatusMap = new Map<string, string>();
@@ -100,6 +110,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
         {isCompetition && (<Link href={`/events/${event.id}?tab=categories`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "categories" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Categories & divisions</Link>)}
         {isCompetition && (<Link href={`/events/${event.id}?tab=draws`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "draws" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Draws</Link>)}
         <Link href={`/events/${event.id}?tab=entries`} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "entries" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Registered students</Link>
+        {canEdit && (<Link href={`/events/${event.id}?tab=template`} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "template" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Form template</Link>)}
         {isGrading && (<Link href={`/events/${event.id}?tab=grading`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "grading" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Grading registration</Link>)}
       </div>
       {tab === "info" ? (
@@ -207,6 +218,8 @@ export default async function EventDetailPage({ params, searchParams }: { params
             </table>
           </div>
         </div>
+      ) : tab === "template" ? (
+        <TemplateTab eventId={event.id} template={template as any} fields={templateFields ?? []} canEdit={canEditNow} />
       ) : tab === "draws" ? (
         <div className="space-y-6">
           <div className="card p-6">

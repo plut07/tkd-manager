@@ -15,7 +15,7 @@ export default function TemplateTab({
   canEdit,
 }: {
   eventId: string;
-  template: { id: string; name: string; page_count: number } | null;
+  template: { id: string; name: string; page_count: number; page_width: number; page_height: number } | null;
   fields: any[];
   canEdit: boolean;
 }) {
@@ -54,6 +54,8 @@ export default function TemplateTab({
               templateId={template.id}
               eventId={eventId}
               pageCount={template.page_count}
+              pageWidth={Number(template.page_width)}
+              pageHeight={Number(template.page_height)}
               initialFields={fields.map((f, i) => ({
                 id: `saved${i}`,
                 field_key: f.field_key,

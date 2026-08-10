@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { TEMPLATE_FIELDS } from "@/lib/templateFields";
 import { saveTemplateFields } from "@/app/(app)/events/templateActions";
 
@@ -23,52 +23,29 @@ export default function TemplateDesigner({
   templateId,
   eventId,
   pageCount,
+  pageWidth,
+  pageHeight,
   initialFields,
 }: {
   templateId: string;
   eventId: string;
   pageCount: number;
+  pageWidth: number;
+  pageHeight: number;
   initialFields: Box[];
 }) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [page, setPage] = useState(1);
   const [boxes, setBoxes] = useState<Box[]>(initialFields);
   const [selected, setSelected] = useState<string | null>(null);
   const [drawing, setDrawing] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [status, setStatus] = useState<string>("");
-  const [rendering, setRendering] = useState(true);
 
-  // ---- render the PDF page onto a canvas
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setRendering(true);
-      try {
-        const pdfjs: any = await import("pdfjs-dist");
-        pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
-        const doc = await pdfjs.getDocument(`/api/templates/${templateId}/file`).promise;
-        if (cancelled) return;
-        const p = await doc.getPage(page);
-        const viewport = p.getViewport({ scale: 1 });
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const width = canvas.parentElement?.clientWidth ?? 800;
-        const scale = width / viewport.width;
-        const scaled = p.getViewport({ scale });
-        canvas.width = scaled.width;
-        canvas.height = scaled.height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        await p.render({ canvasContext: ctx, viewport: scaled }).promise;
-      } catch {
-        setStatus("The preview could not be rendered, but you can still position fields by typing values.");
-      } finally {
-        if (!cancelled) setRendering(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [templateId, page]);
+  // The page is shown in the browser's own PDF viewer rather than a JavaScript
+  // renderer — no extra dependency, and every browser already does this well.
+  // The container is locked to the page's aspect ratio and the viewer is asked
+  // to fit the page, so the overlay lines up with what's underneath.
+  const aspect = pageWidth > 0 && pageHeight > 0 ? pageWidth / pageHeight : 595.28 / 841.89;
 
   const rect = () => surfaceRef.current?.getBoundingClientRect();
 
@@ -153,43 +130,54 @@ export default function TemplateDesigner({
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="overflow-hidden rounded-md border border-gray-200 bg-gray-50">
-          <div ref={surfaceRef} className="relative select-none" onMouseDown={onMouseDown} style={{ cursor: "crosshair" }}>
-            <canvas ref={canvasRef} className="block w-full" />
-            {rendering && <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-sm text-gray-500">Loading page...</div>}
+          <div className="relative w-full" style={{ aspectRatio: String(aspect) }}>
+            <iframe
+              key={`${templateId}-${page}`}
+              title="Form template preview"
+              src={`/api/templates/${templateId}/file#page=${page}&toolbar=0&navpanes=0&scrollbar=0&view=Fit`}
+              className="absolute inset-0 h-full w-full border-0"
+            />
+            {/* Transparent layer above the viewer catches the drawing gestures. */}
+            <div
+              ref={surfaceRef}
+              className="absolute inset-0 select-none"
+              onMouseDown={onMouseDown}
+              style={{ cursor: "crosshair" }}
+            >
+              {onPage.map((b) => (
+                <div
+                  key={b.id}
+                  data-box="1"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    setSelected(b.id);
+                    const startPoint = toFraction(e.clientX, e.clientY);
+                    const origin = { x: b.x, y: b.y };
+                    const move = (ev: MouseEvent) => {
+                      const now = toFraction(ev.clientX, ev.clientY);
+                      update(b.id, { x: clamp(origin.x + (now.x - startPoint.x)), y: clamp(origin.y + (now.y - startPoint.y)) });
+                    };
+                    const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+                    window.addEventListener("mousemove", move);
+                    window.addEventListener("mouseup", up);
+                  }}
+                  className={`absolute flex items-center overflow-hidden rounded-sm border-2 px-1 text-[10px] ${
+                    selected === b.id ? "border-brand-600 bg-brand-600/30" : "border-brand-400/80 bg-brand-400/20"
+                  }`}
+                  style={{ left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.width * 100}%`, height: `${b.height * 100}%`, cursor: "move" }}
+                  title={labelFor(b.field_key)}
+                >
+                  <span className="truncate text-brand-900">{labelFor(b.field_key)}</span>
+                </div>
+              ))}
 
-            {onPage.map((b) => (
-              <div
-                key={b.id}
-                data-box="1"
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  setSelected(b.id);
-                  const startPoint = toFraction(e.clientX, e.clientY);
-                  const origin = { x: b.x, y: b.y };
-                  const move = (ev: MouseEvent) => {
-                    const now = toFraction(ev.clientX, ev.clientY);
-                    update(b.id, { x: clamp(origin.x + (now.x - startPoint.x)), y: clamp(origin.y + (now.y - startPoint.y)) });
-                  };
-                  const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
-                  window.addEventListener("mousemove", move);
-                  window.addEventListener("mouseup", up);
-                }}
-                className={`absolute flex items-center overflow-hidden rounded-sm border-2 px-1 text-[10px] ${
-                  selected === b.id ? "border-brand-600 bg-brand-600/20" : "border-brand-400/70 bg-brand-400/10"
-                }`}
-                style={{ left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.width * 100}%`, height: `${b.height * 100}%`, cursor: "move" }}
-                title={labelFor(b.field_key)}
-              >
-                <span className="truncate text-brand-900">{labelFor(b.field_key)}</span>
-              </div>
-            ))}
-
-            {drawing && (
-              <div
-                className="pointer-events-none absolute rounded-sm border-2 border-dashed border-brand-600 bg-brand-600/10"
-                style={{ left: `${drawing.x * 100}%`, top: `${drawing.y * 100}%`, width: `${drawing.w * 100}%`, height: `${drawing.h * 100}%` }}
-              />
-            )}
+              {drawing && (
+                <div
+                  className="pointer-events-none absolute rounded-sm border-2 border-dashed border-brand-600 bg-brand-600/10"
+                  style={{ left: `${drawing.x * 100}%`, top: `${drawing.y * 100}%`, width: `${drawing.w * 100}%`, height: `${drawing.h * 100}%` }}
+                />
+              )}
+            </div>
           </div>
         </div>
 
