@@ -161,3 +161,63 @@ export async function togglePermission(formData: FormData) {
   }
   revalidatePath("/users/roles");
 }
+
+
+/**
+ * Approve a pending access request: create the account from the details the
+ * person submitted, reusing the password they already chose. Defaults to Club
+ * User unless the reviewer picks another role.
+ */
+export async function approveAccessRequest(formData: FormData) {
+  const session = await requireSuperAdmin();
+  const requestId = String(formData.get("requestId") || "");
+  const roleId = String(formData.get("roleId") || "");
+  const clubId = String(formData.get("clubId") || "");
+  if (!requestId || !roleId) throw new Error("Choose a role before approving.");
+
+  const supabase = supabaseAdmin();
+  const { data: request } = await supabase.from("access_requests").select("*").eq("id", requestId).maybeSingle();
+  if (!request || request.status !== "pending") throw new Error("This request is no longer pending.");
+
+  const { data: role } = await supabase.from("roles").select("code").eq("id", roleId).maybeSingle();
+  if (role?.code === "club_admin" && !clubId && !request.club_id) {
+    throw new Error("Club Users must be assigned a club.");
+  }
+
+  const { data: created, error } = await supabase
+    .from("app_users")
+    .insert({
+      username: request.username,
+      password_hash: request.password_hash,
+      full_name: request.full_name,
+      email: request.email,
+      role_id: roleId,
+      club_id: clubId || request.club_id || null,
+      active: true,
+    })
+    .select("id")
+    .single();
+
+  if (error || !created) {
+    throw new Error(error?.code === "23505" ? "That User ID has been taken since the request was made." : "Could not create the account.");
+  }
+
+  await supabase
+    .from("access_requests")
+    .update({ status: "approved", reviewed_by: session.sub, reviewed_at: new Date().toISOString(), created_user_id: created.id })
+    .eq("id", requestId);
+
+  revalidatePath("/users");
+}
+
+export async function rejectAccessRequest(formData: FormData) {
+  const session = await requireSuperAdmin();
+  const requestId = String(formData.get("requestId") || "");
+  if (!requestId) return;
+  await supabaseAdmin()
+    .from("access_requests")
+    .update({ status: "rejected", reviewed_by: session.sub, reviewed_at: new Date().toISOString() })
+    .eq("id", requestId)
+    .eq("status", "pending");
+  revalidatePath("/users");
+}

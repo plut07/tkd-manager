@@ -14,6 +14,9 @@ import { waiverAge } from "./eligibility";
 
 export type WaiverParticipant = {
   fullName: string | null;
+  signaturePng?: string | null;
+  signedName?: string | null;
+  signedAt?: string | null;
   nationalId: string | null;
   birthday: string | null;
   gender: string | null;
@@ -33,6 +36,8 @@ export type WaiverEvent = {
 };
 
 const A4: [number, number] = [595.28, 841.89];
+// Vertical position of the signature line, shared by the layout and the image.
+const SIGNATURE_BASELINE = 96;
 const MARGIN = 48;
 const INK = rgb(0.07, 0.09, 0.15);
 const LINE = rgb(0.45, 0.48, 0.55);
@@ -73,7 +78,22 @@ export async function buildWaiverPdf(event: WaiverEvent, participants: WaiverPar
 
   const list = participants.length > 0 ? participants : [null];
   for (const participant of list) {
-    drawWaiverPage(pdf.addPage(A4), event, participant, font, bold);
+    const page = pdf.addPage(A4);
+    drawWaiverPage(page, event, participant, font, bold);
+
+    // An e-signature is drawn into the signature box; without one the box stays
+    // blank for signing by hand.
+    if (participant?.signaturePng?.startsWith("data:image/png;base64,")) {
+      try {
+        const png = await pdf.embedPng(participant.signaturePng);
+        const boxW = 300;
+        const x = (A4[0] - boxW) / 2 + 12;
+        const scale = Math.min((boxW - 24) / png.width, 42 / png.height);
+        page.drawImage(png, { x, y: SIGNATURE_BASELINE, width: png.width * scale, height: png.height * scale });
+      } catch {
+        // A corrupt image must not stop the rest of the form printing.
+      }
+    }
   }
   return pdf.save();
 }

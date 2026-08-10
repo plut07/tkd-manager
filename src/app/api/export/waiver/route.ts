@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = supabaseAdmin();
   const select =
-    "id, event_id, clubs(name, instructor_name), students(full_name, birthday, gender, gup, dan, national_id)";
+    "id, event_id, waiver_token, clubs(name, instructor_name), students(full_name, birthday, gender, gup, dan, national_id), waiver_signatures(signed_name, signature_png, signed_at)";
 
   let rows: any[] = [];
   let eventId = eventIdParam;
@@ -46,6 +46,9 @@ export async function GET(request: NextRequest) {
 
   const participants: WaiverParticipant[] = rows.map((r) => ({
     fullName: r.students?.full_name ?? null,
+    signaturePng: r.waiver_signatures?.signature_png ?? null,
+    signedName: r.waiver_signatures?.signed_name ?? null,
+    signedAt: r.waiver_signatures?.signed_at ?? null,
     nationalId: r.students?.national_id ?? null,
     birthday: r.students?.birthday ?? null,
     gender: r.students?.gender ?? null,

@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import DeleteButton from "@/components/DeleteButton";
 import BeltBadge from "@/components/BeltBadge";
+import CopyLinkButton from "@/components/CopyLinkButton";
 import TemplateTab from "@/components/TemplateTab";
 
 import CategoryForm from "../CategoryForm";
@@ -39,6 +40,8 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const { count: confirmedCount } = await supabase.from("event_registrations").select("id", { count: "exact", head: true }).eq("event_id", event.id).eq("status", "confirmed");
   const canEdit = hasPermission(session, PERMISSIONS.EVENT_EDIT);
   const canDelete = hasPermission(session, PERMISSIONS.EVENT_DELETE);
+  // Signing links are shared outside the app, so they need the full address.
+  const baseUrl = (process.env.APP_BASE_URL ?? "").replace(/\/$/, "");
   // Once an event has finished it is read-only for everyone but a Super Admin,
   // so entries and results can't be altered after the fact.
   const isFinished = effectiveEventStatus(event) === "completed";
@@ -49,7 +52,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const { data: entries } = tab === "entries"
     ? await supabase
         .from("event_registrations")
-        .select("id, status, competition_number, registered_at, clubs(name), students(full_name, birthday, gender, gup, dan, national_id, club_number), event_categories(name)")
+        .select("id, status, competition_number, registered_at, waiver_token, clubs(name), students(full_name, birthday, gender, gup, dan, national_id, club_number), event_categories(name), waiver_signatures(signed_name, signed_at)")
         .eq("event_id", event.id)
         .order("registered_at")
     : { data: null };
@@ -191,6 +194,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
                   <th className="hidden md:table-cell">Gender</th>
                   <th className="hidden md:table-cell">Age</th>
                   <th className="hidden lg:table-cell">Category</th>
+                  <th>Waiver</th>
                   <th>Status</th><th></th>
                 </tr>
               </thead>
@@ -205,8 +209,17 @@ export default async function EventDetailPage({ params, searchParams }: { params
                     <td className="hidden capitalize md:table-cell">{r.students?.gender ?? "—"}</td>
                     <td className="hidden md:table-cell">{waiverAge(r.students?.birthday ?? null) || "—"}</td>
                     <td className="hidden lg:table-cell">{r.event_categories?.name ?? "—"}</td>
+                    <td>
+                      {r.waiver_signatures ? (
+                        <span className="badge bg-green-100 text-green-700" title={`Signed by ${r.waiver_signatures.signed_name}`}>Signed</span>
+                      ) : (
+                        <span className="badge bg-gray-100 text-gray-500">Not signed</span>
+                      )}
+                    </td>
                     <td><span className={`badge ${r.status === "confirmed" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{r.status}</span></td>
                     <td className="whitespace-nowrap text-right">
+                      <a href={`/public/waiver/${r.waiver_token}`} target="_blank" rel="noopener noreferrer" className="mr-3 text-sm font-medium text-brand-700 hover:underline">Sign</a>
+                      <span className="mr-3"><CopyLinkButton url={`${baseUrl}/public/waiver/${r.waiver_token}`} /></span>
                       <a href={`/api/export/waiver?registrationId=${r.id}`} target="_blank" rel="noopener noreferrer" className="mr-3 text-sm font-medium text-brand-700 hover:underline">Waiver PDF</a>
                       {canEditNow && (
                         <DeleteButton
@@ -222,7 +235,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
                   </tr>
                 ))}
                 {(entries ?? []).length === 0 && (
-                  <tr><td colSpan={10} className="py-6 text-center text-gray-400">Nobody has registered for this event yet.</td></tr>
+                  <tr><td colSpan={11} className="py-6 text-center text-gray-400">Nobody has registered for this event yet.</td></tr>
                 )}
               </tbody>
             </table>

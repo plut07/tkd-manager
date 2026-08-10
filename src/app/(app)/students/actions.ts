@@ -143,17 +143,8 @@ export async function deleteStudent(formData: FormData) {
     );
   }
 
-  // Approved grading candidates point back at the student they created.
-  const { count: candidateCount } = await supabase
-    .from("grading_candidates")
-    .select("id", { count: "exact", head: true })
-    .eq("created_student_id", studentId);
-  if ((candidateCount ?? 0) > 0) {
-    throw new Error(
-      "This student was created from a grading registration, so their record is linked to that submission. " +
-        "Set them to Inactive instead of deleting.",
-    );
-  }
+  // The grading candidate that created this student keeps its record but
+  // releases its link (see migration 0017), so it no longer blocks deletion.
 
   const { error } = await supabase.from("students").delete().eq("id", studentId);
   if (error) throw new Error("This student could not be deleted because other records still refer to them.");

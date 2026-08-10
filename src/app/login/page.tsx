@@ -16,7 +16,11 @@ export default function LoginPage({
         <div className="card p-6">
           <LoginForm next={searchParams?.next} />
         </div>
-        <p className="mt-4 text-center text-sm text-white/80">
+        <p className="mt-3 text-center text-sm text-white/80">
+          Need an account?{" "}
+          <Link href="/public/register" className="font-medium text-white hover:underline">Request access</Link>
+        </p>
+        <p className="mt-2 text-center text-sm text-white/80">
           <Link href="/public/events" className="font-medium text-white hover:underline">
             View upcoming events
           </Link>{" "}

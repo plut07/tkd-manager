@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { EVENT_TYPE_LABELS } from "@/lib/eventCategories";
-import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange } from "@/lib/eventStatus";
+import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange, isActiveEvent } from "@/lib/eventStatus";
 import CountryFlag from "@/components/CountryFlag";
 
 // These pages read live data but never touch cookies, so Next would otherwise
@@ -31,7 +31,9 @@ export default async function PublicEventsPage() {
       </p>
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {(events ?? []).map((e, i) => (
+        {/* Signed-out visitors see only what is still to come or running now;
+              finished events are visible once signed in. */}
+        {(events ?? []).filter((e: any) => isActiveEvent(e)).map((e: any, i: number) => (
           <Link
             key={e.id}
             href={`/public/events/${e.id}`}
@@ -51,7 +53,7 @@ export default async function PublicEventsPage() {
             
           </Link>
         ))}
-        {(events ?? []).length === 0 && (
+        {(events ?? []).filter((e: any) => isActiveEvent(e)).length === 0 && (
           <p className="col-span-full py-10 text-center text-gray-400">No published events yet.</p>
         )}
       </div>

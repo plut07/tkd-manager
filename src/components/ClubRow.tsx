@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import CountryFlag from "./CountryFlag";
 import ClubPhone from "./ClubPhone";
 import { COUNTRIES_BY_CONTINENT } from "@/lib/countries";
@@ -22,6 +23,28 @@ export default function ClubRow({
   toggleButton: React.ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const router = useRouter();
+
+  /**
+   * The row keeps its own open/closed state, so after the server action returns
+   * we have to close it and pull fresh data — otherwise the form sits there
+   * looking like nothing happened even though the save worked.
+   */
+  function handleSave(formData: FormData) {
+    startTransition(async () => {
+      try {
+        await updateAction(formData);
+        setEditing(false);
+        setSaved(true);
+        router.refresh();
+        setTimeout(() => setSaved(false), 2500);
+      } catch {
+        // A thrown error is surfaced by the page's error boundary.
+      }
+    });
+  }
 
   if (!editing) {
     return (
@@ -37,6 +60,7 @@ export default function ClubRow({
         </td>
         <td>{toggleButton}</td>
         <td className="whitespace-nowrap text-right">
+          {saved && <span className="mr-3 text-sm font-medium text-green-700">Saved</span>}
           <button type="button" onClick={() => setEditing(true)} className="mr-3 text-sm font-medium text-brand-700 hover:underline">Edit</button>
           {deleteButton}
         </td>
@@ -47,7 +71,7 @@ export default function ClubRow({
   return (
     <tr className="bg-brand-50/40">
       <td colSpan={7} className="p-3">
-        <form action={updateAction} className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6">
+        <form action={handleSave} className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6">
           <input type="hidden" name="clubId" value={club.id} />
           <input name="name" defaultValue={club.name ?? ""} placeholder="Club name" className="input" required />
           <input name="instructorName" defaultValue={club.instructor_name ?? ""} placeholder="Instructor name" className="input" />
@@ -68,7 +92,7 @@ export default function ClubRow({
             Active
           </label>
           <div className="flex gap-2 sm:col-span-2 lg:col-span-6">
-            <button type="submit" className="btn-primary">Save</button>
+            <button type="submit" className="btn-primary" disabled={pending}>{pending ? "Saving..." : "Save"}</button>
             <button type="button" className="btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
           </div>
         </form>
