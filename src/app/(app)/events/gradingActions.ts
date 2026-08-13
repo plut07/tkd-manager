@@ -33,18 +33,83 @@ export async function createGradingForm(formData: FormData) {
   if (error) throw new Error("The Tally form was created, but saving it to the event failed. Please try again.");
   revalidatePath(`/events/${eventId}`);
 }
+/** Compare names ignoring case, spacing and punctuation: "KIN HOU.MA" = "kin hou ma". */
+function sameName(a: string | null | undefined, b: string | null | undefined): boolean {
+  const squash = (s: string | null | undefined) => (s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const left = squash(a);
+  return left.length > 0 && left === squash(b);
+}
+
 async function stageRows(supabase: ReturnType<typeof supabaseAdmin>, eventId: string, rows: ParsedGradingRow[], importedBy: string | null) {
-  const { data: existingCandidates } = await supabase.from("grading_candidates").select("national_id").eq("event_id", eventId);
-  const alreadyStaged = new Set((existingCandidates ?? []).map((r) => normalize(r.national_id)));
+  // Only entries still waiting on a decision block re-staging. Once a candidate
+  // has been approved or rejected, a later submission is looked at afresh.
+  const { data: existingCandidates } = await supabase.from("grading_candidates").select("national_id, status").eq("event_id", eventId);
+  const alreadyStaged = new Set(
+    (existingCandidates ?? []).filter((r) => r.status === "pending").map((r) => normalize(r.national_id)),
+  );
   const { data: clubs } = await supabase.from("clubs").select("id, name").eq("active", true);
   const clubByName = new Map((clubs ?? []).map((c) => [normalize(c.name), c.id]));
   let matchedCount = 0;
   let newCount = 0;
   const newCandidateRows: Record<string, unknown>[] = [];
+
+  const stage = (row: ParsedGradingRow, note: string | null, clubId: string | null) => {
+    newCandidateRows.push({
+      event_id: eventId,
+      full_name: row.fullName || "(name not given)",
+      email: row.email || null,
+      birthday: row.birthday || null,
+      gender: row.gender || null,
+      weight_kg: row.weightKg,
+      height_cm: row.heightCm,
+      gup: row.gup,
+      dan: row.dan,
+      nationality: row.nationality || null,
+      national_id: (row.nationalId ?? "").trim() || null,
+      club_name_raw: row.clubName || null,
+      matched_club_id: clubId,
+      review_note: note,
+    });
+    newCount++;
+  };
+
   for (const row of rows) {
     const idValue = (row.nationalId ?? "").trim();
-    if (!idValue || !row.fullName) continue;
-    const { data: existingStudent } = await supabase.from("students").select("id, club_id, gup, dan").eq("national_id", idValue).maybeSingle();
+    const clubId = clubByName.get(normalize(row.clubName)) ?? null;
+
+    // A submission missing the details we identify people by used to be dropped
+    // without trace. Now it comes through for somebody to look at.
+    if (!idValue || !row.fullName) {
+      if (alreadyStaged.has(normalize(idValue))) continue;
+      const missing = [!row.fullName ? "name" : null, !idValue ? "NRIC / passport number" : null].filter(Boolean).join(" and ");
+      stage(row, `The form was submitted without a ${missing}. Check who this is before approving.`, clubId);
+      if (idValue) alreadyStaged.add(normalize(idValue));
+      continue;
+    }
+
+    // More than one student can share an ID, so this reads a list rather than
+    // insisting on exactly one row — maybeSingle() errors outright on two.
+    const { data: idMatches } = await supabase
+      .from("students")
+      .select("id, club_id, gup, dan, full_name")
+      .eq("national_id", idValue)
+      .limit(5);
+    const existingStudent = (idMatches ?? []).find((s: any) => sameName(s.full_name, row.fullName)) ?? null;
+
+    // Same ID, different person's name. Silently renaming the existing student
+    // is how a new registrant used to vanish, so this asks instead.
+    if (!existingStudent && (idMatches ?? []).length > 0) {
+      if (alreadyStaged.has(normalize(idValue))) continue;
+      const others = (idMatches ?? []).map((s: any) => s.full_name).filter(Boolean).join(", ");
+      stage(
+        row,
+        `This NRIC / passport number (${idValue}) is already on file for ${others}. Approve to add ${row.fullName} as a separate student, or reject if it's the same person.`,
+        clubId,
+      );
+      alreadyStaged.add(normalize(idValue));
+      continue;
+    }
+
     if (existingStudent) {
       // Refresh the details the form just supplied. Only non-empty answers are
       // written, so a blank box never wipes something we already knew.
@@ -79,9 +144,10 @@ async function stageRows(supabase: ReturnType<typeof supabaseAdmin>, eventId: st
       matchedCount++;
       continue;
     }
+    // Nobody on file with that ID — a genuinely new person to approve.
     if (alreadyStaged.has(normalize(idValue))) continue;
-    newCandidateRows.push({ event_id: eventId, full_name: row.fullName, email: row.email || null, birthday: row.birthday || null, gender: row.gender || null, weight_kg: row.weightKg, height_cm: row.heightCm, gup: row.gup, dan: row.dan, nationality: row.nationality || null, national_id: idValue, club_name_raw: row.clubName || null, matched_club_id: clubByName.get(normalize(row.clubName)) ?? null });
-    newCount++;
+    stage(row, null, clubId);
+    alreadyStaged.add(normalize(idValue));
   }
   const { data: batch, error: batchError } = await supabase.from("grading_import_batches").insert({ event_id: eventId, imported_by: importedBy, row_count: rows.length, matched_count: matchedCount, new_count: newCount }).select("id").single();
   if (batchError || !batch) throw new Error("Could not record the import batch.");

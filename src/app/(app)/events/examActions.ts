@@ -7,7 +7,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { gradeLabel, nextGrade } from "@/lib/belts";
 import { computeAge } from "@/lib/eligibility";
 import { effectiveEventStatus, canOverrideLocks } from "@/lib/eventStatus";
-import { cleanScore, missingRequired, EXAM_EVENTS, type ExamEventKey } from "@/lib/gradingExam";
+import { cleanTick, EXAM_EVENTS, type ExamEventKey } from "@/lib/gradingExam";
 import { syncGradingCategory } from "@/lib/gradingCategory";
 
 /**
@@ -31,7 +31,7 @@ export type ExamRowDto = {
   categoryId: string | null;
   categoryName: string | null;
   status: string;
-  scores: Record<ExamEventKey, number | null>;
+  marks: Record<ExamEventKey, boolean>;
   remark: string;
   passed: boolean;
   locked: boolean;
@@ -50,8 +50,8 @@ function isRedirect(e: unknown): boolean {
   return typeof e === "object" && e !== null && typeof (e as any).digest === "string" && (e as any).digest.startsWith("NEXT_REDIRECT");
 }
 
-const EMPTY_SCORES = (): Record<ExamEventKey, number | null> =>
-  Object.fromEntries(EXAM_EVENTS.map((e) => [e.key, null])) as Record<ExamEventKey, number | null>;
+const EMPTY_MARKS = (): Record<ExamEventKey, boolean> =>
+  Object.fromEntries(EXAM_EVENTS.map((e) => [e.key, false])) as Record<ExamEventKey, boolean>;
 
 /**
  * Marking stays open while the event is running and closes when it finishes,
@@ -77,8 +77,8 @@ async function assertCanMark(eventId: string) {
 function toDto(reg: any, score: any, examinerName: string | null): ExamRowDto {
   const student = reg.students ?? {};
   const target = nextGrade(student.gup ?? null, student.dan ?? null);
-  const scores = EMPTY_SCORES();
-  for (const e of EXAM_EVENTS) scores[e.key] = score?.[e.key] ?? null;
+  const marks = EMPTY_MARKS();
+  for (const e of EXAM_EVENTS) marks[e.key] = cleanTick(score?.[e.key]);
   return {
     registrationId: reg.id,
     competitionNumber: reg.competition_number ?? null,
@@ -91,7 +91,7 @@ function toDto(reg: any, score: any, examinerName: string | null): ExamRowDto {
     categoryId: reg.category_id ?? null,
     categoryName: reg.event_categories?.name ?? null,
     status: reg.status ?? "pending",
-    scores,
+    marks,
     remark: score?.remark ?? "",
     passed: score?.passed === true,
     locked: score?.locked === true,
@@ -139,7 +139,7 @@ export async function loadExamRows(eventId: string, categoryIds: string[]): Prom
 export async function saveExamRow(input: {
   eventId: string;
   registrationId: string;
-  scores: Partial<Record<ExamEventKey, number | null>>;
+  marks: Partial<Record<ExamEventKey, boolean>>;
   remark: string;
   passed: boolean;
 }): Promise<ExamSaveResult> {
@@ -153,17 +153,8 @@ export async function saveExamRow(input: {
       .maybeSingle();
     if (existing?.locked) return { error: "This student's marks are locked. Unlock them before making changes." };
 
-    const cleaned: Record<string, number | null> = {};
-    for (const e of EXAM_EVENTS) cleaned[e.key] = cleanScore(input.scores[e.key]);
-
-    // Passing is a judgement about the whole exam, so the three mandatory
-    // events have to be marked before it can be recorded.
-    if (input.passed) {
-      const missing = missingRequired(cleaned as any);
-      if (missing.length > 0) {
-        return { error: `Score ${missing.map((m) => m.label).join(", ")} before marking this student as passed.` };
-      }
-    }
+    const cleaned: Record<string, boolean> = {};
+    for (const e of EXAM_EVENTS) cleaned[e.key] = cleanTick(input.marks[e.key]);
 
     const { error } = await supabase.from("grading_exam_scores").upsert(
       {
@@ -202,13 +193,10 @@ export async function setExamLock(input: {
       .eq("registration_id", input.registrationId)
       .maybeSingle();
 
-    if (input.locked) {
-      if (!existing) return { error: "Enter some marks before locking this student." };
-      const missing = missingRequired(existing);
-      if (missing.length > 0) {
-        return { error: `Score ${missing.map((m) => m.label).join(", ")} before locking this student.` };
-      }
-    }
+    // Locking is just "I'm done with this one" — no preconditions. An examiner
+    // locking their own candidate shouldn't be blocked by anybody else's row,
+    // or by parts of the exam this candidate didn't sit.
+    void existing;
 
     const { error } = await supabase.from("grading_exam_scores").upsert(
       {

@@ -7,11 +7,11 @@ import {
   setExamLock,
   type ExamRowDto,
 } from "@/app/(app)/events/examActions";
-import { EXAM_EVENTS, SCORE_CHOICES, missingRequired, type ExamEventKey } from "@/lib/gradingExam";
+import { EXAM_EVENTS, ticksGiven, type ExamEventKey } from "@/lib/gradingExam";
 import { realtimeClient, POLL_WITH_REALTIME_MS, POLL_WITHOUT_REALTIME_MS } from "@/lib/liveChannel";
 
 type Category = { id: string; name: string };
-type Draft = { scores: Record<ExamEventKey, number | null>; remark: string; passed: boolean };
+type Draft = { marks: Record<ExamEventKey, boolean>; remark: string; passed: boolean };
 
 /**
  * The examiner's marking sheet.
@@ -96,7 +96,7 @@ export default function ExamGrid({
   const unassigned = useMemo(() => rows.filter((r) => !r.categoryId).length, [rows]);
 
   function valueFor(row: ExamRowDto): Draft {
-    return drafts[row.registrationId] ?? { scores: row.scores, remark: row.remark, passed: row.passed };
+    return drafts[row.registrationId] ?? { marks: row.marks, remark: row.remark, passed: row.passed };
   }
 
   function edit(row: ExamRowDto, patch: Partial<Draft>) {
@@ -121,7 +121,7 @@ export default function ExamGrid({
     const result = await saveExamRow({
       eventId,
       registrationId: row.registrationId,
-      scores: draft.scores,
+      marks: draft.marks,
       remark: draft.remark,
       passed: draft.passed,
     });
@@ -151,7 +151,7 @@ export default function ExamGrid({
     setSelected((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
   }
 
-  const markedCount = visible.filter((r) => missingRequired(r.scores).length === 0).length;
+  const markedCount = visible.filter((r) => ticksGiven(r.marks) > 0).length;
   const lockedCount = visible.filter((r) => r.locked).length;
 
   return (
@@ -183,7 +183,7 @@ export default function ExamGrid({
             <button type="button" className="btn-secondary !px-2 !py-1 text-xs" onClick={() => setSelected(categories.map((c) => c.id))}>Select all</button>
             <button type="button" className="btn-secondary !px-2 !py-1 text-xs" onClick={() => setSelected([])}>Clear</button>
             <span className="ml-auto text-gray-500">
-              {visible.length} candidate{visible.length === 1 ? "" : "s"} · {markedCount} fully marked · {lockedCount} locked
+              {visible.length} candidate{visible.length === 1 ? "" : "s"} · {markedCount} marked · {lockedCount} locked
             </span>
           </div>
         )}
@@ -197,8 +197,9 @@ export default function ExamGrid({
 
       <div className="card p-4">
         <p className="text-sm text-gray-500">
-          Basic Technique, Pattern and Step Sparring are mandatory. Save each candidate as you go, then lock them so
-          nobody changes the marks by accident.
+          Tick each part the candidate passed, then tick Passed for the overall result. Save as you go, and lock a
+          candidate once you&apos;re finished with them — locking is per student and doesn&apos;t wait on anybody else.
+          <span className="ml-1 text-gray-400">* the three parts every grading covers.</span>
         </p>
         <div className="mt-4 overflow-x-auto">
           <table className="table-base">
@@ -207,8 +208,8 @@ export default function ExamGrid({
                 <th>Name</th>
                 <th>Club</th>
                 {EXAM_EVENTS.map((e) => (
-                  <th key={e.key} className="whitespace-nowrap text-center">
-                    {e.short}
+                  <th key={e.key} className="whitespace-nowrap px-3 text-center">
+                    {e.label}
                     {e.required && <span className="text-red-500">*</span>}
                   </th>
                 ))}
@@ -222,28 +223,20 @@ export default function ExamGrid({
                 const draft = valueFor(row);
                 const dirty = Boolean(drafts[row.registrationId]);
                 const disabled = !canMark || row.locked || busy[row.registrationId];
-                const missing = missingRequired(draft.scores);
                 return (
                   <tr key={row.registrationId} className={row.locked ? "bg-gray-50" : dirty ? "bg-amber-50/50" : undefined}>
                     <td className="whitespace-nowrap font-medium text-gray-900">{row.studentName}</td>
                     <td className="whitespace-nowrap">{row.clubName ?? "—"}</td>
                     {EXAM_EVENTS.map((e) => (
                       <td key={e.key} className="text-center">
-                        <select
-                          className="input !w-16 !px-1 text-center"
-                          value={draft.scores[e.key] ?? ""}
+                        <input
+                          type="checkbox"
+                          className="h-5 w-5"
+                          checked={draft.marks[e.key] === true}
                           disabled={disabled}
-                          onChange={(ev) =>
-                            edit(row, {
-                              scores: { ...draft.scores, [e.key]: ev.target.value === "" ? null : Number(ev.target.value) },
-                            })
-                          }
-                        >
-                          <option value="">–</option>
-                          {SCORE_CHOICES.map((n) => (
-                            <option key={n} value={n}>{n}</option>
-                          ))}
-                        </select>
+                          aria-label={`${e.label} — ${row.studentName}`}
+                          onChange={(ev) => edit(row, { marks: { ...draft.marks, [e.key]: ev.target.checked } })}
+                        />
                       </td>
                     ))}
                     <td>
@@ -261,8 +254,8 @@ export default function ExamGrid({
                         type="checkbox"
                         className="h-5 w-5"
                         checked={draft.passed}
-                        disabled={disabled || missing.length > 0}
-                        title={missing.length > 0 ? `Score ${missing.map((m) => m.label).join(", ")} first` : "Passed"}
+                        disabled={disabled}
+                        title="Passed the grading"
                         onChange={(ev) => edit(row, { passed: ev.target.checked })}
                       />
                     </td>

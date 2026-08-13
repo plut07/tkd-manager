@@ -81,7 +81,12 @@ export default async function GradingTab({ eventId, canEdit, isSuperAdmin }: { e
       )}
       <div className="card p-6">
         <h2 className="text-lg font-semibold text-gray-900">New registrants awaiting approval ({(candidates ?? []).length})</h2>
-        <p className="mt-1 text-sm text-gray-500">These people weren't found in the system by national ID / passport number. A Super Admin must pick their club and approve before a student profile is created.</p>
+        <p className="mt-1 text-sm text-gray-500">
+          Anyone the form couldn&apos;t match to an existing student, plus anything that needs a second look — a repeated
+          NRIC / passport number, or a submission missing details. A Super Admin picks their club and approves before a
+          student profile is created. People already on file are registered automatically and appear under Registered
+          students instead.
+        </p>
         <div className="mt-4 space-y-3">
           {(candidates ?? []).map((c) => (
             <div key={c.id} className="rounded-md border border-gray-200 p-3 text-sm">
@@ -89,7 +94,17 @@ export default async function GradingTab({ eventId, canEdit, isSuperAdmin }: { e
                 <div>
                   <div className="font-medium text-gray-900">{c.full_name}</div>
                   <div className="text-xs text-gray-500">{[c.nationality, c.national_id, gradeShort(c.gup, c.dan)].filter((v) => v && v !== "—").join(" · ")}</div>
-                  <div className="text-xs text-gray-400">Club on form: {c.club_name_raw ?? "—"}</div>
+                  <div className="text-xs text-gray-400">
+                    Club on form: {c.club_name_raw ?? "—"}
+                    {c.birthday ? ` · born ${c.birthday}` : ""}
+                    {c.gender ? ` · ${c.gender}` : ""}
+                    {c.email ? ` · ${c.email}` : ""}
+                  </div>
+                  {c.review_note && (
+                    <p className="mt-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                      {c.review_note}
+                    </p>
+                  )}
                 </div>
                 {isSuperAdmin ? (
                   <div className="flex items-center gap-2">

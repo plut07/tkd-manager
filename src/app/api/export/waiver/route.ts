@@ -75,13 +75,16 @@ export async function GET(request: NextRequest) {
     endDate: (event as any).end_date ?? null,
   };
 
+  // An uploaded template always wins, even before any boxes have been placed on
+  // it — the printed form should look like the form the organiser uploaded. With
+  // no boxes it simply prints blank, ready to fill in by hand.
   if (template) {
     const { data: fields } = await supabase
       .from("event_form_fields")
       .select("field_key, page, x, y, width, height, font_size, align")
       .eq("template_id", template.id);
 
-    if ((fields ?? []).length > 0) {
+    {
       const bytes = await downloadTemplate(template.storage_path);
       const rowsForTemplate: TemplateData[] = rows.map((r) => ({
         participant: {
