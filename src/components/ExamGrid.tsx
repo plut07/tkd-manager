@@ -7,7 +7,7 @@ import {
   setExamLock,
   type ExamRowDto,
 } from "@/app/(app)/events/examActions";
-import { EXAM_EVENTS, SCORE_CHOICES, examTotal, missingRequired, type ExamEventKey } from "@/lib/gradingExam";
+import { EXAM_EVENTS, SCORE_CHOICES, missingRequired, type ExamEventKey } from "@/lib/gradingExam";
 import { realtimeClient, POLL_WITH_REALTIME_MS, POLL_WITHOUT_REALTIME_MS } from "@/lib/liveChannel";
 
 type Category = { id: string; name: string };
@@ -204,17 +204,14 @@ export default function ExamGrid({
           <table className="table-base">
             <thead>
               <tr>
-                <th>No.</th>
                 <th>Name</th>
-                <th className="hidden lg:table-cell">Club</th>
-                <th className="hidden md:table-cell">Grading to</th>
+                <th>Club</th>
                 {EXAM_EVENTS.map((e) => (
                   <th key={e.key} className="whitespace-nowrap text-center">
                     {e.short}
                     {e.required && <span className="text-red-500">*</span>}
                   </th>
                 ))}
-                <th className="text-center">Total</th>
                 <th>Remark</th>
                 <th className="text-center">Passed</th>
                 <th></th>
@@ -228,13 +225,8 @@ export default function ExamGrid({
                 const missing = missingRequired(draft.scores);
                 return (
                   <tr key={row.registrationId} className={row.locked ? "bg-gray-50" : dirty ? "bg-amber-50/50" : undefined}>
-                    <td>{row.competitionNumber ?? "—"}</td>
-                    <td className="whitespace-nowrap font-medium text-gray-900">
-                      {row.studentName}
-                      <span className="block text-xs font-normal text-gray-400">{row.currentGrade}</span>
-                    </td>
-                    <td className="hidden lg:table-cell">{row.clubName ?? "—"}</td>
-                    <td className="hidden whitespace-nowrap md:table-cell">{row.targetGrade ?? "—"}</td>
+                    <td className="whitespace-nowrap font-medium text-gray-900">{row.studentName}</td>
+                    <td className="whitespace-nowrap">{row.clubName ?? "—"}</td>
                     {EXAM_EVENTS.map((e) => (
                       <td key={e.key} className="text-center">
                         <select
@@ -254,7 +246,6 @@ export default function ExamGrid({
                         </select>
                       </td>
                     ))}
-                    <td className="text-center font-semibold text-gray-900">{examTotal(draft.scores)}</td>
                     <td>
                       <input
                         type="text"
@@ -315,7 +306,7 @@ export default function ExamGrid({
               })}
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={EXAM_EVENTS.length + 8} className="py-6 text-center text-gray-400">
+                  <td colSpan={EXAM_EVENTS.length + 5} className="py-6 text-center text-gray-400">
                     {categories.length === 0
                       ? "Nobody has been registered for this grading yet."
                       : "Tick a category above to start marking."}

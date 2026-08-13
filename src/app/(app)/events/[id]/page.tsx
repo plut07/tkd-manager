@@ -7,6 +7,7 @@ import DeleteButton from "@/components/DeleteButton";
 import BeltBadge from "@/components/BeltBadge";
 import CopyLinkButton from "@/components/CopyLinkButton";
 import TemplateTab from "@/components/TemplateTab";
+import CategoryCell from "@/components/CategoryCell";
 
 import CategoryForm from "../CategoryForm";
 import BracketView from "../BracketView";
@@ -201,7 +202,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
                   <th className="hidden lg:table-cell">Date of birth</th>
                   <th className="hidden md:table-cell">Gender</th>
                   <th className="hidden md:table-cell">Age</th>
-                  <th className="hidden lg:table-cell">Category</th>
+                  <th>Category</th>
                   <th>Waiver</th>
                   <th>Status</th><th></th>
                 </tr>
@@ -216,7 +217,18 @@ export default async function EventDetailPage({ params, searchParams }: { params
                     <td className="hidden lg:table-cell">{formatDob(r.students?.birthday ?? null)}</td>
                     <td className="hidden capitalize md:table-cell">{r.students?.gender ?? "—"}</td>
                     <td className="hidden md:table-cell">{waiverAge(r.students?.birthday ?? null) || "—"}</td>
-                    <td className="hidden lg:table-cell">{r.event_categories?.name ?? "—"}</td>
+                    <td>
+                      {isGrading ? (
+                        <CategoryCell
+                          registrationId={r.id}
+                          eventId={event.id}
+                          categoryName={r.event_categories?.name ?? null}
+                          canEdit={canEditNow}
+                        />
+                      ) : (
+                        r.event_categories?.name ?? "—"
+                      )}
+                    </td>
                     <td>
                       {r.waiver_signatures ? (
                         <span className="badge bg-green-100 text-green-700" title={`Signed by ${r.waiver_signatures.signed_name}`}>Signed</span>
@@ -250,7 +262,13 @@ export default async function EventDetailPage({ params, searchParams }: { params
           </div>
         </div>
       ) : tab === "template" ? (
-        <TemplateTab eventId={event.id} template={template as any} fields={templateFields ?? []} canEdit={canEditNow} />
+        <TemplateTab
+          eventId={event.id}
+          template={template as any}
+          fields={templateFields ?? []}
+          canEdit={canEditNow}
+          registeredCount={(pendingCount ?? 0) + (confirmedCount ?? 0)}
+        />
       ) : tab === "draws" ? (
         <div className="space-y-6">
           <div className="card p-6">

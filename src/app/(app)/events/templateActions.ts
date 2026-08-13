@@ -34,8 +34,16 @@ export async function uploadTemplate(_prev: TemplateState, formData: FormData): 
     .upload(path, bytes, { contentType: "application/pdf", upsert: false });
   if (uploadError) return { ok: false, error: "The file could not be saved. Please try again." };
 
-  // One active template per event keeps the print button unambiguous.
-  await supabase.from("event_form_templates").update({ is_default: false }).eq("event_id", eventId);
+  // One template per event, so every student's form comes from the same file.
+  // The old one is removed outright rather than just deprecated — otherwise
+  // replaced templates pile up in storage and the "current template" shown on
+  // the page depends on which row happens to be the default.
+  const { data: previous } = await supabase.from("event_form_templates").select("id, storage_path").eq("event_id", eventId);
+  if ((previous ?? []).length > 0) {
+    await supabase.from("event_form_templates").delete().eq("event_id", eventId);
+    const paths = (previous ?? []).map((p: any) => p.storage_path).filter(Boolean);
+    if (paths.length > 0) await supabase.storage.from(TEMPLATE_BUCKET).remove(paths);
+  }
 
   const { data, error } = await supabase
     .from("event_form_templates")

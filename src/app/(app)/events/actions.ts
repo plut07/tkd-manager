@@ -10,7 +10,7 @@ import { checkEligibility, checkCountryEligibility, type CategoryCriteria, type 
 import { sortForNumbering, formatCompetitionNumber, type NumberingStudent } from "@/lib/numbering";
 import { effectiveEventStatus, isRegistrationOpen, canOverrideLocks, fromLocalInputValue } from "@/lib/eventStatus";
 import { parseGradeValue, isTopGrade } from "@/lib/belts";
-import { gradingCategoryIdFor, TOP_GRADE_MESSAGE } from "@/lib/gradingCategory";
+import { gradingCategoryIdFor, syncGradingCategory, ensureCategoryForTarget, TOP_GRADE_MESSAGE } from "@/lib/gradingCategory";
 
 export type FormState = { error?: string } | undefined;
 
@@ -417,8 +417,50 @@ export async function approveRegistration(formData: FormData) {
   const eventId = String(formData.get("eventId") || "");
   if (!registrationId) return;
 
-  await supabaseAdmin().from("event_registrations").update({ status: "confirmed" }).eq("id", registrationId);
+  const supabase = supabaseAdmin();
+  await supabase.from("event_registrations").update({ status: "confirmed" }).eq("id", registrationId);
+
+  // Approval is the moment the entry becomes real, so a grading candidate's
+  // category is settled here from the grade they hold now — whether they came
+  // in through the website, the Tally form, or were entered by a club.
+  const { data: eventRow } = await supabase.from("events").select("event_type").eq("id", eventId).maybeSingle();
+  if (eventRow?.event_type === "grading") {
+    await syncGradingCategory(supabase, eventId, registrationId);
+  }
+
   await renumberEventCompetitors(eventId);
+  revalidatePath(`/events/${eventId}`);
+  revalidatePath(`/events/${eventId}/register`);
+}
+
+/**
+ * Move a grading candidate into a different category by hand.
+ *
+ * The automatic choice is right almost always, but an examiner sometimes needs
+ * to move somebody — a double grading, or a grade recorded wrongly at entry.
+ * The chosen category is created if this is the first candidate to sit for it.
+ */
+export async function updateRegistrationCategory(formData: FormData): Promise<void> {
+  const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
+  const registrationId = String(formData.get("registrationId") || "");
+  const eventId = String(formData.get("eventId") || "");
+  const targetGrade = String(formData.get("targetGrade") || "");
+  if (!registrationId || !eventId) return;
+
+  const supabase = supabaseAdmin();
+  const { data: event } = await supabase.from("events").select("status, start_date, end_date, created_by").eq("id", eventId).maybeSingle();
+  if (event && effectiveEventStatus(event as any) === "completed" && !canOverrideLocks({ sub: session.sub, role: session.role }, event as any)) {
+    throw new Error("This event has finished, so entries can no longer be changed.");
+  }
+
+  // An empty choice clears the category rather than guessing.
+  const categoryId = targetGrade ? await ensureCategoryForTarget(supabase, eventId, targetGrade) : null;
+  // category_locked stops approval from quietly putting them back.
+  await supabase
+    .from("event_registrations")
+    .update({ category_id: categoryId, category_locked: true })
+    .eq("id", registrationId);
+
   revalidatePath(`/events/${eventId}`);
   revalidatePath(`/events/${eventId}/register`);
 }
