@@ -11,9 +11,11 @@ import TemplateTab from "@/components/TemplateTab";
 import CategoryForm from "../CategoryForm";
 import BracketView from "../BracketView";
 import GradingTab from "../GradingTab";
+import ExamTab from "../ExamTab";
+import ResultTab from "../ResultTab";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
 import { describeCriteria, waiverAge, formatDob, type CategoryCriteria } from "@/lib/eligibility";
-import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange, formatEventDateTime } from "@/lib/eventStatus";
+import { effectiveEventStatus, canOverrideLocks, STATUS_STYLES, STATUS_LABELS, formatEventRange, formatEventDateTime } from "@/lib/eventStatus";
 import { deleteEvent, addCategory, deleteCategory, addDocument, deleteDocument, unregisterStudent } from "../actions";
 import CountryFlag from "@/components/CountryFlag";
 function formatDate(d: string | null) { if (!d) return "TBA"; return new Date(d).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }); }
@@ -31,8 +33,8 @@ export default async function EventDetailPage({ params, searchParams }: { params
         ? "template"
       : isCompetition && (searchParams.tab === "categories" || searchParams.tab === "draws")
         ? searchParams.tab
-        : isGrading && searchParams.tab === "grading"
-          ? "grading"
+        : isGrading && (searchParams.tab === "grading" || searchParams.tab === "exam" || searchParams.tab === "results")
+          ? searchParams.tab
           : "info";
   const { data: categories } = await supabase.from("event_categories").select("*").eq("event_id", event.id).order("sort_order").order("name");
   const { data: documents } = await supabase.from("event_documents").select("*").eq("event_id", event.id).order("uploaded_at", { ascending: false });
@@ -48,6 +50,10 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const locked = isFinished && session.role !== "super_admin";
   const canEditNow = canEdit && !locked;
   const canDeleteNow = canDelete && !locked;
+  // Marking and publishing outlive the event itself: a Super Admin or whoever
+  // created the event can still correct a result once the day is over.
+  const canOverride = canOverrideLocks({ sub: session.sub, role: session.role }, event as any);
+  const canMarkNow = canEdit && (!isFinished || canOverride);
   // Loaded only for the entries tab so the other tabs stay cheap.
   const { data: entries } = tab === "entries"
     ? await supabase
@@ -114,7 +120,9 @@ export default async function EventDetailPage({ params, searchParams }: { params
         {isCompetition && (<Link href={`/events/${event.id}?tab=draws`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "draws" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Draws</Link>)}
         <Link href={`/events/${event.id}?tab=entries`} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "entries" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Registered students</Link>
         {canEdit && (<Link href={`/events/${event.id}?tab=template`} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "template" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Form template</Link>)}
-        {isGrading && (<Link href={`/events/${event.id}?tab=grading`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "grading" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Grading registration</Link>)}
+        {isGrading && (<Link href={`/events/${event.id}?tab=grading`} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "grading" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Grading registration</Link>)}
+        {isGrading && (<Link href={`/events/${event.id}?tab=exam`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "exam" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Exam</Link>)}
+        {isGrading && (<Link href={`/events/${event.id}?tab=results`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "results" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Results</Link>)}
       </div>
       {tab === "info" ? (
         <>
@@ -268,6 +276,15 @@ export default async function EventDetailPage({ params, searchParams }: { params
           </div>
           {searchParams.category && (<BracketView eventId={event.id} categoryId={searchParams.category} canEdit={canEditNow} backHref={`/events/${event.id}?tab=draws`} backLabel="Back to draws list" />)}
         </div>
+      ) : tab === "exam" ? (
+        <ExamTab eventId={event.id} canMark={canMarkNow} />
+      ) : tab === "results" ? (
+        <ResultTab
+          eventId={event.id}
+          publishedAt={(event as any).results_published_at ?? null}
+          canPublish={canOverride}
+          canPreview={canEdit}
+        />
       ) : (
         <GradingTab eventId={event.id} canEdit={canEditNow} isSuperAdmin={session.role === "super_admin"} />
       )}

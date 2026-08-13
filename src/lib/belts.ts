@@ -137,3 +137,33 @@ export function parseGradeText(value: string | null | undefined): { gup: number 
 
 /** Every grade label, beginner first — used to build the Tally dropdown. */
 export const GRADE_LABELS: string[] = GRADE_OPTIONS.map((g) => g.label);
+
+// ---------------------------------------------------------------------------
+// Grading ladder
+//
+// A grading tests for the grade immediately above the one held, so a student's
+// current grade decides which category they sit in. GRADE_OPTIONS is already in
+// ladder order, which makes "the next grade" simply the next entry.
+// ---------------------------------------------------------------------------
+
+/** The grade a student would be tested for, or null if there isn't one. */
+export function nextGrade(gup: number | null | undefined, dan: number | null | undefined): GradeOption | null {
+  const current = gradeValue(gup, dan);
+  if (!current) return null;
+  const i = GRADE_OPTIONS.findIndex((g) => g.value === current);
+  if (i < 0 || i + 1 >= GRADE_OPTIONS.length) return null;
+  return GRADE_OPTIONS[i + 1];
+}
+
+/** True at the top of the ladder (7th Dan), where there is nothing to grade to. */
+export function isTopGrade(gup: number | null | undefined, dan: number | null | undefined): boolean {
+  const current = gradeValue(gup, dan);
+  return current !== "" && current === GRADE_OPTIONS[GRADE_OPTIONS.length - 1].value;
+}
+
+/** How far up the ladder a grade sits — used to order grading categories. */
+export function gradeRank(gup: number | null | undefined, dan: number | null | undefined): number {
+  const current = gradeValue(gup, dan);
+  const i = GRADE_OPTIONS.findIndex((g) => g.value === current);
+  return i < 0 ? 0 : i;
+}

@@ -9,7 +9,8 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { checkEligibility, checkCountryEligibility, type CategoryCriteria, type StudentLite } from "@/lib/eligibility";
 import { sortForNumbering, formatCompetitionNumber, type NumberingStudent } from "@/lib/numbering";
 import { effectiveEventStatus, isRegistrationOpen, canOverrideLocks, fromLocalInputValue } from "@/lib/eventStatus";
-import { parseGradeValue } from "@/lib/belts";
+import { parseGradeValue, isTopGrade } from "@/lib/belts";
+import { gradingCategoryIdFor, TOP_GRADE_MESSAGE } from "@/lib/gradingCategory";
 
 export type FormState = { error?: string } | undefined;
 
@@ -307,7 +308,7 @@ export async function registerStudent(formData: FormData) {
   const eventId = String(formData.get("eventId") || "");
   await assertRegistrationOpen(session, eventId);
   const studentId = String(formData.get("studentId") || "");
-  const categoryId = String(formData.get("categoryId") || "") || null;
+  let categoryId = String(formData.get("categoryId") || "") || null;
   if (!eventId || !studentId) return;
 
   const supabase = supabaseAdmin();
@@ -325,11 +326,18 @@ export async function registerStudent(formData: FormData) {
   // Hard-block registration if the event restricts participation to specific
   // countries and neither the student's club nor their own nationality is
   // one of them.
-  const { data: eventRow } = await supabase.from("events").select("allowed_countries").eq("id", eventId).maybeSingle();
+  const { data: eventRow } = await supabase.from("events").select("allowed_countries, event_type").eq("id", eventId).maybeSingle();
   const clubCountry = (student as any).clubs?.country ?? null;
   const countryResult = checkCountryEligibility(clubCountry, student.nationality, eventRow?.allowed_countries);
   if (!countryResult.eligible) {
     throw new Error("This student's club/country isn't eligible to take part in this event.");
+  }
+
+  // A grading candidate is always examined for the grade above the one they
+  // hold, so their category is worked out here rather than chosen on the form.
+  if (eventRow?.event_type === "grading") {
+    if (isTopGrade(student.gup, student.dan)) throw new Error(TOP_GRADE_MESSAGE);
+    categoryId = await gradingCategoryIdFor(supabase, eventId, student.gup, student.dan);
   }
 
   // Hard-block registration if the student doesn't meet the category's

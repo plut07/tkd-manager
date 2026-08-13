@@ -113,6 +113,7 @@ export default async function EventRegisterPage({ params }: { params: { id: stri
             showClub={!scope}
             useCategories={event.event_type === "competition"}
             allowedCountries={event.allowed_countries ?? []}
+            isGrading={event.event_type === "grading"}
           />
         ) : (
           <p className="mt-4 text-sm text-gray-500">No active students available to register.</p>

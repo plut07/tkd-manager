@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useRef, useState } from "react";
-import { TEMPLATE_FIELDS } from "@/lib/templateFields";
+import { TEMPLATE_FIELDS, isImageField } from "@/lib/templateFields";
 import { saveTemplateFields } from "@/app/(app)/events/templateActions";
 
 type Box = {
@@ -167,7 +167,7 @@ export default function TemplateDesigner({
                   style={{ left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.width * 100}%`, height: `${b.height * 100}%`, cursor: "move" }}
                   title={labelFor(b.field_key)}
                 >
-                  <span className="truncate text-brand-900">{labelFor(b.field_key)}</span>
+                  <span className="truncate text-brand-900">{isImageField(b.field_key) ? "✎ " : ""}{labelFor(b.field_key)}</span>
                 </div>
               ))}
 
@@ -198,12 +198,20 @@ export default function TemplateDesigner({
                     ))}
                   </select>
                 </div>
+                {isImageField(current.field_key) && (
+                  <p className="rounded-md border border-brand-200 bg-brand-50 px-2 py-1.5 text-xs text-brand-800">
+                    Whatever the participant draws on their signing link is scaled to fit this box, keeping its shape.
+                    Draw the box over the signature line on the form.
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="label text-xs">Text size</label>
-                    <input type="number" min={5} max={48} className="input" value={current.font_size}
-                      onChange={(e) => update(current.id, { font_size: Number(e.target.value) || 11 })} />
-                  </div>
+                  {!isImageField(current.field_key) && (
+                    <div>
+                      <label className="label text-xs">Text size</label>
+                      <input type="number" min={5} max={48} className="input" value={current.font_size}
+                        onChange={(e) => update(current.id, { font_size: Number(e.target.value) || 11 })} />
+                    </div>
+                  )}
                   <div>
                     <label className="label text-xs">Align</label>
                     <select className="input" value={current.align} onChange={(e) => update(current.id, { align: e.target.value as Box["align"] })}>

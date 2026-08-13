@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { createGradingTallyForm, updateGradingTallyFormOptions, listTallySubmissions, type FormOptions, type ParsedGradingRow } from "@/lib/tallyForms";
 import { COUNTRIES } from "@/lib/countries";
+import { gradingCategoryIdFor } from "@/lib/gradingCategory";
 
 /** Next free running number within a club, so approved candidates get one too. */
 async function nextClubNumber(supabase: ReturnType<typeof supabaseAdmin>, clubId: string): Promise<number> {
@@ -43,7 +44,7 @@ async function stageRows(supabase: ReturnType<typeof supabaseAdmin>, eventId: st
   for (const row of rows) {
     const idValue = (row.nationalId ?? "").trim();
     if (!idValue || !row.fullName) continue;
-    const { data: existingStudent } = await supabase.from("students").select("id, club_id").eq("national_id", idValue).maybeSingle();
+    const { data: existingStudent } = await supabase.from("students").select("id, club_id, gup, dan").eq("national_id", idValue).maybeSingle();
     if (existingStudent) {
       // Refresh the details the form just supplied. Only non-empty answers are
       // written, so a blank box never wipes something we already knew.
@@ -59,7 +60,14 @@ async function stageRows(supabase: ReturnType<typeof supabaseAdmin>, eventId: st
       if (Object.keys(refresh).length > 0) await supabase.from("students").update(refresh).eq("id", existingStudent.id);
 
       const { data: alreadyReg } = await supabase.from("event_registrations").select("id").eq("event_id", eventId).eq("student_id", existingStudent.id).maybeSingle();
-      if (!alreadyReg) await supabase.from("event_registrations").insert({ event_id: eventId, student_id: existingStudent.id, club_id: existingStudent.club_id, status: "pending" });
+      if (!alreadyReg) {
+        // The grade on the form wins if they gave one, since it's the most
+        // recent thing we know about them.
+        const gup = row.gup != null || row.dan != null ? row.gup : existingStudent.gup;
+        const dan = row.gup != null || row.dan != null ? row.dan : existingStudent.dan;
+        const categoryId = await gradingCategoryIdFor(supabase, eventId, gup ?? null, dan ?? null);
+        await supabase.from("event_registrations").insert({ event_id: eventId, student_id: existingStudent.id, club_id: existingStudent.club_id, category_id: categoryId, status: "pending" });
+      }
       matchedCount++;
       continue;
     }
@@ -112,7 +120,8 @@ export async function approveCandidate(formData: FormData) {
   if (!candidate || candidate.status !== "pending") throw new Error("This candidate is no longer pending.");
   const { data: student, error: studentError } = await supabase.from("students").insert({ club_id: clubId, club_number: await nextClubNumber(supabase, clubId), full_name: candidate.full_name, email: candidate.email, birthday: candidate.birthday, gender: candidate.gender, weight_kg: candidate.weight_kg, height_cm: candidate.height_cm, gup: candidate.gup, dan: candidate.dan, nationality: candidate.nationality, national_id: candidate.national_id, active: true }).select("id").single();
   if (studentError || !student) throw new Error("Could not create the student record.");
-  await supabase.from("event_registrations").insert({ event_id: candidate.event_id, student_id: student.id, club_id: clubId, status: "pending" });
+  const categoryId = await gradingCategoryIdFor(supabase, candidate.event_id, candidate.gup, candidate.dan);
+  await supabase.from("event_registrations").insert({ event_id: candidate.event_id, student_id: student.id, club_id: clubId, category_id: categoryId, status: "pending" });
   await supabase.from("grading_candidates").update({ status: "approved", reviewed_by: session.sub, reviewed_at: new Date().toISOString(), created_student_id: student.id }).eq("id", candidateId);
   revalidatePath(`/events/${eventId}`);
   revalidatePath(`/events/${eventId}/register`);
@@ -136,7 +145,8 @@ export async function bulkApproveBatch(formData: FormData) {
   for (const candidate of candidates ?? []) {
     const { data: student } = await supabase.from("students").insert({ club_id: candidate.matched_club_id, club_number: await nextClubNumber(supabase, candidate.matched_club_id), full_name: candidate.full_name, email: candidate.email, birthday: candidate.birthday, gender: candidate.gender, weight_kg: candidate.weight_kg, height_cm: candidate.height_cm, gup: candidate.gup, dan: candidate.dan, nationality: candidate.nationality, national_id: candidate.national_id, active: true }).select("id").single();
     if (!student) continue;
-    await supabase.from("event_registrations").insert({ event_id: candidate.event_id, student_id: student.id, club_id: candidate.matched_club_id, status: "pending" });
+    const categoryId = await gradingCategoryIdFor(supabase, candidate.event_id, candidate.gup, candidate.dan);
+    await supabase.from("event_registrations").insert({ event_id: candidate.event_id, student_id: student.id, club_id: candidate.matched_club_id, category_id: categoryId, status: "pending" });
     await supabase.from("grading_candidates").update({ status: "approved", reviewed_by: session.sub, reviewed_at: new Date().toISOString(), created_student_id: student.id }).eq("id", candidate.id);
   }
   revalidatePath(`/events/${eventId}`);

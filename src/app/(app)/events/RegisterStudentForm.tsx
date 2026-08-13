@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { checkEligibility, checkCountryEligibility, type CategoryCriteria, type StudentLite } from "@/lib/eligibility";
+import { isTopGrade, nextGrade } from "@/lib/belts";
 
 type Student = StudentLite & {
   id: string;
@@ -20,6 +21,7 @@ export default function RegisterStudentForm({
   showClub,
   useCategories,
   allowedCountries,
+  isGrading = false,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   eventId: string;
@@ -28,6 +30,7 @@ export default function RegisterStudentForm({
   showClub: boolean;
   useCategories: boolean;
   allowedCountries?: string[];
+  isGrading?: boolean;
 }) {
   const [categoryId, setCategoryId] = useState("");
   const selectedCategory = categories.find((c) => c.id === categoryId) ?? null;
@@ -44,9 +47,14 @@ export default function RegisterStudentForm({
         if (!catResult.eligible) reasons.push(...catResult.reasons);
       }
 
-      return { student: s, eligible: reasons.length === 0, reasons };
+      // A grading tests for the grade above the one held, so there is nothing
+      // for a 7th Dan to be examined for.
+      const target = isGrading ? nextGrade(s.gup, s.dan) : null;
+      if (isGrading && isTopGrade(s.gup, s.dan)) reasons.push("already at 7th Dan, the highest grade");
+
+      return { student: s, eligible: reasons.length === 0, reasons, target };
     });
-  }, [students, selectedCategory, useCategories, allowedCountries]);
+  }, [students, selectedCategory, useCategories, allowedCountries, isGrading]);
 
   const ineligibleCount = decorated.filter((d) => !d.eligible).length;
 
@@ -74,10 +82,11 @@ export default function RegisterStudentForm({
         <option value="" disabled>
           Select a student
         </option>
-        {decorated.map(({ student: s, eligible, reasons }) => (
+        {decorated.map(({ student: s, eligible, reasons, target }) => (
           <option key={s.id} value={s.id} disabled={!eligible}>
             {s.full_name}
             {showClub ? ` (${s.clubs?.name ?? ""})` : ""}
+            {eligible && target ? ` — grading to ${target.label}` : ""}
             {!eligible ? ` — not eligible: ${reasons.join(", ")}` : ""}
           </option>
         ))}
@@ -86,6 +95,13 @@ export default function RegisterStudentForm({
       <button type="submit" className="btn-primary">
         Register
       </button>
+
+      {isGrading && (
+        <p className="w-full text-xs text-gray-500">
+          Grading categories are worked out automatically — each candidate is examined for the grade directly above the
+          one they currently hold.
+        </p>
+      )}
 
       {ineligibleCount > 0 && (
         <p className="w-full text-xs text-gray-500">

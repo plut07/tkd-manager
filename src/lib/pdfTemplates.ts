@@ -1,7 +1,7 @@
 import "server-only";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { supabaseAdmin } from "./supabaseAdmin";
-import { resolveTemplateField, type TemplateData } from "./templateFields";
+import { resolveTemplateField, isImageField, type TemplateData } from "./templateFields";
 
 export const TEMPLATE_BUCKET = "event-templates";
 
@@ -59,13 +59,36 @@ export async function fillTemplate(
       const page = out.getPage(offset + pageNumber - 1);
       const { width: pw, height: ph } = page.getSize();
 
-      const text = resolveTemplateField(f.field_key, data);
-      if (!text) continue;
-
       const boxW = Number(f.width) * pw;
       const boxH = Number(f.height) * ph;
       const boxX = Number(f.x) * pw;
       const boxTop = Number(f.y) * ph;
+
+      // The signature is a picture, so it's fitted to the box rather than
+      // written into it. A missing or unreadable image just leaves the space
+      // blank — the rest of the form still prints.
+      if (isImageField(f.field_key)) {
+        const png = data.participant?.signaturePng;
+        if (!png) continue;
+        try {
+          const image = await out.embedPng(png);
+          const scale = Math.min(boxW / image.width, boxH / image.height);
+          const drawW = image.width * scale;
+          const drawH = image.height * scale;
+          let x = boxX;
+          if (f.align === "center") x = boxX + (boxW - drawW) / 2;
+          else if (f.align === "right") x = boxX + boxW - drawW;
+          // Sit it on the bottom of the box, the way a signature rests on a line.
+          const y = ph - boxTop - boxH;
+          page.drawImage(image, { x, y, width: drawW, height: drawH });
+        } catch {
+          // Corrupt signature data shouldn't stop the form printing.
+        }
+        continue;
+      }
+
+      const text = resolveTemplateField(f.field_key, data);
+      if (!text) continue;
 
       let size = Number(f.font_size) || 11;
       size = Math.min(size, boxH * 0.85);
