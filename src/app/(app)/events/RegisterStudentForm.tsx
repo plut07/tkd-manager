@@ -48,9 +48,9 @@ export default function RegisterStudentForm({
       }
 
       // A grading tests for the grade above the one held, so there is nothing
-      // for a 7th Dan to be examined for.
+      // for a 9th Dan to be examined for.
       const target = isGrading ? nextGrade(s.gup, s.dan) : null;
-      if (isGrading && isTopGrade(s.gup, s.dan)) reasons.push("already at 7th Dan, the highest grade");
+      if (isGrading && isTopGrade(s.gup, s.dan)) reasons.push("already at 9th Dan, the highest grade");
 
       return { student: s, eligible: reasons.length === 0, reasons, target };
     });

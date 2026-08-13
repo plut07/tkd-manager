@@ -17,15 +17,18 @@ import { nextGrade, gradeRank } from "./belts";
 
 export const GRADING_CATEGORY_TYPE = "grading";
 
-/** The category name shown everywhere, e.g. "Grading to 1st Dan". */
+/**
+ * The category is named for the grade being taken, not the one held — a student
+ * currently on Yellow sits in the "Yellow Green / Green Tip" category.
+ */
 export function gradingCategoryName(gup: number | null, dan: number | null): string | null {
   const target = nextGrade(gup, dan);
-  return target ? `Grading to ${target.label}` : null;
+  return target ? target.label : null;
 }
 
 /**
  * Find or create the category for a student's current grade.
- * Returns null when there is nothing above their grade (7th Dan).
+ * Returns null when there is nothing above their grade (9th Dan).
  */
 export async function gradingCategoryIdFor(
   supabase: any,
@@ -73,4 +76,4 @@ export async function gradingCategoryIdFor(
 
 /** The message shown when someone tries to enter a student at the top grade. */
 export const TOP_GRADE_MESSAGE =
-  "7th Dan is the highest grade on the ladder, so this student can't take part in a grading.";
+  "9th Dan is the highest grade on the ladder, so this student can't take part in a grading.";

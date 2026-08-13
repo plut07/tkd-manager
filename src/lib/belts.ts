@@ -68,15 +68,18 @@ export function gupFromLabel(value: string | null | undefined): number | null {
 // Unified grade scale
 //
 // Colour belts and black belts are one ladder to a student, so the UI offers a
-// single "Current Grade / Degree" list running from White up to 7th Dan. The
+// single "Current Grade / Degree" list running from White up to 9th Dan. The
 // database still keeps gup and dan in separate columns — splitting them here
 // rather than migrating avoids touching every existing query, and the two can
 // never disagree because only this file writes them.
 //
-// Values are encoded as G10..G1 for gups and D1..D7 for dans.
+// Values are encoded as G10..G1 for gups and D1..D9 for dans.
 // ---------------------------------------------------------------------------
 
-export const MAX_DAN = 7;
+// The full black-belt range. The database already allows 1-9 (see the dan CHECK
+// constraint on students and grading_candidates), so this is the only place the
+// ceiling is set.
+export const MAX_DAN = 9;
 
 export type GradeOption = { value: string; label: string; gup: number | null; dan: number | null };
 
@@ -155,7 +158,7 @@ export function nextGrade(gup: number | null | undefined, dan: number | null | u
   return GRADE_OPTIONS[i + 1];
 }
 
-/** True at the top of the ladder (7th Dan), where there is nothing to grade to. */
+/** True at the top of the ladder (9th Dan), where there is nothing to grade to. */
 export function isTopGrade(gup: number | null | undefined, dan: number | null | undefined): boolean {
   const current = gradeValue(gup, dan);
   return current !== "" && current === GRADE_OPTIONS[GRADE_OPTIONS.length - 1].value;
