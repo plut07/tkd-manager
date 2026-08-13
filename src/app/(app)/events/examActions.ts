@@ -8,6 +8,7 @@ import { gradeLabel, nextGrade } from "@/lib/belts";
 import { computeAge } from "@/lib/eligibility";
 import { effectiveEventStatus, canOverrideLocks } from "@/lib/eventStatus";
 import { cleanScore, missingRequired, EXAM_EVENTS, type ExamEventKey } from "@/lib/gradingExam";
+import { syncGradingCategory } from "@/lib/gradingCategory";
 
 /**
  * Marking a grading.
@@ -258,6 +259,31 @@ async function assertCanPublish(eventId: string) {
     throw new Error("Only a Super Admin or the person who created this event can publish its results.");
   }
   return { session, supabase };
+}
+
+/**
+ * Work out the category for every entry in a grading from the grade each
+ * student holds now.
+ *
+ * Entries approved before the category rule existed have none, and a student
+ * whose grade was corrected after approval may be in the wrong one. Categories
+ * chosen by hand are left alone.
+ */
+export async function syncAllGradingCategories(formData: FormData) {
+  const eventId = String(formData.get("eventId") || "");
+  if (!eventId) return;
+  const { supabase } = await assertCanMark(eventId);
+
+  const { data: regs } = await supabase
+    .from("event_registrations")
+    .select("id")
+    .eq("event_id", eventId)
+    .eq("category_locked", false);
+
+  for (const reg of regs ?? []) {
+    await syncGradingCategory(supabase, eventId, reg.id);
+  }
+  revalidatePath(`/events/${eventId}`);
 }
 
 export async function publishResults(formData: FormData) {

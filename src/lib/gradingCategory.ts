@@ -55,7 +55,7 @@ export async function ensureCategoryForTarget(
   if (existing) return existing.id;
 
   const below = gradeBelow(target);
-  const { data: created } = await supabase
+  const { data: created, error } = await supabase
     .from("event_categories")
     .insert({
       event_id: eventId,
@@ -78,7 +78,13 @@ export async function ensureCategoryForTarget(
     .eq("event_id", eventId)
     .eq("name", target.label)
     .maybeSingle();
-  return retry?.id ?? null;
+  if (retry) return retry.id;
+
+  // Anything else is a real failure. Swallowing it here is what let a rejected
+  // insert look like "the category just didn't save" for a whole release.
+  throw new Error(
+    `The "${target.label}" category could not be created${error?.message ? `: ${error.message}` : "."}`,
+  );
 }
 
 /**

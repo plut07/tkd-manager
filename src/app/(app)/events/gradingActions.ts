@@ -65,7 +65,15 @@ async function stageRows(supabase: ReturnType<typeof supabaseAdmin>, eventId: st
         // recent thing we know about them.
         const gup = row.gup != null || row.dan != null ? row.gup : existingStudent.gup;
         const dan = row.gup != null || row.dan != null ? row.dan : existingStudent.dan;
-        const categoryId = await gradingCategoryIdFor(supabase, eventId, gup ?? null, dan ?? null);
+        // This also runs from the Tally webhook, where throwing would lose the
+        // whole submission. The entry is worth more than the category, which
+        // approval works out again anyway.
+        let categoryId: string | null = null;
+        try {
+          categoryId = await gradingCategoryIdFor(supabase, eventId, gup ?? null, dan ?? null);
+        } catch {
+          categoryId = null;
+        }
         await supabase.from("event_registrations").insert({ event_id: eventId, student_id: existingStudent.id, club_id: existingStudent.club_id, category_id: categoryId, status: "pending" });
       }
       matchedCount++;

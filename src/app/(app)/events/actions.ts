@@ -9,7 +9,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { checkEligibility, checkCountryEligibility, type CategoryCriteria, type StudentLite } from "@/lib/eligibility";
 import { sortForNumbering, formatCompetitionNumber, type NumberingStudent } from "@/lib/numbering";
 import { effectiveEventStatus, isRegistrationOpen, canOverrideLocks, fromLocalInputValue } from "@/lib/eventStatus";
-import { parseGradeValue, isTopGrade } from "@/lib/belts";
+import { parseGradeValue, isTopGrade, GRADE_OPTIONS } from "@/lib/belts";
 import { gradingCategoryIdFor, syncGradingCategory, ensureCategoryForTarget, TOP_GRADE_MESSAGE } from "@/lib/gradingCategory";
 
 export type FormState = { error?: string } | undefined;
@@ -440,27 +440,40 @@ export async function approveRegistration(formData: FormData) {
  * to move somebody — a double grading, or a grade recorded wrongly at entry.
  * The chosen category is created if this is the first candidate to sit for it.
  */
-export async function updateRegistrationCategory(formData: FormData): Promise<void> {
-  const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
-  const registrationId = String(formData.get("registrationId") || "");
-  const eventId = String(formData.get("eventId") || "");
-  const targetGrade = String(formData.get("targetGrade") || "");
-  if (!registrationId || !eventId) return;
+export type CategoryUpdateResult = { ok: true; categoryName: string | null } | { ok: false; error: string };
 
-  const supabase = supabaseAdmin();
-  const { data: event } = await supabase.from("events").select("status, start_date, end_date, created_by").eq("id", eventId).maybeSingle();
-  if (event && effectiveEventStatus(event as any) === "completed" && !canOverrideLocks({ sub: session.sub, role: session.role }, event as any)) {
-    throw new Error("This event has finished, so entries can no longer be changed.");
+export async function updateRegistrationCategory(input: {
+  registrationId: string;
+  eventId: string;
+  targetGrade: string;
+}): Promise<CategoryUpdateResult> {
+  try {
+    const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
+    const { registrationId, eventId, targetGrade } = input;
+    if (!registrationId || !eventId) return { ok: false, error: "Missing registration." };
+
+    const supabase = supabaseAdmin();
+    const { data: event } = await supabase.from("events").select("status, start_date, end_date, created_by").eq("id", eventId).maybeSingle();
+    if (event && effectiveEventStatus(event as any) === "completed" && !canOverrideLocks({ sub: session.sub, role: session.role }, event as any)) {
+      return { ok: false, error: "This event has finished, so entries can no longer be changed." };
+    }
+
+    // An empty choice clears the category rather than guessing.
+    const categoryId = targetGrade ? await ensureCategoryForTarget(supabase, eventId, targetGrade) : null;
+
+    // category_locked stops approval from quietly putting them back.
+    const { error } = await supabase
+      .from("event_registrations")
+      .update({ category_id: categoryId, category_locked: true })
+      .eq("id", registrationId);
+    if (error) return { ok: false, error: "The category could not be saved. Please try again." };
+
+    const name = targetGrade ? GRADE_OPTIONS.find((g) => g.value === targetGrade)?.label ?? null : null;
+    revalidatePath(`/events/${eventId}`);
+    revalidatePath(`/events/${eventId}/register`);
+    return { ok: true, categoryName: name };
+  } catch (e) {
+    if (typeof e === "object" && e !== null && typeof (e as any).digest === "string" && (e as any).digest.startsWith("NEXT_REDIRECT")) throw e;
+    return { ok: false, error: e instanceof Error ? e.message : "The category could not be saved." };
   }
-
-  // An empty choice clears the category rather than guessing.
-  const categoryId = targetGrade ? await ensureCategoryForTarget(supabase, eventId, targetGrade) : null;
-  // category_locked stops approval from quietly putting them back.
-  await supabase
-    .from("event_registrations")
-    .update({ category_id: categoryId, category_locked: true })
-    .eq("id", registrationId);
-
-  revalidatePath(`/events/${eventId}`);
-  revalidatePath(`/events/${eventId}/register`);
 }

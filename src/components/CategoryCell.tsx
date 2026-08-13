@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { GRADE_OPTIONS } from "@/lib/belts";
 import { updateRegistrationCategory } from "@/app/(app)/events/actions";
@@ -12,8 +12,9 @@ import { updateRegistrationCategory } from "@/app/(app)/events/actions";
  * that already exist, so an examiner can move somebody into a grade nobody has
  * registered for yet — it gets created on save.
  *
- * The row's own "editing" state isn't reset by a server action, so the save is
- * wrapped in a transition that closes the editor and refreshes the page itself.
+ * The save result is read and shown rather than assumed. An earlier version
+ * fired the action and refreshed regardless, which meant a rejected write
+ * looked exactly like a successful one that changed nothing.
  */
 export default function CategoryCell({
   registrationId,
@@ -28,51 +29,66 @@ export default function CategoryCell({
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
+  const [choice, setChoice] = useState(() => GRADE_OPTIONS.find((g) => g.label === categoryName)?.value ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
-  const [pending, startTransition] = useTransition();
 
-  const current = GRADE_OPTIONS.find((g) => g.label === categoryName)?.value ?? "";
-
-  function save(formData: FormData) {
-    startTransition(async () => {
-      await updateRegistrationCategory(formData);
-      setEditing(false);
-      setSaved(true);
-      router.refresh();
-      setTimeout(() => setSaved(false), 2500);
-    });
+  async function save() {
+    setBusy(true);
+    setError("");
+    const result = await updateRegistrationCategory({ registrationId, eventId, targetGrade: choice });
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setEditing(false);
+    setSaved(true);
+    router.refresh();
+    setTimeout(() => setSaved(false), 3000);
   }
 
   if (!canEdit) return <span>{categoryName ?? "—"}</span>;
 
   if (!editing) {
     return (
-      <span className="inline-flex items-center gap-2">
+      <span className="inline-flex flex-wrap items-center gap-2">
         <span>{categoryName ?? <span className="text-amber-600">Not set</span>}</span>
         <button type="button" className="text-xs font-medium text-brand-700 hover:underline" onClick={() => setEditing(true)}>
           Edit
         </button>
         {saved && <span className="text-xs text-green-600">Saved</span>}
+        {error && <span className="w-full text-xs text-red-600">{error}</span>}
       </span>
     );
   }
 
   return (
-    <form action={save} className="flex flex-wrap items-center gap-1">
-      <input type="hidden" name="registrationId" value={registrationId} />
-      <input type="hidden" name="eventId" value={eventId} />
-      <select name="targetGrade" defaultValue={current} className="input !w-44 !px-2 !py-1 text-xs">
+    <div className="flex flex-wrap items-center gap-1">
+      <select
+        className="input !w-44 !px-2 !py-1 text-xs"
+        value={choice}
+        disabled={busy}
+        onChange={(e) => setChoice(e.target.value)}
+      >
         <option value="">No category</option>
         {GRADE_OPTIONS.map((g) => (
           <option key={g.value} value={g.value}>{g.label}</option>
         ))}
       </select>
-      <button type="submit" className="btn-primary !px-2 !py-1 text-xs" disabled={pending}>
-        {pending ? "Saving..." : "Save"}
+      <button type="button" className="btn-primary !px-2 !py-1 text-xs" disabled={busy} onClick={() => { void save(); }}>
+        {busy ? "Saving..." : "Save"}
       </button>
-      <button type="button" className="text-xs font-medium text-gray-500 hover:underline" onClick={() => setEditing(false)}>
+      <button
+        type="button"
+        className="text-xs font-medium text-gray-500 hover:underline"
+        disabled={busy}
+        onClick={() => { setEditing(false); setError(""); }}
+      >
         Cancel
       </button>
-    </form>
+      {error && <span className="w-full text-xs text-red-600">{error}</span>}
+    </div>
   );
 }
