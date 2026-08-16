@@ -7,11 +7,11 @@ import {
   setExamLock,
   type ExamRowDto,
 } from "@/app/(app)/events/examActions";
-import { EXAM_EVENTS, ticksGiven, type ExamEventKey } from "@/lib/gradingExam";
+import { EXAM_EVENTS, SCORE_CHOICES, examTotal, scoreSaysPassed, marksGiven, TOTAL_MAX, PASS_MARK, type ExamEventKey } from "@/lib/gradingExam";
 import { realtimeClient, POLL_WITH_REALTIME_MS, POLL_WITHOUT_REALTIME_MS } from "@/lib/liveChannel";
 
 type Category = { id: string; name: string };
-type Draft = { marks: Record<ExamEventKey, boolean>; remark: string; passed: boolean };
+type Draft = { scores: Record<ExamEventKey, number | null>; remark: string; passed: boolean };
 
 /**
  * The examiner's marking sheet.
@@ -96,7 +96,7 @@ export default function ExamGrid({
   const unassigned = useMemo(() => rows.filter((r) => !r.categoryId).length, [rows]);
 
   function valueFor(row: ExamRowDto): Draft {
-    return drafts[row.registrationId] ?? { marks: row.marks, remark: row.remark, passed: row.passed };
+    return drafts[row.registrationId] ?? { scores: row.scores, remark: row.remark, passed: row.passed };
   }
 
   function edit(row: ExamRowDto, patch: Partial<Draft>) {
@@ -121,7 +121,7 @@ export default function ExamGrid({
     const result = await saveExamRow({
       eventId,
       registrationId: row.registrationId,
-      marks: draft.marks,
+      scores: draft.scores,
       remark: draft.remark,
       passed: draft.passed,
     });
@@ -151,7 +151,7 @@ export default function ExamGrid({
     setSelected((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
   }
 
-  const markedCount = visible.filter((r) => ticksGiven(r.marks) > 0).length;
+  const markedCount = visible.filter((r) => marksGiven(r.scores) > 0).length;
   const lockedCount = visible.filter((r) => r.locked).length;
 
   return (
@@ -197,8 +197,10 @@ export default function ExamGrid({
 
       <div className="card p-4">
         <p className="text-sm text-gray-500">
-          Tick each part the candidate passed, then tick Passed for the overall result. Save as you go, and lock a
-          candidate once you&apos;re finished with them — locking is per student and doesn&apos;t wait on anybody else.
+          Mark each event out of 10 — zero is a mark in its own right. The eight events are scaled to a total out of{" "}
+          {TOTAL_MAX}, and anything above {PASS_MARK} shows as PASSED. The Passed tick is the examiner&apos;s decision and
+          overrides the marks either way. Save as you go, and lock a candidate once you&apos;re finished with them —
+          locking is per student and doesn&apos;t wait on anybody else.
           <span className="ml-1 text-gray-400">* the three parts every grading covers.</span>
         </p>
         <div className="mt-4 overflow-x-auto">
@@ -213,6 +215,7 @@ export default function ExamGrid({
                     {e.required && <span className="text-red-500">*</span>}
                   </th>
                 ))}
+                <th className="text-center">Total<span className="block text-xs font-normal text-gray-400">of {TOTAL_MAX}</span></th>
                 <th>Remark</th>
                 <th className="text-center">Passed</th>
                 <th></th>
@@ -223,22 +226,42 @@ export default function ExamGrid({
                 const draft = valueFor(row);
                 const dirty = Boolean(drafts[row.registrationId]);
                 const disabled = !canMark || row.locked || busy[row.registrationId];
+                const total = examTotal(draft.scores);
+                const wouldPass = scoreSaysPassed(draft.scores);
                 return (
                   <tr key={row.registrationId} className={row.locked ? "bg-gray-50" : dirty ? "bg-amber-50/50" : undefined}>
                     <td className="whitespace-nowrap font-medium text-gray-900">{row.studentName}</td>
                     <td className="whitespace-nowrap">{row.clubName ?? "—"}</td>
                     {EXAM_EVENTS.map((e) => (
                       <td key={e.key} className="text-center">
-                        <input
-                          type="checkbox"
-                          className="h-5 w-5"
-                          checked={draft.marks[e.key] === true}
+                        <select
+                          className="input !w-16 !px-1 text-center"
+                          value={draft.scores[e.key] ?? ""}
                           disabled={disabled}
                           aria-label={`${e.label} — ${row.studentName}`}
-                          onChange={(ev) => edit(row, { marks: { ...draft.marks, [e.key]: ev.target.checked } })}
-                        />
+                          onChange={(ev) =>
+                            edit(row, {
+                              scores: { ...draft.scores, [e.key]: ev.target.value === "" ? null : Number(ev.target.value) },
+                            })
+                          }
+                        >
+                          <option value="">–</option>
+                          {SCORE_CHOICES.map((n) => (
+                            <option key={n} value={n}>{n}</option>
+                          ))}
+                        </select>
                       </td>
                     ))}
+                    <td className="whitespace-nowrap text-center">
+                      <span className="font-semibold text-gray-900">{total}</span>
+                      {marksGiven(draft.scores) > 0 && (
+                        <span
+                          className={`mt-0.5 block text-xs font-semibold ${wouldPass ? "text-green-700" : "text-gray-400"}`}
+                        >
+                          {wouldPass ? "PASSED" : `needs over ${PASS_MARK}`}
+                        </span>
+                      )}
+                    </td>
                     <td>
                       <input
                         type="text"
@@ -255,7 +278,7 @@ export default function ExamGrid({
                         className="h-5 w-5"
                         checked={draft.passed}
                         disabled={disabled}
-                        title="Passed the grading"
+                        title={wouldPass ? "Marks pass — tick to confirm" : "Marks are below the pass mark — tick to pass anyway"}
                         onChange={(ev) => edit(row, { passed: ev.target.checked })}
                       />
                     </td>
@@ -299,7 +322,7 @@ export default function ExamGrid({
               })}
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={EXAM_EVENTS.length + 5} className="py-6 text-center text-gray-400">
+                  <td colSpan={EXAM_EVENTS.length + 6} className="py-6 text-center text-gray-400">
                     {categories.length === 0
                       ? "Nobody has been registered for this grading yet."
                       : "Tick a category above to start marking."}

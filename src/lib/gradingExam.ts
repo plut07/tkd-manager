@@ -1,10 +1,12 @@
 /**
  * What a grading exam is marked on.
  *
- * Each event is a tick rather than a score: the examiner marks whether the
- * candidate passed that part. The overall Passed tick is the examiner's own
- * judgement and is deliberately separate — a candidate can pass every event and
- * still be held back, or the reverse.
+ * Eight events, ten points each, so a perfect exam is 80 raw points. That is
+ * multiplied by 1.25 to give a mark out of 100, which is what examiners and
+ * candidates actually talk about.
+ *
+ * Zero is a real mark — a candidate can attempt an event and score nothing —
+ * so "unmarked" is null rather than 0, and the two are kept apart everywhere.
  *
  * Deliberately plain — no server-only or database imports — so the same
  * definitions drive the examiner's screen, the server action that validates a
@@ -26,7 +28,9 @@ export type ExamEventKey =
   | "step_sparring"
   | "sparring"
   | "breaking"
-  | "stamina";
+  | "stamina"
+  | "self_defend"
+  | "knife_self_defend";
 
 export const EXAM_EVENTS: ExamEvent[] = [
   { key: "basic_technique", label: "Basic Technique", short: "Basic Technique", required: true },
@@ -35,14 +39,28 @@ export const EXAM_EVENTS: ExamEvent[] = [
   { key: "sparring", label: "Sparring", short: "Sparring", required: false },
   { key: "breaking", label: "Breaking", short: "Breaking", required: false },
   { key: "stamina", label: "Stamina", short: "Stamina", required: false },
+  { key: "self_defend", label: "Self Defend", short: "Self Defend", required: false },
+  { key: "knife_self_defend", label: "Knife Self Defend", short: "Knife Self Defend", required: false },
 ];
 
 export const REQUIRED_EVENTS: ExamEventKey[] = EXAM_EVENTS.filter((e) => e.required).map((e) => e.key);
 
-/** One tick per event. Absent or false both mean "not passed". */
-export type ExamMarks = Partial<Record<ExamEventKey, boolean | null>>;
+/** Marks run 0-10 inclusive. Zero counts; null means not marked yet. */
+export const SCORE_MIN = 0;
+export const SCORE_MAX = 10;
+export const SCORE_CHOICES: number[] = Array.from({ length: SCORE_MAX - SCORE_MIN + 1 }, (_, i) => SCORE_MIN + i);
 
-export type ExamRow = ExamMarks & {
+/** 8 events x 10 points = 80 raw, scaled to a mark out of 100. */
+export const RAW_MAX = EXAM_EVENTS.length * SCORE_MAX;
+export const SCALE = 1.25;
+export const TOTAL_MAX = RAW_MAX * SCALE;
+
+/** Above this the exam is a pass. An examiner can still override either way. */
+export const PASS_MARK = 50;
+
+export type ExamScores = Partial<Record<ExamEventKey, number | null>>;
+
+export type ExamRow = ExamScores & {
   registration_id: string;
   remark: string | null;
   passed: boolean | null;
@@ -50,22 +68,37 @@ export type ExamRow = ExamMarks & {
   updated_at?: string | null;
 };
 
-/** Coerce whatever arrives from a form or the database into a plain tick. */
-export function cleanTick(value: unknown): boolean {
-  return value === true || value === "true" || value === "on" || value === 1 || value === "1";
+/** Keep a value inside 0-10, or null when the examiner hasn't marked it. */
+export function cleanScore(value: unknown): number | null {
+  if (value === "" || value == null) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const rounded = Math.round(n);
+  if (rounded < SCORE_MIN || rounded > SCORE_MAX) return null;
+  return rounded;
 }
 
-/** How many events the candidate was ticked for. */
-export function ticksGiven(marks: ExamMarks): number {
-  return EXAM_EVENTS.reduce((n, e) => n + (cleanTick(marks[e.key]) ? 1 : 0), 0);
+/** Raw points across the eight events. Unmarked events contribute nothing. */
+export function rawTotal(scores: ExamScores): number {
+  return EXAM_EVENTS.reduce((sum, e) => sum + (cleanScore(scores[e.key]) ?? 0), 0);
 }
 
-/** The three core events they passed, for a quick read on the result list. */
-export function requiredTicksGiven(marks: ExamMarks): number {
-  return EXAM_EVENTS.reduce((n, e) => n + (e.required && cleanTick(marks[e.key]) ? 1 : 0), 0);
+/** The mark out of 100: raw points scaled by 1.25. */
+export function examTotal(scores: ExamScores): number {
+  return Math.round(rawTotal(scores) * SCALE * 100) / 100;
 }
 
-/** A short summary such as "4 of 6" for the results table. */
-export function ticksSummary(marks: ExamMarks): string {
-  return `${ticksGiven(marks)} of ${EXAM_EVENTS.length}`;
+/** Whether the marks alone would pass, before any examiner override. */
+export function scoreSaysPassed(scores: ExamScores): boolean {
+  return examTotal(scores) > PASS_MARK;
+}
+
+/** Which mandatory events are still unmarked. */
+export function missingRequired(scores: ExamScores): ExamEvent[] {
+  return EXAM_EVENTS.filter((e) => e.required && cleanScore(scores[e.key]) == null);
+}
+
+/** How many of the eight events have been marked at all. */
+export function marksGiven(scores: ExamScores): number {
+  return EXAM_EVENTS.reduce((n, e) => n + (cleanScore(scores[e.key]) != null ? 1 : 0), 0);
 }

@@ -4,10 +4,9 @@ import { requirePermission, hasPermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import DeleteButton from "@/components/DeleteButton";
-import BeltBadge from "@/components/BeltBadge";
-import CopyLinkButton from "@/components/CopyLinkButton";
 import TemplateTab from "@/components/TemplateTab";
-import CategoryCell from "@/components/CategoryCell";
+import RegisteredStudentsPanel, { type RegistrationFilters } from "../RegisteredStudentsPanel";
+import RegistrationPanel from "../RegistrationPanel";
 
 import CategoryForm from "../CategoryForm";
 import BracketView from "../BracketView";
@@ -15,28 +14,56 @@ import GradingTab from "../GradingTab";
 import ExamTab from "../ExamTab";
 import ResultTab from "../ResultTab";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
-import { describeCriteria, waiverAge, formatDob, type CategoryCriteria } from "@/lib/eligibility";
+import { describeCriteria, type CategoryCriteria } from "@/lib/eligibility";
 import { effectiveEventStatus, canOverrideLocks, STATUS_STYLES, STATUS_LABELS, formatEventRange, formatEventDateTime } from "@/lib/eventStatus";
-import { deleteEvent, addCategory, deleteCategory, addDocument, deleteDocument, unregisterStudent } from "../actions";
+import { deleteEvent, addCategory, deleteCategory, addDocument, deleteDocument } from "../actions";
 import CountryFlag from "@/components/CountryFlag";
 function formatDate(d: string | null) { if (!d) return "TBA"; return new Date(d).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }); }
-export default async function EventDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { tab?: string; category?: string } }) {
+export default async function EventDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { tab?: string; sub?: string; category?: string; club?: string; grade?: string; gender?: string; ageGroup?: string; status?: string } }) {
   const session = await requirePermission(PERMISSIONS.EVENT_VIEW);
   const supabase = supabaseAdmin();
   const { data: event } = await supabase.from("events").select("*, clubs:organizer_club_id(name)").eq("id", params.id).maybeSingle();
   if (!event) notFound();
   const isCompetition = event.event_type === "competition";
   const isGrading = event.event_type === "grading";
+  // Registration gathers what used to be three separate tabs. Old links
+  // (?tab=entries, ?tab=template, ?tab=grading) still land in the right place.
+  const legacy: Record<string, string> = { entries: "students", template: "template", grading: "webform" };
+  const rawTab = searchParams.tab ?? "";
   const tab =
-    searchParams.tab === "entries"
-      ? "entries"
-      : searchParams.tab === "template"
-        ? "template"
-      : isCompetition && (searchParams.tab === "categories" || searchParams.tab === "draws")
-        ? searchParams.tab
-        : isGrading && (searchParams.tab === "grading" || searchParams.tab === "exam" || searchParams.tab === "results")
-          ? searchParams.tab
+    rawTab in legacy || rawTab === "registration"
+      ? "registration"
+      : isCompetition && (rawTab === "categories" || rawTab === "draws")
+        ? rawTab
+        : isGrading && (rawTab === "exam" || rawTab === "results")
+          ? rawTab
           : "info";
+
+  const subOptions = ["students", "approval", "template", "webform"];
+  const requestedSub = legacy[rawTab] ?? searchParams.sub ?? "students";
+  const sub = subOptions.includes(requestedSub) ? requestedSub : "students";
+
+  const filters: RegistrationFilters = {
+    club: searchParams.club ?? "",
+    grade: searchParams.grade ?? "",
+    gender: searchParams.gender ?? "",
+    ageGroup: searchParams.ageGroup ?? "",
+    status: searchParams.status ?? "",
+  };
+
+  // Filters are links, so changing one keeps the rest of the query string.
+  function registrationHref(patch: Partial<RegistrationFilters & { sub: string }>) {
+    const next = new URLSearchParams();
+    next.set("tab", "registration");
+    next.set("sub", (patch.sub ?? sub) as string);
+    const merged = { ...filters, ...patch };
+    for (const key of ["club", "grade", "gender", "ageGroup", "status"] as const) {
+      const value = (merged as any)[key];
+      if (value) next.set(key, String(value));
+    }
+    return `/events/${params.id}?${next.toString()}`;
+  }
+
   const { data: categories } = await supabase.from("event_categories").select("*").eq("event_id", event.id).order("sort_order").order("name");
   const { data: documents } = await supabase.from("event_documents").select("*").eq("event_id", event.id).order("uploaded_at", { ascending: false });
   const { count: pendingCount } = await supabase.from("event_registrations").select("id", { count: "exact", head: true }).eq("event_id", event.id).eq("status", "pending");
@@ -55,16 +82,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
   // created the event can still correct a result once the day is over.
   const canOverride = canOverrideLocks({ sub: session.sub, role: session.role }, event as any);
   const canMarkNow = canEdit && (!isFinished || canOverride);
-  // Loaded only for the entries tab so the other tabs stay cheap.
-  const { data: entries } = tab === "entries"
-    ? await supabase
-        .from("event_registrations")
-        .select("id, status, competition_number, registered_at, waiver_token, clubs(name), students(full_name, birthday, gender, gup, dan, national_id, club_number), event_categories(name), waiver_signatures(signed_name, signed_at)")
-        .eq("event_id", event.id)
-        .order("registered_at")
-    : { data: null };
-
-  const { data: template } = tab === "template"
+  const { data: template } = tab === "registration" && sub === "template"
     ? await supabase.from("event_form_templates").select("id, name, page_count, page_width, page_height").eq("event_id", event.id).eq("is_default", true).maybeSingle()
     : { data: null };
   const { data: templateFields } = template
@@ -119,9 +137,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
         <Link href={`/events/${event.id}`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "info" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Info pack</Link>
         {isCompetition && (<Link href={`/events/${event.id}?tab=categories`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "categories" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Categories & divisions</Link>)}
         {isCompetition && (<Link href={`/events/${event.id}?tab=draws`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "draws" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Draws</Link>)}
-        <Link href={`/events/${event.id}?tab=entries`} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "entries" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Registered students</Link>
-        {canEdit && (<Link href={`/events/${event.id}?tab=template`} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "template" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Form template</Link>)}
-        {isGrading && (<Link href={`/events/${event.id}?tab=grading`} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "grading" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Grading registration</Link>)}
+        <Link href={registrationHref({ sub: "students" })} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "registration" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Registration Page</Link>
         {isGrading && (<Link href={`/events/${event.id}?tab=exam`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "exam" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Exam</Link>)}
         {isGrading && (<Link href={`/events/${event.id}?tab=results`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "results" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Results</Link>)}
       </div>
@@ -180,95 +196,38 @@ export default async function EventDetailPage({ params, searchParams }: { params
           </div>
           {canEditNow && <CategoryForm action={addCategory} eventId={event.id} />}
         </div>
-      ) : tab === "entries" ? (
-        <div className="card p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Registered students ({(entries ?? []).length})</h2>
-              <p className="mt-1 text-sm text-gray-500">Everyone entered for this event. Download a participation waiver for any of them.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <a href={`/api/export/grading?eventId=${event.id}`} className="btn-secondary">Export to Excel</a>
-              {(entries ?? []).length > 0 && (
-                <a href={`/api/export/waiver?eventId=${event.id}`} target="_blank" rel="noopener noreferrer" className="btn-secondary">All waivers (PDF)</a>
-              )}
-            </div>
+      ) : tab === "registration" ? (
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-1 rounded-md bg-gray-100 p-1">
+            <Link href={registrationHref({ sub: "students" })} className={`rounded px-3 py-1.5 text-sm font-medium ${sub === "students" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Registered students</Link>
+            <Link href={registrationHref({ sub: "approval" })} className={`rounded px-3 py-1.5 text-sm font-medium ${sub === "approval" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Approval &amp; confirmed</Link>
+            {canEdit && (<Link href={registrationHref({ sub: "template" })} className={`rounded px-3 py-1.5 text-sm font-medium ${sub === "template" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Form template</Link>)}
+            {isGrading && (<Link href={registrationHref({ sub: "webform" })} className={`rounded px-3 py-1.5 text-sm font-medium ${sub === "webform" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Online Webform</Link>)}
           </div>
-          <div className="mt-4 overflow-x-auto">
-            <table className="table-base">
-              <thead>
-                <tr>
-                  <th>No.</th><th>Name</th><th>Club</th><th>Grade / Degree</th>
-                  <th className="hidden lg:table-cell">Date of birth</th>
-                  <th className="hidden md:table-cell">Gender</th>
-                  <th className="hidden md:table-cell">Age</th>
-                  <th>Category</th>
-                  <th>Waiver</th>
-                  <th>Status</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {(entries ?? []).map((r: any) => (
-                  <tr key={r.id}>
-                    <td>{r.competition_number ?? "—"}</td>
-                    <td className="font-medium text-gray-900">{r.students?.full_name}</td>
-                    <td>{r.clubs?.name ?? "—"}</td>
-                    <td><BeltBadge gup={r.students?.gup ?? null} dan={r.students?.dan ?? null} /></td>
-                    <td className="hidden lg:table-cell">{formatDob(r.students?.birthday ?? null)}</td>
-                    <td className="hidden capitalize md:table-cell">{r.students?.gender ?? "—"}</td>
-                    <td className="hidden md:table-cell">{waiverAge(r.students?.birthday ?? null) || "—"}</td>
-                    <td>
-                      {isGrading ? (
-                        <CategoryCell
-                          registrationId={r.id}
-                          eventId={event.id}
-                          categoryName={r.event_categories?.name ?? null}
-                          canEdit={canEditNow}
-                        />
-                      ) : (
-                        r.event_categories?.name ?? "—"
-                      )}
-                    </td>
-                    <td>
-                      {r.waiver_signatures ? (
-                        <span className="badge bg-green-100 text-green-700" title={`Signed by ${r.waiver_signatures.signed_name}`}>Signed</span>
-                      ) : (
-                        <span className="badge bg-gray-100 text-gray-500">Not signed</span>
-                      )}
-                    </td>
-                    <td><span className={`badge ${r.status === "confirmed" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{r.status}</span></td>
-                    <td className="whitespace-nowrap text-right">
-                      <a href={`/public/waiver/${r.waiver_token}`} target="_blank" rel="noopener noreferrer" className="mr-3 text-sm font-medium text-brand-700 hover:underline">Sign</a>
-                      <span className="mr-3"><CopyLinkButton url={`${baseUrl}/public/waiver/${r.waiver_token}`} /></span>
-                      <a href={`/api/export/waiver?registrationId=${r.id}`} target="_blank" rel="noopener noreferrer" className="mr-3 text-sm font-medium text-brand-700 hover:underline">Waiver PDF</a>
-                      {canEditNow && (
-                        <DeleteButton
-                          action={unregisterStudent}
-                          fieldName="registrationId"
-                          fieldValue={r.id}
-                          confirmLabel={`Remove ${r.students?.full_name} from this event?`}
-                          label="Remove"
-                          extraFields={{ eventId: event.id }}
-                        />
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {(entries ?? []).length === 0 && (
-                  <tr><td colSpan={11} className="py-6 text-center text-gray-400">Nobody has registered for this event yet.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          {sub === "approval" ? (
+            <RegistrationPanel eventId={event.id} />
+          ) : sub === "template" ? (
+            <TemplateTab
+              eventId={event.id}
+              template={template as any}
+              fields={templateFields ?? []}
+              canEdit={canEditNow}
+              registeredCount={(pendingCount ?? 0) + (confirmedCount ?? 0)}
+            />
+          ) : sub === "webform" && isGrading ? (
+            <GradingTab eventId={event.id} canEdit={canEditNow} isSuperAdmin={session.role === "super_admin"} />
+          ) : (
+            <RegisteredStudentsPanel
+              eventId={event.id}
+              isGrading={isGrading}
+              canEdit={canEditNow}
+              baseUrl={baseUrl}
+              filters={filters}
+              hrefFor={(patch) => registrationHref(patch)}
+            />
+          )}
         </div>
-      ) : tab === "template" ? (
-        <TemplateTab
-          eventId={event.id}
-          template={template as any}
-          fields={templateFields ?? []}
-          canEdit={canEditNow}
-          registeredCount={(pendingCount ?? 0) + (confirmedCount ?? 0)}
-        />
+
       ) : tab === "draws" ? (
         <div className="space-y-6">
           <div className="card p-6">
@@ -303,9 +262,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
           canPublish={canOverride}
           canPreview={canEdit}
         />
-      ) : (
-        <GradingTab eventId={event.id} canEdit={canEditNow} isSuperAdmin={session.role === "super_admin"} />
-      )}
+      ) : null}
     </div>
   );
 }

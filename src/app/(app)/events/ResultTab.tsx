@@ -2,7 +2,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import BeltBadge from "@/components/BeltBadge";
 import { computeAge } from "@/lib/eligibility";
 import { formatEventDateTime } from "@/lib/eventStatus";
-import { ticksSummary, type ExamMarks } from "@/lib/gradingExam";
+import { examTotal, TOTAL_MAX, type ExamScores } from "@/lib/gradingExam";
 import { publishResults, unpublishResults } from "./examActions";
 
 /**
@@ -94,7 +94,7 @@ export default async function ResultTab({
               <th className="hidden md:table-cell">Age</th>
               <th>Current Belt</th>
               <th className="hidden lg:table-cell">Graded for</th>
-              <th className="hidden lg:table-cell">Parts passed</th>
+              <th className="hidden lg:table-cell">Total</th>
               <th>Result</th>
             </tr>
           </thead>
@@ -107,7 +107,7 @@ export default async function ResultTab({
                 <td className="hidden md:table-cell">{computeAge(reg.students?.birthday ?? null) ?? "—"}</td>
                 <td><BeltBadge gup={reg.students?.gup ?? null} dan={reg.students?.dan ?? null} /></td>
                 <td className="hidden lg:table-cell">{reg.event_categories?.name ?? "—"}</td>
-                <td className="hidden lg:table-cell">{ticksSummary(score as ExamMarks)}</td>
+                <td className="hidden lg:table-cell">{examTotal(score as ExamScores)} / {TOTAL_MAX}</td>
                 <td>
                   <span className={`badge ${score.passed ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                     {score.passed ? "PASS" : "Failed"}
@@ -118,7 +118,7 @@ export default async function ResultTab({
             {results.length === 0 && (
               <tr>
                 <td colSpan={8} className="py-6 text-center text-gray-400">
-                  Nobody has been marked yet. Tick each candidate’s parts on the Exam page first.
+                  Nobody has been marked yet. Enter marks on the Exam page first.
                 </td>
               </tr>
             )}
