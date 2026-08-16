@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { PHOTO_BUCKET } from "@/lib/eventPhotos";
+import EventPhotos from "@/components/EventPhotos";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
 import { describeCriteria, type CategoryCriteria } from "@/lib/eligibility";
 import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange, formatEventDateTime } from "@/lib/eventStatus";
@@ -39,6 +41,17 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
     .eq("event_id", event.id)
     .order("sort_order")
     .order("name");
+
+  const { data: photoRows } = await supabase
+    .from("event_photos")
+    .select("id, storage_path, caption")
+    .eq("event_id", params.id)
+    .order("sort_order");
+  const photos = (photoRows ?? []).map((p: any) => ({
+    id: p.id,
+    caption: p.caption ?? null,
+    url: supabase.storage.from(PHOTO_BUCKET).getPublicUrl(p.storage_path).data.publicUrl,
+  }));
 
   const { data: documents } = await supabase
     .from("event_documents")
@@ -127,6 +140,8 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
 
         {event.description && <p className="mt-4 whitespace-pre-line text-sm text-gray-700">{event.description}</p>}
       </div>
+
+      <EventPhotos eventId={params.id} photos={photos} canEdit={false} />
 
       {event.event_type === "competition" && (
         <div className="card p-6">

@@ -4,11 +4,11 @@ import { revalidatePath } from "next/cache";
 import { requirePermission, requireSession } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
-import { gradeLabel, nextGrade } from "@/lib/belts";
+import { gradeLabel, nextGrade, GRADE_OPTIONS } from "@/lib/belts";
 import { computeAge } from "@/lib/eligibility";
 import { effectiveEventStatus, canOverrideLocks } from "@/lib/eventStatus";
 import { cleanScore, EXAM_EVENTS, type ExamEventKey } from "@/lib/gradingExam";
-import { syncGradingCategory } from "@/lib/gradingCategory";
+import { ensureCategoryForTarget, syncGradingCategory } from "@/lib/gradingCategory";
 
 /**
  * Marking a grading.
@@ -30,6 +30,8 @@ export type ExamRowDto = {
   targetGrade: string | null;
   categoryId: string | null;
   categoryName: string | null;
+  /** The event keys this candidate's category is marked on. */
+  examEvents: string[];
   status: string;
   scores: Record<ExamEventKey, number | null>;
   remark: string;
@@ -90,6 +92,7 @@ function toDto(reg: any, score: any, examinerName: string | null): ExamRowDto {
     targetGrade: target?.label ?? null,
     categoryId: reg.category_id ?? null,
     categoryName: reg.event_categories?.name ?? null,
+    examEvents: (reg.event_categories?.exam_events as string[] | null) ?? [],
     status: reg.status ?? "pending",
     scores,
     remark: score?.remark ?? "",
@@ -101,7 +104,7 @@ function toDto(reg: any, score: any, examinerName: string | null): ExamRowDto {
 }
 
 const REG_SELECT =
-  "id, status, category_id, competition_number, clubs(name), event_categories(name), students(full_name, gender, birthday, gup, dan)";
+  "id, status, category_id, competition_number, clubs(name), event_categories(name, exam_events), students(full_name, gender, birthday, gup, dan)";
 
 /** Everyone entered in the chosen categories, with whatever marks exist so far. */
 export async function loadExamRows(eventId: string, categoryIds: string[]): Promise<ExamRowDto[]> {
@@ -270,6 +273,56 @@ export async function syncAllGradingCategories(formData: FormData) {
 
   for (const reg of regs ?? []) {
     await syncGradingCategory(supabase, eventId, reg.id);
+  }
+  revalidatePath(`/events/${eventId}`);
+}
+
+/**
+ * Choose which events a grading category is marked on.
+ *
+ * Junior grades don't sit breaking or knife work, so their categories carry a
+ * shorter list. The total is always presented out of 100 whichever list applies,
+ * so marks stay comparable across the day.
+ */
+export async function setCategoryEvents(input: {
+  eventId: string;
+  categoryId: string;
+  eventKeys: string[];
+}): Promise<{ ok: true } | { error: string }> {
+  try {
+    const { supabase } = await assertCanMark(input.eventId);
+    const valid = EXAM_EVENTS.map((e) => e.key as string);
+    const chosen = input.eventKeys.filter((k) => valid.includes(k));
+    if (chosen.length === 0) return { error: "Pick at least one event for this category." };
+
+    const { error } = await supabase
+      .from("event_categories")
+      .update({ exam_events: chosen.length === valid.length ? null : chosen })
+      .eq("id", input.categoryId)
+      .eq("event_id", input.eventId);
+    if (error) return { error: "Could not save the event list for this category." };
+
+    revalidatePath(`/events/${input.eventId}`);
+    return { ok: true };
+  } catch (e) {
+    if (isRedirect(e)) throw e;
+    return { error: e instanceof Error ? e.message : "Could not save the event list." };
+  }
+}
+
+/**
+ * Create every grading category up front, so an organiser can set each one's
+ * events before anybody has registered for it.
+ */
+export async function addAllGradingCategories(formData: FormData) {
+  const eventId = String(formData.get("eventId") || "");
+  if (!eventId) return;
+  await assertCanMark(eventId);
+  const supabase = supabaseAdmin();
+
+  // Every grade except the first can be graded *to*; the first is where you start.
+  for (const grade of GRADE_OPTIONS.slice(1)) {
+    await ensureCategoryForTarget(supabase, eventId, grade.value);
   }
   revalidatePath(`/events/${eventId}`);
 }

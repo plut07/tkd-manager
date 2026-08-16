@@ -7,10 +7,11 @@ import {
   setExamLock,
   type ExamRowDto,
 } from "@/app/(app)/events/examActions";
-import { EXAM_EVENTS, SCORE_CHOICES, examTotal, scoreSaysPassed, marksGiven, TOTAL_MAX, PASS_MARK, type ExamEventKey } from "@/lib/gradingExam";
+import { EXAM_EVENTS, SCORE_CHOICES, examTotal, scoreSaysPassed, marksGiven, eventsFor, TOTAL_MAX, PASS_MARK, type ExamEventKey } from "@/lib/gradingExam";
+import CategoryEventsEditor from "./CategoryEventsEditor";
 import { realtimeClient, POLL_WITH_REALTIME_MS, POLL_WITHOUT_REALTIME_MS } from "@/lib/liveChannel";
 
-type Category = { id: string; name: string };
+type Category = { id: string; name: string; examEvents: string[] };
 type Draft = { scores: Record<ExamEventKey, number | null>; remark: string; passed: boolean };
 
 /**
@@ -151,7 +152,7 @@ export default function ExamGrid({
     setSelected((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
   }
 
-  const markedCount = visible.filter((r) => marksGiven(r.scores) > 0).length;
+  const markedCount = visible.filter((r) => marksGiven(r.scores, eventsFor(r.examEvents)) > 0).length;
   const lockedCount = visible.filter((r) => r.locked).length;
 
   return (
@@ -165,18 +166,33 @@ export default function ExamGrid({
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          {categories.map((c) => (
-            <label
-              key={c.id}
-              className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm ${
-                selected.includes(c.id) ? "border-brand-500 bg-brand-50 text-brand-800" : "border-gray-200 text-gray-600"
-              }`}
-            >
-              <input type="checkbox" className="h-4 w-4" checked={selected.includes(c.id)} onChange={() => toggleCategory(c.id)} />
-              {c.name}
-            </label>
-          ))}
-          {categories.length === 0 && <p className="text-sm text-gray-400">No grading categories yet — register some candidates first.</p>}
+          {categories.map((c) => {
+            const entered = rows.filter((r) => r.categoryId === c.id).length;
+            return (
+              <div key={c.id} className="relative">
+                <div
+                  className={`flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm ${
+                    selected.includes(c.id) ? "border-brand-500 bg-brand-50 text-brand-800" : "border-gray-200 text-gray-600"
+                  }`}
+                >
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input type="checkbox" className="h-4 w-4" checked={selected.includes(c.id)} onChange={() => toggleCategory(c.id)} />
+                    {c.name}
+                    <span className="text-xs text-gray-400">({entered})</span>
+                  </label>
+                  <span className="text-gray-300">|</span>
+                  <CategoryEventsEditor
+                    eventId={eventId}
+                    categoryId={c.id}
+                    categoryName={c.name}
+                    examEvents={c.examEvents}
+                    canEdit={canMark}
+                  />
+                </div>
+              </div>
+            );
+          })}
+          {categories.length === 0 && <p className="text-sm text-gray-400">No grading categories yet — use &quot;Add all categories&quot; above, or register some candidates.</p>}
         </div>
         {categories.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -208,15 +224,14 @@ export default function ExamGrid({
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Club</th>
                 {EXAM_EVENTS.map((e) => (
                   <th key={e.key} className="whitespace-nowrap px-3 text-center">
                     {e.label}
                     {e.required && <span className="text-red-500">*</span>}
                   </th>
                 ))}
-                <th className="text-center">Total<span className="block text-xs font-normal text-gray-400">of {TOTAL_MAX}</span></th>
                 <th>Remark</th>
+                <th className="text-center">Total<span className="block text-xs font-normal text-gray-400">of {TOTAL_MAX}</span></th>
                 <th className="text-center">Passed</th>
                 <th></th>
               </tr>
@@ -226,14 +241,23 @@ export default function ExamGrid({
                 const draft = valueFor(row);
                 const dirty = Boolean(drafts[row.registrationId]);
                 const disabled = !canMark || row.locked || busy[row.registrationId];
-                const total = examTotal(draft.scores);
-                const wouldPass = scoreSaysPassed(draft.scores);
+                // Each category is marked on its own list of events; the total
+                // is scaled so every candidate is still marked out of 100.
+                const rowEvents = eventsFor(row.examEvents);
+                const rowKeys = new Set(rowEvents.map((e) => e.key));
+                const total = examTotal(draft.scores, rowEvents);
+                const wouldPass = scoreSaysPassed(draft.scores, rowEvents);
                 return (
                   <tr key={row.registrationId} className={row.locked ? "bg-gray-50" : dirty ? "bg-amber-50/50" : undefined}>
-                    <td className="whitespace-nowrap font-medium text-gray-900">{row.studentName}</td>
-                    <td className="whitespace-nowrap">{row.clubName ?? "—"}</td>
+                    <td className="whitespace-nowrap font-medium text-gray-900">
+                      {row.studentName}
+                      <span className="block text-xs font-normal text-gray-500">{row.clubName ?? "No club"}</span>
+                    </td>
                     {EXAM_EVENTS.map((e) => (
                       <td key={e.key} className="text-center">
+                        {!rowKeys.has(e.key) ? (
+                          <span className="text-gray-300" title={`Not part of the ${row.categoryName ?? "this"} exam`}>—</span>
+                        ) : (
                         <select
                           className="input !w-16 !px-1 text-center"
                           value={draft.scores[e.key] ?? ""}
@@ -250,18 +274,10 @@ export default function ExamGrid({
                             <option key={n} value={n}>{n}</option>
                           ))}
                         </select>
+                        )}
                       </td>
                     ))}
-                    <td className="whitespace-nowrap text-center">
-                      <span className="font-semibold text-gray-900">{total}</span>
-                      {marksGiven(draft.scores) > 0 && (
-                        <span
-                          className={`mt-0.5 block text-xs font-semibold ${wouldPass ? "text-green-700" : "text-gray-400"}`}
-                        >
-                          {wouldPass ? "PASSED" : `needs over ${PASS_MARK}`}
-                        </span>
-                      )}
-                    </td>
+
                     <td>
                       <input
                         type="text"
@@ -271,6 +287,16 @@ export default function ExamGrid({
                         disabled={disabled}
                         onChange={(ev) => edit(row, { remark: ev.target.value })}
                       />
+                    </td>
+                    <td className="whitespace-nowrap text-center">
+                      <span className="font-semibold text-gray-900">{total}</span>
+                      {marksGiven(draft.scores, rowEvents) > 0 && (
+                        <span
+                          className={`mt-0.5 block text-xs font-semibold ${wouldPass ? "text-green-700" : "text-gray-400"}`}
+                        >
+                          {wouldPass ? "PASSED" : `needs over ${PASS_MARK}`}
+                        </span>
+                      )}
                     </td>
                     <td className="text-center">
                       <input
@@ -322,7 +348,7 @@ export default function ExamGrid({
               })}
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={EXAM_EVENTS.length + 6} className="py-6 text-center text-gray-400">
+                  <td colSpan={EXAM_EVENTS.length + 5} className="py-6 text-center text-gray-400">
                     {categories.length === 0
                       ? "Nobody has been registered for this grading yet."
                       : "Tick a category above to start marking."}

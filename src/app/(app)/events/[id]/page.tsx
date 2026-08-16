@@ -7,6 +7,8 @@ import DeleteButton from "@/components/DeleteButton";
 import TemplateTab from "@/components/TemplateTab";
 import RegisteredStudentsPanel, { type RegistrationFilters } from "../RegisteredStudentsPanel";
 import RegistrationPanel from "../RegistrationPanel";
+import EventPhotos from "@/components/EventPhotos";
+import { PHOTO_BUCKET } from "@/lib/eventPhotos";
 
 import CategoryForm from "../CategoryForm";
 import BracketView from "../BracketView";
@@ -19,7 +21,7 @@ import { effectiveEventStatus, canOverrideLocks, STATUS_STYLES, STATUS_LABELS, f
 import { deleteEvent, addCategory, deleteCategory, addDocument, deleteDocument } from "../actions";
 import CountryFlag from "@/components/CountryFlag";
 function formatDate(d: string | null) { if (!d) return "TBA"; return new Date(d).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }); }
-export default async function EventDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { tab?: string; sub?: string; category?: string; club?: string; grade?: string; gender?: string; ageGroup?: string; status?: string } }) {
+export default async function EventDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { tab?: string; sub?: string; template?: string; category?: string; club?: string; grade?: string; gender?: string; ageGroup?: string; status?: string } }) {
   const session = await requirePermission(PERMISSIONS.EVENT_VIEW);
   const supabase = supabaseAdmin();
   const { data: event } = await supabase.from("events").select("*, clubs:organizer_club_id(name)").eq("id", params.id).maybeSingle();
@@ -66,6 +68,12 @@ export default async function EventDetailPage({ params, searchParams }: { params
 
   const { data: categories } = await supabase.from("event_categories").select("*").eq("event_id", event.id).order("sort_order").order("name");
   const { data: documents } = await supabase.from("event_documents").select("*").eq("event_id", event.id).order("uploaded_at", { ascending: false });
+  const { data: photoRows } = await supabase.from("event_photos").select("id, storage_path, caption").eq("event_id", event.id).order("sort_order");
+  const photos = (photoRows ?? []).map((p: any) => ({
+    id: p.id,
+    caption: p.caption ?? null,
+    url: supabase.storage.from(PHOTO_BUCKET).getPublicUrl(p.storage_path).data.publicUrl,
+  }));
   const { count: pendingCount } = await supabase.from("event_registrations").select("id", { count: "exact", head: true }).eq("event_id", event.id).eq("status", "pending");
   const { count: confirmedCount } = await supabase.from("event_registrations").select("id", { count: "exact", head: true }).eq("event_id", event.id).eq("status", "confirmed");
   const canEdit = hasPermission(session, PERMISSIONS.EVENT_EDIT);
@@ -82,12 +90,31 @@ export default async function EventDetailPage({ params, searchParams }: { params
   // created the event can still correct a result once the day is over.
   const canOverride = canOverrideLocks({ sub: session.sub, role: session.role }, event as any);
   const canMarkNow = canEdit && (!isFinished || canOverride);
-  const { data: template } = tab === "registration" && sub === "template"
-    ? await supabase.from("event_form_templates").select("id, name, page_count, page_width, page_height").eq("event_id", event.id).eq("is_default", true).maybeSingle()
+  // Every form for this event, plus how many boxes each one carries, so the
+  // list can say which are ready to print without a query per row.
+  const showTemplates = tab === "registration" && sub === "template";
+  const { data: templateRows } = showTemplates
+    ? await supabase.from("event_form_templates").select("id, name, page_count, page_width, page_height, is_default, created_at").eq("event_id", event.id).order("created_at")
     : { data: null };
-  const { data: templateFields } = template
-    ? await supabase.from("event_form_fields").select("field_key, page, x, y, width, height, font_size, align").eq("template_id", template.id)
+  const templateIds = (templateRows ?? []).map((t: any) => t.id);
+  const { data: allFields } = templateIds.length > 0
+    ? await supabase.from("event_form_fields").select("template_id, field_key, page, x, y, width, height, font_size, align").in("template_id", templateIds)
     : { data: null };
+  const fieldsByTemplate = new Map<string, any[]>();
+  for (const f of allFields ?? []) {
+    if (!fieldsByTemplate.has(f.template_id)) fieldsByTemplate.set(f.template_id, []);
+    fieldsByTemplate.get(f.template_id)!.push(f);
+  }
+  const templates = (templateRows ?? []).map((t: any) => ({
+    id: t.id, name: t.name, page_count: t.page_count, page_width: t.page_width, page_height: t.page_height,
+    is_default: t.is_default, field_count: (fieldsByTemplate.get(t.id) ?? []).length,
+  }));
+  // Which form's boxes are open: the one asked for, else the default.
+  const editingTemplate =
+    templates.find((t) => t.id === searchParams.template) ??
+    templates.find((t) => t.is_default) ??
+    templates[0] ??
+    null;
 
   const bracketStatusMap = new Map<string, string>();
   const confirmedCountMap = new Map<string, number>();
@@ -173,6 +200,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
               </form>
             )}
           </div>
+          <EventPhotos eventId={event.id} photos={photos} canEdit={canEditNow} />
         </>
       ) : tab === "categories" ? (
         <div className="card p-6">
@@ -209,8 +237,9 @@ export default async function EventDetailPage({ params, searchParams }: { params
           ) : sub === "template" ? (
             <TemplateTab
               eventId={event.id}
-              template={template as any}
-              fields={templateFields ?? []}
+              templates={templates}
+              editing={editingTemplate}
+              fields={editingTemplate ? fieldsByTemplate.get(editingTemplate.id) ?? [] : []}
               canEdit={canEditNow}
               registeredCount={(pendingCount ?? 0) + (confirmedCount ?? 0)}
             />

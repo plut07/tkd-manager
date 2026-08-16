@@ -34,16 +34,14 @@ export async function uploadTemplate(_prev: TemplateState, formData: FormData): 
     .upload(path, bytes, { contentType: "application/pdf", upsert: false });
   if (uploadError) return { ok: false, error: "The file could not be saved. Please try again." };
 
-  // One template per event, so every student's form comes from the same file.
-  // The old one is removed outright rather than just deprecated — otherwise
-  // replaced templates pile up in storage and the "current template" shown on
-  // the page depends on which row happens to be the default.
-  const { data: previous } = await supabase.from("event_form_templates").select("id, storage_path").eq("event_id", eventId);
-  if ((previous ?? []).length > 0) {
-    await supabase.from("event_form_templates").delete().eq("event_id", eventId);
-    const paths = (previous ?? []).map((p: any) => p.storage_path).filter(Boolean);
-    if (paths.length > 0) await supabase.storage.from(TEMPLATE_BUCKET).remove(paths);
-  }
+  // Several forms can be kept side by side; whichever is marked default is the
+  // one printed. The first upload becomes the default because there is nothing
+  // else it could be.
+  const { count: existingCount } = await supabase
+    .from("event_form_templates")
+    .select("id", { count: "exact", head: true })
+    .eq("event_id", eventId);
+  const isFirst = (existingCount ?? 0) === 0;
 
   const { data, error } = await supabase
     .from("event_form_templates")
@@ -54,7 +52,7 @@ export async function uploadTemplate(_prev: TemplateState, formData: FormData): 
       page_count: info.pageCount,
       page_width: info.width,
       page_height: info.height,
-      is_default: true,
+      is_default: isFirst,
       created_by: session.sub,
     })
     .select("id")
@@ -110,14 +108,45 @@ function clamp(value: unknown, min = 0): number {
   return Math.min(Math.max(n, min), 1);
 }
 
+/**
+ * Choose which uploaded form is printed.
+ *
+ * Exactly one template per event is the default; setting a new one clears the
+ * rest so the print button is never ambiguous.
+ */
+export async function setDefaultTemplate(formData: FormData) {
+  await requirePermission(PERMISSIONS.EVENT_EDIT);
+  const templateId = String(formData.get("templateId") || "");
+  const eventId = String(formData.get("eventId") || "");
+  if (!templateId || !eventId) return;
+
+  const supabase = supabaseAdmin();
+  await supabase.from("event_form_templates").update({ is_default: false }).eq("event_id", eventId);
+  await supabase.from("event_form_templates").update({ is_default: true }).eq("id", templateId).eq("event_id", eventId);
+  revalidatePath(`/events/${eventId}`);
+}
+
 export async function deleteTemplate(formData: FormData) {
   await requirePermission(PERMISSIONS.EVENT_EDIT);
   const templateId = String(formData.get("templateId") || "");
   const eventId = String(formData.get("eventId") || "");
   if (!templateId) return;
   const supabase = supabaseAdmin();
-  const { data: tpl } = await supabase.from("event_form_templates").select("storage_path").eq("id", templateId).maybeSingle();
+  const { data: tpl } = await supabase.from("event_form_templates").select("storage_path, is_default, event_id").eq("id", templateId).maybeSingle();
   await supabase.from("event_form_templates").delete().eq("id", templateId);
   if (tpl?.storage_path) await supabase.storage.from(TEMPLATE_BUCKET).remove([tpl.storage_path]);
+
+  // Removing the default would otherwise leave the event with forms but no
+  // form to print, so the next one takes over.
+  if (tpl?.is_default) {
+    const { data: next } = await supabase
+      .from("event_form_templates")
+      .select("id")
+      .eq("event_id", tpl.event_id)
+      .order("created_at")
+      .limit(1)
+      .maybeSingle();
+    if (next) await supabase.from("event_form_templates").update({ is_default: true }).eq("id", next.id);
+  }
   revalidatePath(`/events/${eventId}`);
 }

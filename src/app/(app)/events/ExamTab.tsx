@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import ExamGrid from "@/components/ExamGrid";
-import { loadExamRows, syncAllGradingCategories } from "./examActions";
+import { loadExamRows, syncAllGradingCategories, addAllGradingCategories } from "./examActions";
 
 /**
  * Marking sheet for a grading event.
@@ -13,7 +13,7 @@ export default async function ExamTab({ eventId, canMark }: { eventId: string; c
   const supabase = supabaseAdmin();
   const { data: categories } = await supabase
     .from("event_categories")
-    .select("id, name")
+    .select("id, name, exam_events")
     .eq("event_id", eventId)
     .order("sort_order")
     .order("name");
@@ -32,9 +32,16 @@ export default async function ExamTab({ eventId, canMark }: { eventId: string; c
           <form action={syncAllGradingCategories} className="mt-4 flex flex-wrap items-center gap-2">
             <input type="hidden" name="eventId" value={eventId} />
             <button type="submit" className="btn-secondary">Update categories from current grades</button>
+          </form>
+        )}
+        {canMark && (
+          <form action={addAllGradingCategories} className="mt-2 flex flex-wrap items-center gap-2">
+            <input type="hidden" name="eventId" value={eventId} />
+            <button type="submit" className="btn-secondary">Add all categories</button>
             <span className="text-xs text-gray-400">
-              Re-checks every candidate&apos;s grade and puts them in the right category. Categories you set by hand stay
-              as they are.
+              &quot;Update categories&quot; re-checks every candidate&apos;s grade and moves them into the right
+              category, leaving any you set by hand alone. &quot;Add all categories&quot; creates the full ladder up
+              front so you can choose each one&apos;s events before anybody registers.
             </span>
           </form>
         )}
@@ -44,7 +51,12 @@ export default async function ExamTab({ eventId, canMark }: { eventId: string; c
           </p>
         )}
       </div>
-      <ExamGrid eventId={eventId} categories={(categories ?? []) as { id: string; name: string }[]} initialRows={rows} canMark={canMark} />
+      <ExamGrid
+        eventId={eventId}
+        categories={(categories ?? []).map((c: any) => ({ id: c.id, name: c.name, examEvents: (c.exam_events as string[] | null) ?? [] }))}
+        initialRows={rows}
+        canMark={canMark}
+      />
     </div>
   );
 }

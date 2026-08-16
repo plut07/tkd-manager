@@ -1,22 +1,43 @@
 "use client";
 import { useFormState, useFormStatus } from "react-dom";
 import TemplateDesigner from "./TemplateDesigner";
-import { uploadTemplate, deleteTemplate, type TemplateState } from "@/app/(app)/events/templateActions";
+import { uploadTemplate, deleteTemplate, setDefaultTemplate, type TemplateState } from "@/app/(app)/events/templateActions";
+
+export type TemplateSummary = {
+  id: string;
+  name: string;
+  page_count: number;
+  page_width: number;
+  page_height: number;
+  is_default: boolean;
+  field_count: number;
+};
 
 function Submit({ label }: { label: string }) {
   const { pending } = useFormStatus();
   return <button type="submit" className="btn-primary" disabled={pending}>{pending ? "Uploading..." : label}</button>;
 }
 
+/**
+ * The forms an event prints from.
+ *
+ * Several can be kept side by side — a waiver, an indemnity, a club's own sheet
+ * — and whichever is marked default is the one a registrant's PDF comes out on.
+ * The boxes are drawn per template, so switching the default switches the
+ * layout with it.
+ */
 export default function TemplateTab({
   eventId,
-  template,
+  templates,
+  editing,
   fields,
   canEdit,
   registeredCount = 0,
 }: {
   eventId: string;
-  template: { id: string; name: string; page_count: number; page_width: number; page_height: number } | null;
+  templates: TemplateSummary[];
+  /** The template whose boxes are open in the designer. */
+  editing: TemplateSummary | null;
   fields: any[];
   canEdit: boolean;
   registeredCount?: number;
@@ -26,51 +47,60 @@ export default function TemplateTab({
   return (
     <div className="space-y-6">
       <div className="card p-6">
-        <h2 className="text-lg font-semibold text-gray-900">Form template</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Form templates</h2>
         <p className="mt-1 text-sm text-gray-500">
-          Upload the printed form for this event, then mark where each detail should appear. One template covers the
-          whole event: every student&apos;s form is printed from it, with their own details filled into the boxes you
-          place. It stays here until you replace or remove it.
+          Upload the printed forms for this event and mark where each detail should appear. The form marked{" "}
+          <strong>Default</strong> is the one a registrant&apos;s PDF is printed on. Templates stay here until you
+          remove them.
         </p>
 
-        {template ? (
-          <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="text-sm">
-                <p className="font-semibold text-gray-900">{template.name}</p>
-                <p className="mt-0.5 text-gray-600">
-                  {template.page_count} page{template.page_count === 1 ? "" : "s"} · {fields.length} field
-                  {fields.length === 1 ? "" : "s"} placed · applies to {registeredCount} registered student
-                  {registeredCount === 1 ? "" : "s"}
-                </p>
-                <a
-                  href={`/api/templates/${template.id}/file`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-1 inline-block font-medium text-brand-700 hover:underline"
-                >
-                  View the uploaded file
-                </a>
-              </div>
-              {canEdit && (
-                <form action={deleteTemplate}>
-                  <input type="hidden" name="templateId" value={template.id} />
-                  <input type="hidden" name="eventId" value={eventId} />
-                  <button type="submit" className="text-sm font-medium text-red-600 hover:underline">
-                    Remove template
-                  </button>
-                </form>
-              )}
-            </div>
-            {fields.length === 0 && (
-              <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                No fields placed yet, so printed forms still use the built-in layout. Draw boxes below and save to start
-                using this template.
-              </p>
-            )}
-          </div>
+        {templates.length > 0 ? (
+          <ul className="mt-4 divide-y divide-gray-100 rounded-md border border-gray-200">
+            {templates.map((t) => (
+              <li key={t.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
+                <div className="text-sm">
+                  <p className="font-semibold text-gray-900">
+                    {t.name}
+                    {t.is_default && <span className="ml-2 badge bg-green-100 text-green-700">Default</span>}
+                    {editing?.id === t.id && <span className="ml-2 badge bg-brand-100 text-brand-700">Editing</span>}
+                  </p>
+                  <p className="mt-0.5 text-gray-600">
+                    {t.page_count} page{t.page_count === 1 ? "" : "s"} · {t.field_count} field{t.field_count === 1 ? "" : "s"} placed
+                  </p>
+                  <a href={`/api/templates/${t.id}/file`} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs font-medium text-brand-700 hover:underline">
+                    View the uploaded file
+                  </a>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  {canEdit && editing?.id !== t.id && (
+                    <a href={`?tab=registration&sub=template&template=${t.id}`} className="text-sm font-medium text-brand-700 hover:underline">
+                      Place fields
+                    </a>
+                  )}
+                  {canEdit && !t.is_default && (
+                    <form action={setDefaultTemplate}>
+                      <input type="hidden" name="templateId" value={t.id} />
+                      <input type="hidden" name="eventId" value={eventId} />
+                      <button type="submit" className="text-sm font-medium text-brand-700 hover:underline">Make default</button>
+                    </form>
+                  )}
+                  {canEdit && (
+                    <form action={deleteTemplate}>
+                      <input type="hidden" name="templateId" value={t.id} />
+                      <input type="hidden" name="eventId" value={eventId} />
+                      <button type="submit" className="text-sm font-medium text-red-600 hover:underline">Remove</button>
+                    </form>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
         ) : (
-          <p className="mt-4 text-sm text-gray-500">No template uploaded yet — printed forms use the built-in layout.</p>
+          <p className="mt-4 text-sm text-gray-500">No templates uploaded yet — printed forms use the built-in layout.</p>
+        )}
+
+        {templates.length > 0 && (
+          <p className="mt-3 text-xs text-gray-400">Applies to {registeredCount} registered student{registeredCount === 1 ? "" : "s"}.</p>
         )}
 
         {canEdit && (
@@ -78,26 +108,27 @@ export default function TemplateTab({
             <input type="hidden" name="eventId" value={eventId} />
             <input type="file" name="file" accept="application/pdf,.pdf" required
               className="block text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-brand-600 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-brand-700" />
-            <Submit label={template ? "Replace template" : "Upload template"} />
-            {template && (
-              <span className="w-full text-xs text-gray-400">
-                Replacing removes the current template and the boxes drawn on it.
-              </span>
-            )}
+            <Submit label="Upload another form" />
           </form>
         )}
         {state?.ok === false && <p className="mt-2 text-sm text-red-600">{state.error}</p>}
       </div>
 
-      {template ? (
-        canEdit ? (
-          <div className="card p-6">
+      {editing && canEdit && (
+        <div className="card p-6">
+          <h3 className="text-sm font-semibold text-gray-900">Fields on &ldquo;{editing.name}&rdquo;</h3>
+          {editing.field_count === 0 && (
+            <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              No fields placed yet, so this form prints blank. Draw boxes below and press Save layout.
+            </p>
+          )}
+          <div className="mt-4">
             <TemplateDesigner
-              templateId={template.id}
+              templateId={editing.id}
               eventId={eventId}
-              pageCount={template.page_count}
-              pageWidth={Number(template.page_width)}
-              pageHeight={Number(template.page_height)}
+              pageCount={editing.page_count}
+              pageWidth={Number(editing.page_width)}
+              pageHeight={Number(editing.page_height)}
               initialFields={fields.map((f, i) => ({
                 id: `saved${i}`,
                 field_key: f.field_key,
@@ -107,12 +138,8 @@ export default function TemplateTab({
               }))}
             />
           </div>
-        ) : (
-          <div className="card p-6 text-sm text-gray-500">
-            A form template is set up for this event. Ask an organizer if it needs changing.
-          </div>
-        )
-      ) : null}
+        </div>
+      )}
     </div>
   );
 }

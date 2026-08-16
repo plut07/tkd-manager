@@ -50,10 +50,28 @@ export const SCORE_MIN = 0;
 export const SCORE_MAX = 10;
 export const SCORE_CHOICES: number[] = Array.from({ length: SCORE_MAX - SCORE_MIN + 1 }, (_, i) => SCORE_MIN + i);
 
-/** 8 events x 10 points = 80 raw, scaled to a mark out of 100. */
-export const RAW_MAX = EXAM_EVENTS.length * SCORE_MAX;
-export const SCALE = 1.25;
-export const TOTAL_MAX = RAW_MAX * SCALE;
+/**
+ * Every exam is presented out of 100, however many events it covers.
+ *
+ * A category marked on all eight events scores 80 raw and scales by 1.25; a
+ * junior category marked on four scores 40 raw and scales by 2.5. Keeping the
+ * ceiling fixed means a mark means the same thing across the whole event.
+ */
+export const TOTAL_MAX = 100;
+
+/** The events a category is marked on. An empty or missing list means all. */
+export function eventsFor(keys: readonly string[] | null | undefined): ExamEvent[] {
+  if (!keys || keys.length === 0) return EXAM_EVENTS;
+  const wanted = new Set(keys);
+  const chosen = EXAM_EVENTS.filter((e) => wanted.has(e.key));
+  return chosen.length > 0 ? chosen : EXAM_EVENTS;
+}
+
+/** What each raw point is worth for a given event list. */
+export function scaleFor(events: ExamEvent[]): number {
+  const raw = events.length * SCORE_MAX;
+  return raw > 0 ? TOTAL_MAX / raw : 0;
+}
 
 /** Above this the exam is a pass. An examiner can still override either way. */
 export const PASS_MARK = 50;
@@ -78,27 +96,27 @@ export function cleanScore(value: unknown): number | null {
   return rounded;
 }
 
-/** Raw points across the eight events. Unmarked events contribute nothing. */
-export function rawTotal(scores: ExamScores): number {
-  return EXAM_EVENTS.reduce((sum, e) => sum + (cleanScore(scores[e.key]) ?? 0), 0);
+/** Raw points across the events this candidate is marked on. */
+export function rawTotal(scores: ExamScores, events: ExamEvent[] = EXAM_EVENTS): number {
+  return events.reduce((sum, e) => sum + (cleanScore(scores[e.key]) ?? 0), 0);
 }
 
-/** The mark out of 100: raw points scaled by 1.25. */
-export function examTotal(scores: ExamScores): number {
-  return Math.round(rawTotal(scores) * SCALE * 100) / 100;
+/** The mark out of 100 for the given event list. */
+export function examTotal(scores: ExamScores, events: ExamEvent[] = EXAM_EVENTS): number {
+  return Math.round(rawTotal(scores, events) * scaleFor(events) * 100) / 100;
 }
 
 /** Whether the marks alone would pass, before any examiner override. */
-export function scoreSaysPassed(scores: ExamScores): boolean {
-  return examTotal(scores) > PASS_MARK;
+export function scoreSaysPassed(scores: ExamScores, events: ExamEvent[] = EXAM_EVENTS): boolean {
+  return examTotal(scores, events) > PASS_MARK;
 }
 
 /** Which mandatory events are still unmarked. */
-export function missingRequired(scores: ExamScores): ExamEvent[] {
-  return EXAM_EVENTS.filter((e) => e.required && cleanScore(scores[e.key]) == null);
+export function missingRequired(scores: ExamScores, events: ExamEvent[] = EXAM_EVENTS): ExamEvent[] {
+  return events.filter((e) => e.required && cleanScore(scores[e.key]) == null);
 }
 
-/** How many of the eight events have been marked at all. */
-export function marksGiven(scores: ExamScores): number {
-  return EXAM_EVENTS.reduce((n, e) => n + (cleanScore(scores[e.key]) != null ? 1 : 0), 0);
+/** How many of this candidate's events have been marked at all. */
+export function marksGiven(scores: ExamScores, events: ExamEvent[] = EXAM_EVENTS): number {
+  return events.reduce((n, e) => n + (cleanScore(scores[e.key]) != null ? 1 : 0), 0);
 }

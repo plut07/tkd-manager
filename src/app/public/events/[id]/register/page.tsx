@@ -5,6 +5,7 @@ import { EVENT_TYPE_LABELS } from "@/lib/eventCategories";
 import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange, formatEventDateTime, isRegistrationOpen } from "@/lib/eventStatus";
 import CountryFlag from "@/components/CountryFlag";
 import VenueMap from "@/components/VenueMap";
+import PublicGradingForm from "@/components/PublicGradingForm";
 
 // These pages read live data but never touch cookies, so Next would otherwise
 // prerender them at build time and keep serving that snapshot — edits and
@@ -47,11 +48,7 @@ export default async function PublicEventRegisterPage({ params }: { params: { id
     );
   }
 
-  const { data: gradingForm } = await supabase
-    .from("grading_forms")
-    .select("form_url")
-    .eq("event_id", event.id)
-    .maybeSingle();
+  const { data: clubs } = await supabase.from("clubs").select("id, name").eq("active", true).order("name");
 
   const status = effectiveEventStatus(event);
   const open = isRegistrationOpen(event);
@@ -98,28 +95,25 @@ export default async function PublicEventRegisterPage({ params }: { params: { id
         {event.venue_address && <VenueMap address={event.venue_address} className="mt-4" />}
       </div>
 
-      <div className="card p-6">
-        <h2 className="text-lg font-semibold text-gray-900">How to register</h2>
-        {!open ? (
+      {!open ? (
+        <div className="card p-6">
+          <h2 className="text-lg font-semibold text-gray-900">Register for this grading</h2>
           <p className="mt-2 text-sm text-gray-600">
             Registration for this grading is closed{status === "cancelled" ? " — the event was cancelled." : "."}
           </p>
-        ) : gradingForm?.form_url ? (
-          <>
+        </div>
+      ) : (
+        <>
+          <div className="card p-6">
+            <h2 className="text-lg font-semibold text-gray-900">Register for this grading</h2>
             <p className="mt-2 text-sm text-gray-600">
-              Fill in the registration form below. Your instructor will confirm your entry once it has been reviewed.
+              Fill in your details and sign at the bottom — no account needed. Your entry goes to the organisers for
+              approval, and you can download your completed form as soon as you submit.
             </p>
-            <a href={gradingForm.form_url} target="_blank" rel="noopener noreferrer" className="btn-primary mt-4 inline-flex">
-              Open registration form
-            </a>
-            <p className="mt-3 break-all text-xs text-gray-400">{gradingForm.form_url}</p>
-          </>
-        ) : (
-          <p className="mt-2 text-sm text-gray-600">
-            The registration form for this grading hasn&apos;t been published yet. Please check back closer to the date.
-          </p>
-        )}
-      </div>
+          </div>
+          <PublicGradingForm eventId={event.id} clubs={(clubs ?? []) as { id: string; name: string }[]} />
+        </>
+      )}
 
       {event.description && (
         <div className="card p-6">

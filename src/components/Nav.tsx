@@ -22,7 +22,7 @@ export default function Nav({ session }: { session: SessionPayload }) {
   return (
     <header className="border-b border-gray-200 bg-white sticky top-0 z-10">
       <div className="accent-bar h-1.5 w-full" />
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-[1600px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         <div className="flex items-center gap-6">
           <Link href="/dashboard" className="text-lg font-bold text-brand-700">
             TKD Manager

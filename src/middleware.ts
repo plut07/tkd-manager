@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 import { SESSION_COOKIE_NAME } from "@/lib/constants";
-const PUBLIC_PREFIXES = ["/login", "/public", "/_next", "/favicon.ico", "/api/health", "/api/grading-webhook"];
+const PUBLIC_PREFIXES = ["/login", "/public", "/_next", "/favicon.ico", "/api/health", "/api/grading-webhook", "/api/public"];
 async function isValidToken(token: string | undefined) {
   if (!token) return false;
   const secret = process.env.SESSION_SECRET;
