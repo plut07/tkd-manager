@@ -182,6 +182,40 @@ export async function saveExamRow(input: {
   }
 }
 
+/**
+ * Save marks for several candidates at once.
+ *
+ * The examiner sets up a screen full of results and commits them together, so
+ * this returns what happened per candidate rather than failing the lot: a
+ * locked row shouldn't stop the other nineteen from saving.
+ */
+export async function saveExamRowsBulk(input: {
+  eventId: string;
+  rows: {
+    registrationId: string;
+    scores: Partial<Record<ExamEventKey, number | null>>;
+    remark: string;
+    passed: boolean;
+  }[];
+}): Promise<{ saved: ExamRowDto[]; failures: { registrationId: string; error: string }[] }> {
+  const saved: ExamRowDto[] = [];
+  const failures: { registrationId: string; error: string }[] = [];
+
+  for (const row of input.rows) {
+    const result = await saveExamRow({
+      eventId: input.eventId,
+      registrationId: row.registrationId,
+      scores: row.scores,
+      remark: row.remark,
+      passed: row.passed,
+    });
+    if ("error" in result) failures.push({ registrationId: row.registrationId, error: result.error });
+    else saved.push(result.row);
+  }
+
+  return { saved, failures };
+}
+
 export async function setExamLock(input: {
   eventId: string;
   registrationId: string;

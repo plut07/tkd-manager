@@ -6,6 +6,7 @@ import ClubExportButton from "@/components/ClubExportButton";
 import { type CategoryCriteria, computeAge } from "@/lib/eligibility";
 import { registerStudent, unregisterStudent, approveRegistration } from "./actions";
 import { isRegistrationOpen, canOverrideLocks } from "@/lib/eventStatus";
+import PendingCandidates from "./PendingCandidates";
 
 /**
  * Entering people and approving them.
@@ -98,6 +99,10 @@ export default async function RegistrationPanel({ eventId }: { eventId: string }
           competition number automatically.
         </p>
       </div>
+
+      {event.event_type === "grading" && (
+        <PendingCandidates eventId={event.id} isSuperAdmin={session.role === "super_admin"} />
+      )}
 
       <div className="card p-6">
         <h2 className="text-lg font-semibold text-gray-900">Pending approval ({pending.length})</h2>

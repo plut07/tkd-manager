@@ -59,13 +59,10 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
     .eq("event_id", event.id)
     .order("uploaded_at", { ascending: false });
 
-  // Grading events register through a public Tally form, so the link can be
-  // shown to signed-out visitors. Every other event type routes through the
-  // signed-in registration flow.
+  // Gradings take entries from the public straight into this system, so the
+  // registration link can be shown to signed-out visitors. Every other event
+  // type routes through the signed-in flow.
   const isGrading = event.event_type === "grading";
-  const { data: gradingForm } = isGrading
-    ? await supabase.from("grading_forms").select("form_url").eq("event_id", event.id).maybeSingle()
-    : { data: null };
 
   const status = effectiveEventStatus(event);
   const registrationOpen = status === "upcoming" || status === "ongoing";

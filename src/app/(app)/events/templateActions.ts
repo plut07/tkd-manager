@@ -109,6 +109,37 @@ function clamp(value: unknown, min = 0): number {
 }
 
 /**
+ * Fine alignment for one template.
+ *
+ * Only needed when the fallback preview is in use, where the browser's viewer
+ * pads the page and everything lands shifted. One correction per form beats
+ * nudging every field.
+ */
+export async function saveTemplateAlignment(formData: FormData) {
+  await requirePermission(PERMISSIONS.EVENT_EDIT);
+  const templateId = String(formData.get("templateId") || "");
+  const eventId = String(formData.get("eventId") || "");
+  if (!templateId) return;
+
+  const bounded = (value: unknown, min: number, max: number, fallback: number) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(Math.max(n, min), max);
+  };
+
+  await supabaseAdmin()
+    .from("event_form_templates")
+    .update({
+      offset_x: bounded(formData.get("offsetX"), -0.5, 0.5, 0),
+      offset_y: bounded(formData.get("offsetY"), -0.5, 0.5, 0),
+      scale: bounded(formData.get("scale"), 0.5, 2, 1),
+    })
+    .eq("id", templateId);
+
+  revalidatePath(`/events/${eventId}`);
+}
+
+/**
  * Choose which uploaded form is printed.
  *
  * Exactly one template per event is the default; setting a new one clears the

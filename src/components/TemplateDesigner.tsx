@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useRef, useState } from "react";
 import { TEMPLATE_FIELDS, isImageField } from "@/lib/templateFields";
-import { saveTemplateFields } from "@/app/(app)/events/templateActions";
+import PdfPageCanvas from "./PdfPageCanvas";
+import { saveTemplateFields, saveTemplateAlignment } from "@/app/(app)/events/templateActions";
 
 type Box = {
   id: string;
@@ -26,6 +27,7 @@ export default function TemplateDesigner({
   pageWidth,
   pageHeight,
   initialFields,
+  alignment,
 }: {
   templateId: string;
   eventId: string;
@@ -33,6 +35,7 @@ export default function TemplateDesigner({
   pageWidth: number;
   pageHeight: number;
   initialFields: Box[];
+  alignment: { offsetX: number; offsetY: number; scale: number };
 }) {
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [page, setPage] = useState(1);
@@ -40,11 +43,16 @@ export default function TemplateDesigner({
   const [selected, setSelected] = useState<string | null>(null);
   const [drawing, setDrawing] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [status, setStatus] = useState<string>("");
+  // The embedded viewer is only used if rasterising the page fails.
+  const [useViewer, setUseViewer] = useState(false);
+  const [showAlignment, setShowAlignment] = useState(false);
+  const [align, setAlign] = useState(alignment);
+  const [alignStatus, setAlignStatus] = useState("");
 
-  // The page is shown in the browser's own PDF viewer rather than a JavaScript
-  // renderer — no extra dependency, and every browser already does this well.
-  // The container is locked to the page's aspect ratio and the viewer is asked
-  // to fit the page, so the overlay lines up with what's underneath.
+  // The page is drawn onto a canvas at exactly the container's size, so a box
+  // at 50% across the container is at 50% across the page. The embedded viewer
+  // is only a fallback: it pads the page inside its frame, which is what used
+  // to make placed fields print somewhere else.
   const aspect = pageWidth > 0 && pageHeight > 0 ? pageWidth / pageHeight : 595.28 / 841.89;
 
   const rect = () => surfaceRef.current?.getBoundingClientRect();
@@ -100,6 +108,22 @@ export default function TemplateDesigner({
   const current = boxes.find((b) => b.id === selected) ?? null;
   const onPage = boxes.filter((b) => b.page === page);
 
+  async function saveAlignment() {
+    setAlignStatus("Saving...");
+    const fd = new FormData();
+    fd.set("templateId", templateId);
+    fd.set("eventId", eventId);
+    fd.set("offsetX", String(align.offsetX));
+    fd.set("offsetY", String(align.offsetY));
+    fd.set("scale", String(align.scale));
+    try {
+      await saveTemplateAlignment(fd);
+      setAlignStatus("Saved.");
+    } catch {
+      setAlignStatus("Could not save.");
+    }
+  }
+
   async function save() {
     setStatus("Saving...");
     const fd = new FormData();
@@ -131,12 +155,22 @@ export default function TemplateDesigner({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="overflow-hidden rounded-md border border-gray-200 bg-gray-50">
           <div className="relative w-full" style={{ aspectRatio: String(aspect) }}>
-            <iframe
-              key={`${templateId}-${page}`}
-              title="Form template preview"
-              src={`/api/templates/${templateId}/file#page=${page}&toolbar=0&navpanes=0&scrollbar=0&view=Fit`}
-              className="absolute inset-0 h-full w-full border-0"
-            />
+            {useViewer ? (
+              <iframe
+                key={`${templateId}-${page}`}
+                title="Form template preview"
+                src={`/api/templates/${templateId}/file#page=${page}&toolbar=0&navpanes=0&scrollbar=0&view=Fit`}
+                className="absolute inset-0 h-full w-full border-0"
+              />
+            ) : (
+              <div className="absolute inset-0">
+                <PdfPageCanvas
+                  fileUrl={`/api/templates/${templateId}/file`}
+                  page={page}
+                  onFallback={() => setUseViewer(true)}
+                />
+              </div>
+            )}
             {/* Transparent layer above the viewer catches the drawing gestures. */}
             <div
               ref={surfaceRef}
@@ -248,6 +282,53 @@ export default function TemplateDesigner({
               ))}
               {onPage.length === 0 && <li className="text-gray-400">Nothing placed yet.</li>}
             </ul>
+          </div>
+
+          <div className="card p-4">
+            <button
+              type="button"
+              className="text-sm font-semibold text-gray-900"
+              onClick={() => setShowAlignment((v) => !v)}
+            >
+              Alignment {showAlignment ? "▴" : "▾"}
+            </button>
+            {showAlignment && (
+              <div className="mt-2 space-y-2">
+                <p className="text-xs text-gray-500">
+                  {useViewer
+                    ? "The page couldn't be drawn directly, so this is the browser's own viewer — it pads the page inside the frame, which shifts everything. Print one test form and nudge these until it lines up."
+                    : "The page is drawn exactly, so these should stay at zero. They're here in case a printer or a particular PDF still needs a nudge."}
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="label text-xs">Shift right</label>
+                    <input type="number" step="0.005" className="input" value={align.offsetX}
+                      onChange={(e) => setAlign({ ...align, offsetX: Number(e.target.value) || 0 })} />
+                  </div>
+                  <div>
+                    <label className="label text-xs">Shift down</label>
+                    <input type="number" step="0.005" className="input" value={align.offsetY}
+                      onChange={(e) => setAlign({ ...align, offsetY: Number(e.target.value) || 0 })} />
+                  </div>
+                  <div>
+                    <label className="label text-xs">Scale</label>
+                    <input type="number" step="0.01" className="input" value={align.scale}
+                      onChange={(e) => setAlign({ ...align, scale: Number(e.target.value) || 1 })} />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400">Shift is a fraction of the page: 0.01 is one hundredth across.</p>
+                <div className="flex items-center gap-2">
+                  <button type="button" className="btn-secondary !px-3 !py-1.5 text-xs" onClick={saveAlignment}>Save alignment</button>
+                  <button type="button" className="text-xs font-medium text-gray-500 hover:underline"
+                    onClick={() => setAlign({ offsetX: 0, offsetY: 0, scale: 1 })}>Reset</button>
+                  {alignStatus && <span className="text-xs text-gray-600">{alignStatus}</span>}
+                </div>
+                <a href={`/api/templates/${templateId}/preview`} target="_blank" rel="noopener noreferrer"
+                  className="inline-block text-xs font-medium text-brand-700 hover:underline">
+                  Open a test print with sample details
+                </a>
+              </div>
+            )}
           </div>
 
           {status && <p className="text-sm text-gray-600">{status}</p>}

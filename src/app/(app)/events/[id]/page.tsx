@@ -12,7 +12,6 @@ import { PHOTO_BUCKET } from "@/lib/eventPhotos";
 
 import CategoryForm from "../CategoryForm";
 import BracketView from "../BracketView";
-import GradingTab from "../GradingTab";
 import ExamTab from "../ExamTab";
 import ResultTab from "../ResultTab";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
@@ -30,7 +29,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const isGrading = event.event_type === "grading";
   // Registration gathers what used to be three separate tabs. Old links
   // (?tab=entries, ?tab=template, ?tab=grading) still land in the right place.
-  const legacy: Record<string, string> = { entries: "students", template: "template", grading: "webform" };
+  const legacy: Record<string, string> = { entries: "students", template: "template", grading: "students" };
   const rawTab = searchParams.tab ?? "";
   const tab =
     rawTab in legacy || rawTab === "registration"
@@ -41,7 +40,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
           ? rawTab
           : "info";
 
-  const subOptions = ["students", "approval", "template", "webform"];
+  const subOptions = ["students", "approval", "template"];
   const requestedSub = legacy[rawTab] ?? searchParams.sub ?? "students";
   const sub = subOptions.includes(requestedSub) ? requestedSub : "students";
 
@@ -94,7 +93,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
   // list can say which are ready to print without a query per row.
   const showTemplates = tab === "registration" && sub === "template";
   const { data: templateRows } = showTemplates
-    ? await supabase.from("event_form_templates").select("id, name, page_count, page_width, page_height, is_default, created_at").eq("event_id", event.id).order("created_at")
+    ? await supabase.from("event_form_templates").select("id, name, page_count, page_width, page_height, is_default, created_at, offset_x, offset_y, scale").eq("event_id", event.id).order("created_at")
     : { data: null };
   const templateIds = (templateRows ?? []).map((t: any) => t.id);
   const { data: allFields } = templateIds.length > 0
@@ -108,6 +107,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const templates = (templateRows ?? []).map((t: any) => ({
     id: t.id, name: t.name, page_count: t.page_count, page_width: t.page_width, page_height: t.page_height,
     is_default: t.is_default, field_count: (fieldsByTemplate.get(t.id) ?? []).length,
+    alignment: { offsetX: Number(t.offset_x) || 0, offsetY: Number(t.offset_y) || 0, scale: Number(t.scale) || 1 },
   }));
   // Which form's boxes are open: the one asked for, else the default.
   const editingTemplate =
@@ -230,7 +230,6 @@ export default async function EventDetailPage({ params, searchParams }: { params
             <Link href={registrationHref({ sub: "students" })} className={`rounded px-3 py-1.5 text-sm font-medium ${sub === "students" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Registered students</Link>
             <Link href={registrationHref({ sub: "approval" })} className={`rounded px-3 py-1.5 text-sm font-medium ${sub === "approval" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Approval &amp; confirmed</Link>
             {canEdit && (<Link href={registrationHref({ sub: "template" })} className={`rounded px-3 py-1.5 text-sm font-medium ${sub === "template" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Form template</Link>)}
-            {isGrading && (<Link href={registrationHref({ sub: "webform" })} className={`rounded px-3 py-1.5 text-sm font-medium ${sub === "webform" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Online Webform</Link>)}
           </div>
           {sub === "approval" ? (
             <RegistrationPanel eventId={event.id} />
@@ -243,8 +242,6 @@ export default async function EventDetailPage({ params, searchParams }: { params
               canEdit={canEditNow}
               registeredCount={(pendingCount ?? 0) + (confirmedCount ?? 0)}
             />
-          ) : sub === "webform" && isGrading ? (
-            <GradingTab eventId={event.id} canEdit={canEditNow} isSuperAdmin={session.role === "super_admin"} />
           ) : (
             <RegisteredStudentsPanel
               eventId={event.id}

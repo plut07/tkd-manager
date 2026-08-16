@@ -37,11 +37,25 @@ export async function downloadTemplate(storagePath: string): Promise<ArrayBuffer
  * left (how the designer sees it); PDF coordinates start at the bottom left, so
  * y is flipped here. Text is shrunk to fit rather than overflowing its box.
  */
+export type TemplateAlignment = { offsetX?: number; offsetY?: number; scale?: number };
+
 export async function fillTemplate(
   templateBytes: ArrayBuffer,
   fields: TemplateField[],
   rows: TemplateData[],
+  alignment: TemplateAlignment = {},
 ): Promise<Uint8Array> {
+  // A whole-form correction, applied once to every box. Zero and one when the
+  // designer drew on the real page, which is the normal case.
+  const dx = Number(alignment.offsetX) || 0;
+  const dy = Number(alignment.offsetY) || 0;
+  const k = Number(alignment.scale) || 1;
+  const place = (f: TemplateField) => ({
+    x: f.x * k + dx,
+    y: f.y * k + dy,
+    width: f.width * k,
+    height: f.height * k,
+  });
   const out = await PDFDocument.create();
   const font = await out.embedFont(StandardFonts.Helvetica);
   const source = await PDFDocument.load(templateBytes, { ignoreEncryption: true });
@@ -59,10 +73,11 @@ export async function fillTemplate(
       const page = out.getPage(offset + pageNumber - 1);
       const { width: pw, height: ph } = page.getSize();
 
-      const boxW = Number(f.width) * pw;
-      const boxH = Number(f.height) * ph;
-      const boxX = Number(f.x) * pw;
-      const boxTop = Number(f.y) * ph;
+      const at = place(f);
+      const boxW = at.width * pw;
+      const boxH = at.height * ph;
+      const boxX = at.x * pw;
+      const boxTop = at.y * ph;
 
       // The signature is a picture, so it's fitted to the box rather than
       // written into it. A missing or unreadable image just leaves the space

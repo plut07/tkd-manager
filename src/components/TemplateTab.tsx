@@ -11,6 +11,7 @@ export type TemplateSummary = {
   page_height: number;
   is_default: boolean;
   field_count: number;
+  alignment: { offsetX: number; offsetY: number; scale: number };
 };
 
 function Submit({ label }: { label: string }) {
@@ -136,6 +137,7 @@ export default function TemplateTab({
                 x: Number(f.x), y: Number(f.y), width: Number(f.width), height: Number(f.height),
                 font_size: Number(f.font_size), align: f.align,
               }))}
+              alignment={editing.alignment}
             />
           </div>
         </div>

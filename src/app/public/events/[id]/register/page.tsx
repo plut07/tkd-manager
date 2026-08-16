@@ -16,10 +16,10 @@ export const revalidate = 0;
 /**
  * Public registration page for grading events only.
  *
- * Gradings take entries from the general public through a Tally form, so this
- * page is reachable signed-out. Every other event type registers through the
- * signed-in flow and is redirected to the login page instead. No registrant
- * names appear here — only the event's own details and the form link.
+ * Gradings take entries from the general public, so this page is reachable
+ * signed-out and carries the registration form itself. Every other event type
+ * registers through the signed-in flow and is sent to the login page instead.
+ * No registrant names appear here — only the event's own details.
  */
 export default async function PublicEventRegisterPage({ params }: { params: { id: string } }) {
   const supabase = supabaseAdmin();
