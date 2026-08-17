@@ -7,7 +7,7 @@ import { requirePermission, requireSession } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { checkEligibility, checkCountryEligibility, type CategoryCriteria, type StudentLite } from "@/lib/eligibility";
-import { sortForNumbering, formatCompetitionNumber, type NumberingStudent } from "@/lib/numbering";
+import { renumberEvent } from "@/lib/numbering";
 import { effectiveEventStatus, isRegistrationOpen, canOverrideLocks, fromLocalInputValue } from "@/lib/eventStatus";
 import { parseGradeValue, isTopGrade, GRADE_OPTIONS } from "@/lib/belts";
 import { gradingCategoryIdFor, syncGradingCategory, ensureCategoryForTarget, TOP_GRADE_MESSAGE } from "@/lib/gradingCategory";
@@ -19,30 +19,7 @@ export type FormState = { error?: string } | undefined;
 // lib/numbering.ts for the sort rules). Cheap enough to just rerun in full
 // on every approve/unregister at this scale.
 async function renumberEventCompetitors(eventId: string) {
-  const supabase = supabaseAdmin();
-  const { data: regs } = await supabase
-    .from("event_registrations")
-    .select("id, students(birthday, gender, gup, dan)")
-    .eq("event_id", eventId)
-    .eq("status", "confirmed");
-
-  const list: NumberingStudent[] = (regs ?? []).map((r: any) => ({
-    registrationId: r.id,
-    birthday: r.students?.birthday ?? null,
-    gender: r.students?.gender ?? null,
-    gup: r.students?.gup ?? null,
-    dan: r.students?.dan ?? null,
-  }));
-
-  const sorted = sortForNumbering(list);
-  await Promise.all(
-    sorted.map((s, i) =>
-      supabase
-        .from("event_registrations")
-        .update({ competition_number: formatCompetitionNumber(i + 1) })
-        .eq("id", s.registrationId)
-    )
-  );
+  await renumberEvent(supabaseAdmin(), eventId);
 }
 
 // The status column is now derived, not chosen. Only two states are deliberate:

@@ -6,6 +6,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { createGradingTallyForm, updateGradingTallyFormOptions, listTallySubmissions, type FormOptions, type ParsedGradingRow } from "@/lib/tallyForms";
 import { COUNTRIES } from "@/lib/countries";
 import { gradingCategoryIdFor } from "@/lib/gradingCategory";
+import { renumberEvent } from "@/lib/numbering";
 
 /** Next free running number within a club, so approved candidates get one too. */
 async function nextClubNumber(supabase: ReturnType<typeof supabaseAdmin>, clubId: string): Promise<number> {
@@ -195,11 +196,72 @@ export async function approveCandidate(formData: FormData) {
   const { data: student, error: studentError } = await supabase.from("students").insert({ club_id: clubId, club_number: await nextClubNumber(supabase, clubId), full_name: candidate.full_name, email: candidate.email, birthday: candidate.birthday, gender: candidate.gender, weight_kg: candidate.weight_kg, height_cm: candidate.height_cm, gup: candidate.gup, dan: candidate.dan, nationality: candidate.nationality, national_id: candidate.national_id, active: true }).select("id").single();
   if (studentError || !student) throw new Error("Could not create the student record.");
   const categoryId = await gradingCategoryIdFor(supabase, candidate.event_id, candidate.gup, candidate.dan);
-  await supabase.from("event_registrations").insert({ event_id: candidate.event_id, student_id: student.id, club_id: clubId, category_id: categoryId, status: "pending" });
-  await supabase.from("grading_candidates").update({ status: "approved", reviewed_by: session.sub, reviewed_at: new Date().toISOString(), created_student_id: student.id }).eq("id", candidateId);
+
+  // Approving here is the whole approval. Somebody has already read the
+  // submission and picked a club, so making them confirm the same person again
+  // on the next screen adds nothing.
+  const { data: registration } = await supabase
+    .from("event_registrations")
+    .insert({ event_id: candidate.event_id, student_id: student.id, club_id: clubId, category_id: categoryId, status: "confirmed" })
+    .select("id")
+    .single();
+
+  // Carry their signature across, so the entry shows as signed rather than
+  // asking somebody who already signed on the public form to sign again.
+  if (registration && candidate.signature_png) {
+    await supabase.from("waiver_signatures").upsert(
+      {
+        registration_id: registration.id,
+        signed_name: candidate.signed_name || candidate.full_name,
+        signature_png: candidate.signature_png,
+        signed_at: candidate.signed_at ?? new Date().toISOString(),
+      },
+      { onConflict: "registration_id" },
+    );
+  }
+
+  await supabase.from("grading_candidates").update({ status: "approved", reviewed_by: session.sub, reviewed_at: new Date().toISOString(), created_student_id: student.id, created_registration_id: registration?.id ?? null }).eq("id", candidateId);
+  if (registration) await renumberEvent(supabase, candidate.event_id);
   revalidatePath(`/events/${eventId}`);
   revalidatePath(`/events/${eventId}/register`);
 }
+/**
+ * Create a club from what a registrant typed, and approve them into it.
+ *
+ * Somebody registering from a club we've never recorded shouldn't have to be
+ * filed under the wrong one. The club is created inactive-free and minimal —
+ * an organiser fills in the rest on the Clubs page afterwards.
+ */
+export async function generateClubForCandidate(formData: FormData) {
+  const session = await requireSuperAdmin();
+  const candidateId = String(formData.get("candidateId") || "");
+  const eventId = String(formData.get("eventId") || "");
+  if (!candidateId) return;
+
+  const supabase = supabaseAdmin();
+  const { data: candidate } = await supabase.from("grading_candidates").select("club_name_raw, nationality").eq("id", candidateId).maybeSingle();
+  const name = (candidate?.club_name_raw ?? "").trim();
+  if (!name) throw new Error("There is no club name on this submission to create.");
+
+  // Don't make a second copy of a club that already exists under that name.
+  const { data: clubs } = await supabase.from("clubs").select("id, name");
+  const existing = (clubs ?? []).find((c: any) => normalize(c.name) === normalize(name));
+
+  let clubId = existing?.id ?? null;
+  if (!clubId) {
+    const { data: created, error } = await supabase
+      .from("clubs")
+      .insert({ name, country: candidate?.nationality || null, active: true })
+      .select("id")
+      .single();
+    if (error || !created) throw new Error("That club could not be created.");
+    clubId = created.id;
+  }
+
+  await supabase.from("grading_candidates").update({ matched_club_id: clubId }).eq("id", candidateId);
+  revalidatePath(`/events/${eventId}`);
+}
+
 export async function rejectCandidate(formData: FormData) {
   const session = await requireSuperAdmin();
   const candidateId = String(formData.get("candidateId") || "");

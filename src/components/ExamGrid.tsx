@@ -9,21 +9,20 @@ import {
   type ExamRowDto,
 } from "@/app/(app)/events/examActions";
 import {
-  EXAM_EVENTS,
-  SCORE_CHOICES,
-  examTotal,
-  scoreSaysPassed,
+  componentsFor,
   marksGiven,
-  eventsFor,
-  TOTAL_MAX,
-  PASS_MARK,
-  type ExamEventKey,
-} from "@/lib/gradingExam";
+  marksPossible,
+  sheetTotal,
+  marksSayPassed,
+  SHEET_TOTAL_MAX,
+  type SheetMarks,
+} from "@/lib/gradingSheet";
+import ExamSheet, { type SheetDraft } from "./ExamSheet";
 import CategoryEventsEditor from "./CategoryEventsEditor";
 import { realtimeClient, POLL_WITH_REALTIME_MS, POLL_WITHOUT_REALTIME_MS } from "@/lib/liveChannel";
 
 type Category = { id: string; name: string; examEvents: string[] };
-type Draft = { scores: Record<ExamEventKey, number | null>; remark: string; passed: boolean };
+type Draft = SheetDraft;
 
 /**
  * The examiner's marking sheet, in two steps.
@@ -61,9 +60,8 @@ export default function ExamGrid({
   const [bulkStatus, setBulkStatus] = useState("");
   const [live, setLive] = useState(false);
 
-  // Batch entry: one score, applied to everyone on the marking screen.
-  const [batchEvent, setBatchEvent] = useState<string>(EXAM_EVENTS[0].key);
-  const [batchScore, setBatchScore] = useState<string>("");
+  // Which of the selected candidates is on screen.
+  const [current, setCurrent] = useState(0);
 
   const channelRef = useRef<any>(null);
   const draftsRef = useRef(drafts);
@@ -127,7 +125,16 @@ export default function ExamGrid({
   const unassigned = useMemo(() => rows.filter((r) => !r.categoryId).length, [rows]);
 
   function valueFor(row: ExamRowDto): Draft {
-    return drafts[row.registrationId] ?? { scores: row.scores, remark: row.remark, passed: row.passed };
+    return (
+      drafts[row.registrationId] ?? {
+        marks: row.marks,
+        remark: row.remark,
+        passed: row.passed,
+        approvedRank: row.approvedRank ?? row.categoryName ?? "",
+        examinerName: row.examinerName ?? "",
+        examinerSignature: row.examinerSignature ?? null,
+      }
+    );
   }
 
   function edit(row: ExamRowDto, patch: Partial<Draft>) {
@@ -152,9 +159,12 @@ export default function ExamGrid({
     const result = await saveExamRow({
       eventId,
       registrationId: row.registrationId,
-      scores: draft.scores,
+      marks: draft.marks,
       remark: draft.remark,
       passed: draft.passed,
+      approvedRank: draft.approvedRank || null,
+      examinerName: draft.examinerName || null,
+      examinerSignature: draft.examinerSignature,
     });
     setBusy((prev) => ({ ...prev, [row.registrationId]: false }));
     if ("error" in result) {
@@ -176,7 +186,15 @@ export default function ExamGrid({
       eventId,
       rows: pending.map((r) => {
         const d = valueFor(r);
-        return { registrationId: r.registrationId, scores: d.scores, remark: d.remark, passed: d.passed };
+        return {
+          registrationId: r.registrationId,
+          marks: d.marks,
+          remark: d.remark,
+          passed: d.passed,
+          approvedRank: d.approvedRank || null,
+          examinerName: d.examinerName || null,
+          examinerSignature: d.examinerSignature,
+        };
       }),
     });
 
@@ -200,14 +218,14 @@ export default function ExamGrid({
     announce();
   }
 
-  function applyBatchScore() {
-    const value = batchScore === "" ? null : Number(batchScore);
+  /** Copy the examiner's name and signature onto every other sheet. */
+  function applyExaminerToAll() {
+    const source = marking[current];
+    if (!source) return;
+    const from = valueFor(source);
     for (const row of marking) {
-      if (row.locked) continue;
-      const rowKeys = new Set(eventsFor(row.examEvents).map((e) => e.key));
-      if (!rowKeys.has(batchEvent as ExamEventKey)) continue;
-      const current = valueFor(row);
-      edit(row, { scores: { ...current.scores, [batchEvent]: value } });
+      if (row.locked || row.registrationId === source.registrationId) continue;
+      edit(row, { examinerName: from.examinerName, examinerSignature: from.examinerSignature });
     }
   }
 
@@ -242,6 +260,10 @@ export default function ExamGrid({
 
   // ---------------------------------------------------------------- step two
   if (step === "mark") {
+    const row = marking[Math.min(current, Math.max(0, marking.length - 1))];
+    const draft = row ? valueFor(row) : null;
+    const dirtyCount = marking.filter((r) => drafts[r.registrationId]).length;
+
     return (
       <div className="space-y-4">
         <div className="card p-4">
@@ -252,182 +274,118 @@ export default function ExamGrid({
               </button>
               <h3 className="text-sm font-semibold text-gray-900">
                 Marking {marking.length} candidate{marking.length === 1 ? "" : "s"}
+                {dirtyCount > 0 && <span className="ml-2 text-xs font-normal text-amber-700">{dirtyCount} unsaved</span>}
               </h3>
             </div>
-            {liveDot}
-          </div>
-
-          {canMark && (
-            <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-gray-100 pt-3">
-              <div>
-                <label className="label text-xs">Set this event</label>
-                <select className="input !w-48" value={batchEvent} onChange={(e) => setBatchEvent(e.target.value)}>
-                  {EXAM_EVENTS.map((e) => (
-                    <option key={e.key} value={e.key}>{e.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label text-xs">To</label>
-                <select className="input !w-24" value={batchScore} onChange={(e) => setBatchScore(e.target.value)}>
-                  <option value="">–</option>
-                  {SCORE_CHOICES.map((n) => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
-              </div>
-              <button type="button" className="btn-secondary" onClick={applyBatchScore}>
-                Apply to all below
-              </button>
-              <div className="ml-auto flex items-center gap-3">
-                {bulkStatus && <span className="text-xs text-gray-600">{bulkStatus}</span>}
+            <div className="flex items-center gap-3">
+              {bulkStatus && <span className="text-xs text-gray-600">{bulkStatus}</span>}
+              {canMark && (
                 <button type="button" className="btn-primary" disabled={bulkBusy} onClick={() => { void saveAll(); }}>
                   {bulkBusy ? "Saving..." : `Save all ${marking.filter((r) => !r.locked).length}`}
                 </button>
-              </div>
-              <p className="w-full text-xs text-gray-400">
-                Applying a score fills it in for everyone below who sits that event — nothing is written until you save.
-              </p>
+              )}
             </div>
-          )}
-        </div>
+          </div>
 
-        <div className="card p-4">
-          <div className="overflow-x-auto">
-            <table className="table-base">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  {EXAM_EVENTS.map((e) => (
-                    <th key={e.key} className="whitespace-nowrap px-3 text-center">
-                      {e.label}
-                      {e.required && <span className="text-red-500">*</span>}
-                    </th>
-                  ))}
-                  <th>Remark</th>
-                  <th className="text-center">Total<span className="block text-xs font-normal text-gray-400">of {TOTAL_MAX}</span></th>
-                  <th className="text-center">Passed</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {marking.map((row) => {
-                  const draft = valueFor(row);
-                  const dirty = Boolean(drafts[row.registrationId]);
-                  const disabled = !canMark || row.locked || busy[row.registrationId];
-                  const rowEvents = eventsFor(row.examEvents);
-                  const rowKeys = new Set(rowEvents.map((e) => e.key));
-                  const total = examTotal(draft.scores, rowEvents);
-                  const wouldPass = scoreSaysPassed(draft.scores, rowEvents);
-                  return (
-                    <tr key={row.registrationId} className={row.locked ? "bg-gray-50" : dirty ? "bg-amber-50/50" : undefined}>
-                      <td className="whitespace-nowrap font-medium text-gray-900">
-                        {row.studentName}
-                        <span className="block text-xs font-normal text-gray-500">
-                          {row.clubName ?? "No club"} · {row.categoryName ?? "No category"}
-                        </span>
-                      </td>
-                      {EXAM_EVENTS.map((e) => (
-                        <td key={e.key} className="text-center">
-                          {!rowKeys.has(e.key) ? (
-                            <span className="text-gray-300" title={`Not part of the ${row.categoryName ?? "this"} exam`}>—</span>
-                          ) : (
-                            <select
-                              className="input !w-16 !px-1 text-center"
-                              value={draft.scores[e.key] ?? ""}
-                              disabled={disabled}
-                              aria-label={`${e.label} — ${row.studentName}`}
-                              onChange={(ev) =>
-                                edit(row, {
-                                  scores: { ...draft.scores, [e.key]: ev.target.value === "" ? null : Number(ev.target.value) },
-                                })
-                              }
-                            >
-                              <option value="">–</option>
-                              {SCORE_CHOICES.map((n) => (
-                                <option key={n} value={n}>{n}</option>
-                              ))}
-                            </select>
-                          )}
-                        </td>
-                      ))}
-                      <td>
-                        <input
-                          type="text"
-                          className="input !w-40"
-                          placeholder="Optional"
-                          value={draft.remark}
-                          disabled={disabled}
-                          onChange={(ev) => edit(row, { remark: ev.target.value })}
-                        />
-                      </td>
-                      <td className="whitespace-nowrap text-center">
-                        <span className="font-semibold text-gray-900">{total}</span>
-                        {marksGiven(draft.scores, rowEvents) > 0 && (
-                          <span className={`mt-0.5 block text-xs font-semibold ${wouldPass ? "text-green-700" : "text-gray-400"}`}>
-                            {wouldPass ? "PASSED" : `needs over ${PASS_MARK}`}
-                          </span>
-                        )}
-                      </td>
-                      <td className="text-center">
-                        <input
-                          type="checkbox"
-                          className="h-5 w-5"
-                          checked={draft.passed}
-                          disabled={disabled}
-                          title={wouldPass ? "Marks pass — tick to confirm" : "Marks are below the pass mark — tick to pass anyway"}
-                          onChange={(ev) => edit(row, { passed: ev.target.checked })}
-                        />
-                      </td>
-                      <td className="whitespace-nowrap text-right">
-                        {canMark && !row.locked && (
-                          <button
-                            type="button"
-                            className="btn-primary !px-3 !py-1.5 text-xs"
-                            disabled={busy[row.registrationId]}
-                            onClick={() => { void save(row); }}
-                          >
-                            {busy[row.registrationId] ? "Saving..." : dirty ? "Save" : "Saved"}
-                          </button>
-                        )}
-                        {canMark && (
-                          <button
-                            type="button"
-                            className="ml-2 text-xs font-medium text-gray-600 hover:underline"
-                            disabled={busy[row.registrationId]}
-                            onClick={() => { void lock(row, !row.locked); }}
-                          >
-                            {row.locked ? "Unlock" : "Lock"}
-                          </button>
-                        )}
-                        <span className="ml-2 block text-xs text-gray-400">
-                          {errors[row.registrationId] ? (
-                            <span className="text-red-600">{errors[row.registrationId]}</span>
-                          ) : row.locked ? (
-                            "Locked"
-                          ) : saved[row.registrationId] ? (
-                            "Saved"
-                          ) : row.updatedBy ? (
-                            `Last saved by ${row.updatedBy}`
-                          ) : (
-                            ""
-                          )}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {marking.length === 0 && (
-                  <tr>
-                    <td colSpan={EXAM_EVENTS.length + 5} className="py-6 text-center text-gray-400">
-                      Nobody selected. Go back and choose who you&apos;re grading.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+          {/* Candidate switcher: who is in front of the examiner right now. */}
+          <div className="mt-3 flex flex-wrap gap-1 border-t border-gray-100 pt-3">
+            {marking.map((r, i) => {
+              const comps = componentsFor(r.components);
+              const d = drafts[r.registrationId];
+              const marksNow = (d?.marks ?? r.marks) as SheetMarks;
+              const done = marksGiven(marksNow, comps);
+              return (
+                <button
+                  key={r.registrationId}
+                  type="button"
+                  onClick={() => setCurrent(i)}
+                  className={`rounded-md border px-2 py-1 text-xs ${
+                    i === current ? "border-brand-500 bg-brand-50 font-semibold text-brand-800" : "border-gray-200 text-gray-600 hover:border-brand-300"
+                  }`}
+                >
+                  {r.studentName}
+                  <span className="ml-1 text-gray-400">
+                    {r.locked ? "🔒" : `${done}/${marksPossible(comps)}`}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
+
+        {row && draft ? (
+          <div className="card p-6">
+            <ExamSheet
+              studentName={row.studentName}
+              clubName={row.clubName}
+              currentGrade={row.currentGrade}
+              categoryName={row.categoryName}
+              components={row.components}
+              draft={draft}
+              locked={row.locked}
+              canMark={canMark}
+              onChange={(patch) => edit(row, patch)}
+            />
+
+            <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-gray-100 pt-4">
+              <button
+                type="button"
+                className="btn-secondary !px-3 !py-1.5 text-xs"
+                disabled={current <= 0}
+                onClick={() => setCurrent((i) => Math.max(0, i - 1))}
+              >
+                ← Previous
+              </button>
+              <button
+                type="button"
+                className="btn-secondary !px-3 !py-1.5 text-xs"
+                disabled={current >= marking.length - 1}
+                onClick={() => setCurrent((i) => Math.min(marking.length - 1, i + 1))}
+              >
+                Next →
+              </button>
+
+              {canMark && !row.locked && (
+                <button type="button" className="btn-primary" disabled={busy[row.registrationId]} onClick={() => { void save(row); }}>
+                  {busy[row.registrationId] ? "Saving..." : "Save this sheet"}
+                </button>
+              )}
+              {canMark && (
+                <button
+                  type="button"
+                  className="text-xs font-medium text-gray-600 hover:underline"
+                  disabled={busy[row.registrationId]}
+                  onClick={() => { void lock(row, !row.locked); }}
+                >
+                  {row.locked ? "Unlock" : "Lock this sheet"}
+                </button>
+              )}
+              {canMark && marking.length > 1 && (
+                <button type="button" className="text-xs font-medium text-brand-700 hover:underline" onClick={applyExaminerToAll}>
+                  Use this examiner and signature on all {marking.length}
+                </button>
+              )}
+
+              <span className="ml-auto text-xs text-gray-400">
+                {errors[row.registrationId] ? (
+                  <span className="text-red-600">{errors[row.registrationId]}</span>
+                ) : row.locked ? (
+                  "Locked"
+                ) : saved[row.registrationId] ? (
+                  "Saved"
+                ) : row.updatedBy ? (
+                  `Last saved by ${row.updatedBy}`
+                ) : (
+                  ""
+                )}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="card p-6 text-center text-sm text-gray-400">
+            Nobody selected. Go back and choose who you&apos;re grading.
+          </div>
+        )}
       </div>
     );
   }
@@ -534,8 +492,8 @@ export default function ExamGrid({
             </thead>
             <tbody>
               {inCategories.map((row) => {
-                const rowEvents = eventsFor(row.examEvents);
-                const done = marksGiven(row.scores, rowEvents);
+                const comps = componentsFor(row.components);
+                const done = marksGiven(row.marks, comps);
                 return (
                   <tr key={row.registrationId} className={chosen.includes(row.registrationId) ? "bg-brand-50/50" : undefined}>
                     <td>
@@ -553,7 +511,7 @@ export default function ExamGrid({
                     </td>
                     <td>{row.categoryName ?? "—"}</td>
                     <td className="hidden md:table-cell">{row.currentGrade}</td>
-                    <td className="text-sm text-gray-600">{done} of {rowEvents.length}</td>
+                    <td className="text-sm text-gray-600">{done} of {marksPossible(comps)}</td>
                     <td>
                       {row.locked ? (
                         <span className="badge bg-gray-100 text-gray-500">Locked</span>

@@ -2,7 +2,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import BeltBadge from "@/components/BeltBadge";
 import { computeAge } from "@/lib/eligibility";
 import { formatEventDateTime } from "@/lib/eventStatus";
-import { examTotal, TOTAL_MAX, type ExamScores } from "@/lib/gradingExam";
+import { sheetTotal, componentsFor, SHEET_TOTAL_MAX, PASS_MARK, type SheetMarks } from "@/lib/gradingSheet";
 import { publishResults, unpublishResults } from "./examActions";
 
 /**
@@ -27,7 +27,7 @@ export default async function ResultTab({
 
   const { data: regs } = await supabase
     .from("event_registrations")
-    .select("id, competition_number, event_categories(name), students(full_name, gender, birthday, gup, dan)")
+    .select("id, competition_number, event_categories(name, exam_events), students(full_name, gender, birthday, gup, dan)")
     .eq("event_id", eventId);
 
   const ids = (regs ?? []).map((r: any) => r.id);
@@ -63,7 +63,7 @@ export default async function ResultTab({
           <h2 className="text-lg font-semibold text-gray-900">Results</h2>
           <p className="mt-1 text-sm text-gray-500">
             {published
-              ? `Published ${formatEventDateTime(publishedAt)} · ${passCount} of ${results.length} passed.`
+              ? `Published ${formatEventDateTime(publishedAt)} · ${passCount} of ${results.length} passed (pass mark ${PASS_MARK}).`
               : `Not published yet — this is a preview of what will be shown. ${results.length} candidate${results.length === 1 ? "" : "s"} marked so far.`}
           </p>
         </div>
@@ -93,7 +93,7 @@ export default async function ResultTab({
               <th className="hidden md:table-cell">Gender</th>
               <th className="hidden md:table-cell">Age</th>
               <th>Current Belt</th>
-              <th className="hidden lg:table-cell">Graded for</th>
+              <th className="hidden lg:table-cell">Approved rank</th>
               <th className="hidden lg:table-cell">Total</th>
               <th>Result</th>
             </tr>
@@ -106,8 +106,8 @@ export default async function ResultTab({
                 <td className="hidden capitalize md:table-cell">{reg.students?.gender ?? "—"}</td>
                 <td className="hidden md:table-cell">{computeAge(reg.students?.birthday ?? null) ?? "—"}</td>
                 <td><BeltBadge gup={reg.students?.gup ?? null} dan={reg.students?.dan ?? null} /></td>
-                <td className="hidden lg:table-cell">{reg.event_categories?.name ?? "—"}</td>
-                <td className="hidden lg:table-cell">{examTotal(score as ExamScores)} / {TOTAL_MAX}</td>
+                <td className="hidden lg:table-cell">{score.approved_rank ?? reg.event_categories?.name ?? "—"}</td>
+                <td className="hidden lg:table-cell">{score.total != null ? Number(score.total) : sheetTotal((score.marks ?? {}) as SheetMarks, componentsFor(reg.event_categories?.exam_events ?? []))} / {SHEET_TOTAL_MAX}</td>
                 <td>
                   <span className={`badge ${score.passed ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                     {score.passed ? "PASS" : "Failed"}

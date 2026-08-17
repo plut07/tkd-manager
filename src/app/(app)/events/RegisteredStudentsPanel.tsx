@@ -196,9 +196,18 @@ export default async function RegisteredStudentsPanel({
                   </td>
                   <td><span className={`badge ${r.status === "confirmed" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{r.status}</span></td>
                   <td className="whitespace-nowrap text-right">
-                    <a href={`/public/waiver/${r.waiver_token}`} target="_blank" rel="noopener noreferrer" className="mr-3 text-sm font-medium text-brand-700 hover:underline">Sign</a>
-                    <span className="mr-3"><CopyLinkButton url={`${baseUrl}/public/waiver/${r.waiver_token}`} /></span>
-                    <a href={`/api/export/waiver?registrationId=${r.id}`} target="_blank" rel="noopener noreferrer" className="mr-3 text-sm font-medium text-brand-700 hover:underline">Waiver PDF</a>
+                    {/* Somebody who signed on the public form has nothing left to
+                        sign, so the signing link makes way for their copy. */}
+                    {!r.waiver_signatures && (
+                      <>
+                        <a href={`/public/waiver/${r.waiver_token}`} target="_blank" rel="noopener noreferrer" className="mr-3 text-sm font-medium text-brand-700 hover:underline">Sign</a>
+                        <span className="mr-3"><CopyLinkButton url={`${baseUrl}/public/waiver/${r.waiver_token}`} /></span>
+                      </>
+                    )}
+                    <a href={`/api/export/waiver?registrationId=${r.id}`} target="_blank" rel="noopener noreferrer" className="mr-3 text-sm font-medium text-brand-700 hover:underline">Preview PDF</a>
+                    {r.waiver_signatures && (
+                      <a href={`/api/export/waiver?registrationId=${r.id}&download=1`} className="mr-3 text-sm font-medium text-brand-700 hover:underline">Download PDF</a>
+                    )}
                     {canEdit && (
                       <DeleteButton
                         action={unregisterStudent}

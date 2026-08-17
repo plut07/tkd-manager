@@ -43,3 +43,33 @@ export function sortForNumbering(students: NumberingStudent[]): NumberingStudent
 export function formatCompetitionNumber(index: number): string {
   return String(1000 + index).padStart(5, "0");
 }
+
+
+/**
+ * Reassign competition numbers for every confirmed entry in an event.
+ *
+ * Cheap enough to redo in full whenever an entry is confirmed or removed, and
+ * far easier to reason about than patching numbers in place.
+ */
+export async function renumberEvent(supabase: any, eventId: string): Promise<void> {
+  const { data: regs } = await supabase
+    .from("event_registrations")
+    .select("id, students(birthday, gender, gup, dan)")
+    .eq("event_id", eventId)
+    .eq("status", "confirmed");
+
+  const list: NumberingStudent[] = (regs ?? []).map((r: any) => ({
+    registrationId: r.id,
+    birthday: r.students?.birthday ?? null,
+    gender: r.students?.gender ?? null,
+    gup: r.students?.gup ?? null,
+    dan: r.students?.dan ?? null,
+  }));
+
+  const sorted = sortForNumbering(list);
+  await Promise.all(
+    sorted.map((s, i) =>
+      supabase.from("event_registrations").update({ competition_number: formatCompetitionNumber(i + 1) }).eq("id", s.registrationId),
+    ),
+  );
+}

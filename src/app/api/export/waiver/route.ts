@@ -16,6 +16,8 @@ export async function GET(request: NextRequest) {
   await requirePermission(PERMISSIONS.EVENT_VIEW);
   const registrationId = request.nextUrl.searchParams.get("registrationId");
   const eventIdParam = request.nextUrl.searchParams.get("eventId");
+  // Preview opens in the browser; Download saves to the device.
+  const disposition = request.nextUrl.searchParams.get("download") ? "attachment" : "inline";
   if (!registrationId && !eventIdParam) {
     return NextResponse.json({ error: "Pass registrationId or eventId" }, { status: 400 });
   }
@@ -108,7 +110,7 @@ export async function GET(request: NextRequest) {
       }));
       const filled = await fillTemplate(bytes, (fields ?? []) as any, rowsForTemplate);
       return new NextResponse(new Uint8Array(filled), {
-        headers: { "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="form.pdf"`, "Cache-Control": "no-store" },
+        headers: { "Content-Type": "application/pdf", "Content-Disposition": `${disposition}; filename="form.pdf"`, "Cache-Control": "no-store" },
       });
     }
   }
@@ -134,7 +136,7 @@ export async function GET(request: NextRequest) {
   return new NextResponse(new Uint8Array(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="${filename}"`,
+      "Content-Disposition": `${disposition}; filename="${filename}"`,
       "Cache-Control": "no-store",
     },
   });

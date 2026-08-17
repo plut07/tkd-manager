@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { gradeShort } from "@/lib/belts";
 import { formatDob } from "@/lib/eligibility";
-import { approveCandidate, rejectCandidate } from "./gradingActions";
+import { approveCandidate, rejectCandidate, generateClubForCandidate } from "./gradingActions";
 
 /**
  * People who registered themselves and aren't students yet.
@@ -32,9 +32,9 @@ export default async function PendingCandidates({
     <div className="card p-6">
       <h2 className="text-lg font-semibold text-gray-900">Awaiting approval ({list.length})</h2>
       <p className="mt-1 text-sm text-gray-500">
-        Registrations from the public page, plus anything that needs a second look. A Super Admin picks their club and
-        approves before a student record is created. People already on file are entered automatically and appear under
-        Registered students instead.
+        Registrations from the public page, plus anything that needs a second look. This is the only approval — once you
+        approve, the student record and their confirmed entry are both created, and their signature comes across with
+        them. If their club isn&apos;t on file yet, create it from what they typed.
       </p>
 
       <div className="mt-4 space-y-3">
@@ -73,7 +73,16 @@ export default async function PendingCandidates({
                 )}
               </div>
               {isSuperAdmin ? (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {!c.matched_club_id && c.club_name_raw && (
+                    <form action={generateClubForCandidate}>
+                      <input type="hidden" name="candidateId" value={c.id} />
+                      <input type="hidden" name="eventId" value={eventId} />
+                      <button type="submit" className="btn-secondary !px-3 !py-1.5 text-xs" title={`Create "${c.club_name_raw}" as a club`}>
+                        Generate club &ldquo;{c.club_name_raw}&rdquo;
+                      </button>
+                    </form>
+                  )}
                   <form action={approveCandidate} className="flex items-center gap-2">
                     <input type="hidden" name="candidateId" value={c.id} />
                     <input type="hidden" name="eventId" value={eventId} />
