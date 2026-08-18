@@ -355,7 +355,7 @@ export async function setCategoryEvents(input: {
 }): Promise<{ ok: true } | { error: string }> {
   try {
     const { supabase } = await assertCanMark(input.eventId);
-    const valid = SHEET.map((c) => c.key);
+    const valid = (await loadSyllabus(input.eventId)).map((c) => c.key);
     const chosen = input.eventKeys.filter((k) => valid.includes(k));
     if (chosen.length === 0) return { error: "Pick at least one component for this category." };
 
