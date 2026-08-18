@@ -1,6 +1,9 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import ExamGrid from "@/components/ExamGrid";
-import { loadExamRows, syncAllGradingCategories, addAllGradingCategories } from "./examActions";
+import Link from "next/link";
+import { requireSession } from "@/lib/authz";
+import SyllabusEditor from "@/components/SyllabusEditor";
+import { loadExamRows, loadSyllabus, syncAllGradingCategories, addAllGradingCategories } from "./examActions";
 
 /**
  * Marking sheet for a grading event.
@@ -9,7 +12,20 @@ import { loadExamRows, syncAllGradingCategories, addAllGradingCategories } from 
  * candidates register, so this only ever lists grades that somebody is actually
  * sitting for.
  */
-export default async function ExamTab({ eventId, canMark }: { eventId: string; canMark: boolean }) {
+export default async function ExamTab({
+  eventId,
+  canMark,
+  sub,
+  hrefFor,
+}: {
+  eventId: string;
+  canMark: boolean;
+  /** "main" or "syllabus". */
+  sub: string;
+  hrefFor: (sub: string) => string;
+}) {
+  const session = await requireSession();
+  const sheet = await loadSyllabus(eventId);
   const supabase = supabaseAdmin();
   const { data: categories } = await supabase
     .from("event_categories")
@@ -19,9 +35,31 @@ export default async function ExamTab({ eventId, canMark }: { eventId: string; c
     .order("name");
 
   const rows = await loadExamRows(eventId, []);
+  const tabs = [
+    { key: "main", label: "Main Page" },
+    { key: "syllabus", label: "Exam Syllabus" },
+  ];
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap gap-1 rounded-md bg-gray-100 p-1">
+        {tabs.map((t) => (
+          <Link
+            key={t.key}
+            href={hrefFor(t.key)}
+            className={`rounded px-3 py-1.5 text-sm font-medium ${
+              sub === t.key ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </div>
+
+      {sub === "syllabus" ? (
+        <SyllabusEditor eventId={eventId} initialSheet={sheet} canEdit={canMark} />
+      ) : (
+      <>
       <div className="card p-6">
         <h2 className="text-lg font-semibold text-gray-900">Exam</h2>
         <p className="mt-1 text-sm text-gray-500">
@@ -56,7 +94,11 @@ export default async function ExamTab({ eventId, canMark }: { eventId: string; c
         categories={(categories ?? []).map((c: any) => ({ id: c.id, name: c.name, examEvents: (c.exam_events as string[] | null) ?? [] }))}
         initialRows={rows}
         canMark={canMark}
+        sheet={sheet}
+        examinerName={session.fullName || session.username}
       />
+      </>
+      )}
     </div>
   );
 }

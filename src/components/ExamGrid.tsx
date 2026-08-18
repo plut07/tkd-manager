@@ -12,9 +12,8 @@ import {
   componentsFor,
   marksGiven,
   marksPossible,
-  sheetTotal,
   marksSayPassed,
-  SHEET_TOTAL_MAX,
+  type SheetComponent,
   type SheetMarks,
 } from "@/lib/gradingSheet";
 import ExamSheet, { type SheetDraft } from "./ExamSheet";
@@ -40,11 +39,15 @@ export default function ExamGrid({
   categories,
   initialRows,
   canMark,
+  sheet,
+  examinerName,
 }: {
   eventId: string;
   categories: Category[];
   initialRows: ExamRowDto[];
   canMark: boolean;
+  sheet: SheetComponent[];
+  examinerName: string;
 }) {
   const [rows, setRows] = useState<ExamRowDto[]>(initialRows);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(categories.map((c) => c.id));
@@ -125,16 +128,20 @@ export default function ExamGrid({
   const unassigned = useMemo(() => rows.filter((r) => !r.categoryId).length, [rows]);
 
   function valueFor(row: ExamRowDto): Draft {
-    return (
-      drafts[row.registrationId] ?? {
-        marks: row.marks,
-        remark: row.remark,
-        passed: row.passed,
-        approvedRank: row.approvedRank ?? row.categoryName ?? "",
-        examinerName: row.examinerName ?? "",
-        examinerSignature: row.examinerSignature ?? null,
-      }
-    );
+    const existing = drafts[row.registrationId];
+    if (existing) return existing;
+    // `passed` is only carried as an override. If the stored tick already
+    // agrees with the stored marks, leave it undefined so it keeps following
+    // the mark as the examiner types.
+    const inPlay = componentsFor(row.components, sheet);
+    const followsMarks = row.passed === marksSayPassed(row.marks, inPlay);
+    return {
+      marks: row.marks,
+      remark: row.remark,
+      passed: followsMarks ? undefined : row.passed,
+      approvedRank: row.approvedRank ?? row.categoryName ?? "",
+      examinerSignature: row.examinerSignature ?? null,
+    };
   }
 
   function edit(row: ExamRowDto, patch: Partial<Draft>) {
@@ -153,7 +160,7 @@ export default function ExamGrid({
     });
   }
 
-  async function save(row: ExamRowDto) {
+  async function save(row: ExamRowDto, lock = false) {
     const draft = valueFor(row);
     setBusy((prev) => ({ ...prev, [row.registrationId]: true }));
     const result = await saveExamRow({
@@ -163,8 +170,8 @@ export default function ExamGrid({
       remark: draft.remark,
       passed: draft.passed,
       approvedRank: draft.approvedRank || null,
-      examinerName: draft.examinerName || null,
       examinerSignature: draft.examinerSignature,
+      lock,
     });
     setBusy((prev) => ({ ...prev, [row.registrationId]: false }));
     if ("error" in result) {
@@ -192,7 +199,6 @@ export default function ExamGrid({
           remark: d.remark,
           passed: d.passed,
           approvedRank: d.approvedRank || null,
-          examinerName: d.examinerName || null,
           examinerSignature: d.examinerSignature,
         };
       }),
@@ -218,14 +224,14 @@ export default function ExamGrid({
     announce();
   }
 
-  /** Copy the examiner's name and signature onto every other sheet. */
+  /** Copy this signature onto every other sheet being marked. */
   function applyExaminerToAll() {
     const source = marking[current];
     if (!source) return;
     const from = valueFor(source);
     for (const row of marking) {
       if (row.locked || row.registrationId === source.registrationId) continue;
-      edit(row, { examinerName: from.examinerName, examinerSignature: from.examinerSignature });
+      edit(row, { examinerSignature: from.examinerSignature });
     }
   }
 
@@ -320,10 +326,12 @@ export default function ExamGrid({
               clubName={row.clubName}
               currentGrade={row.currentGrade}
               categoryName={row.categoryName}
+              sheet={sheet}
               components={row.components}
               draft={draft}
               locked={row.locked}
               canMark={canMark}
+              examinerName={examinerName}
               onChange={(patch) => edit(row, patch)}
             />
 
@@ -346,23 +354,40 @@ export default function ExamGrid({
               </button>
 
               {canMark && !row.locked && (
-                <button type="button" className="btn-primary" disabled={busy[row.registrationId]} onClick={() => { void save(row); }}>
-                  {busy[row.registrationId] ? "Saving..." : "Save this sheet"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={busy[row.registrationId]}
+                    onClick={() => { void save(row, true); }}
+                    title="Save this sheet and lock the result"
+                  >
+                    {busy[row.registrationId] ? "Submitting..." : "Finish (Submit)"}
+                  </button>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-gray-600 hover:underline"
+                    disabled={busy[row.registrationId]}
+                    onClick={() => { void save(row); }}
+                  >
+                    Save without finishing
+                  </button>
+                </>
               )}
-              {canMark && (
+              {canMark && row.locked && (
                 <button
                   type="button"
-                  className="text-xs font-medium text-gray-600 hover:underline"
+                  className="btn-secondary"
                   disabled={busy[row.registrationId]}
-                  onClick={() => { void lock(row, !row.locked); }}
+                  onClick={() => { void lock(row, false); }}
+                  title="Unlock this sheet so it can be changed again"
                 >
-                  {row.locked ? "Unlock" : "Lock this sheet"}
+                  Resubmit
                 </button>
               )}
               {canMark && marking.length > 1 && (
                 <button type="button" className="text-xs font-medium text-brand-700 hover:underline" onClick={applyExaminerToAll}>
-                  Use this examiner and signature on all {marking.length}
+                  Use this signature on all {marking.length}
                 </button>
               )}
 

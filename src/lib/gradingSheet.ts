@@ -1,19 +1,20 @@
 /**
- * The federation's grading sheet, as data.
+ * The grading sheet.
  *
- * Six components, each with its own sub-columns and its own share of the 100
- * marks — the same shape as the printed form:
+ * Six components by default, each with its own contents and its own share of
+ * the 100 marks — the shape of the printed form. An event can override the
+ * whole thing from the Exam Syllabus tab, so patterns can be added to the
+ * syllabus without a code change.
  *
- *   Fundamental      Hand / Foot Techniques                        15
- *   Pattern          Saju Jirugi ... Choong-Moo                    40
- *   Step-Sparring    Sambo Matsogi, Ilbo Matsogi, Self Defence     10
- *   Sparring         1st, 2nd, 3rd round                           20
- *   Power Breaking   3 methods x 3 attempts                        10
- *   Attitude / Characteristic                                       5
+ * Three kinds of component:
  *
- * A component's Alloted mark is the sum of its columns, capped at its Max — an
- * examiner filling in generous individual marks can't push a component past its
- * share of the paper.
+ *   fixed     every content column is always marked (Fundamental, Sparring)
+ *   select    the examiner picks which ones were performed, and can add more
+ *             rows (Pattern, Step-Sparring)
+ *   breaking  three chosen techniques, three attempts each (Power Breaking)
+ *
+ * A component's Alloted mark is its rows added up, capped at its Max, so
+ * generous individual marks can't push a component past its share of the paper.
  *
  * Deliberately plain: no server-only or database imports, so the same
  * definitions drive the marking screen, the save, the result list and the PDF.
@@ -21,16 +22,23 @@
 
 export type SheetItem = { key: string; label: string };
 
+export type ComponentKind = "fixed" | "select" | "breaking";
+
 export type SheetComponent = {
   key: string;
   label: string;
   /** This component's share of the 100 marks. */
   max: number;
-  /** The most any single column may be given. */
+  /** The most any single row may be given. */
   itemMax: number;
+  kind: ComponentKind;
+  /** For "fixed": the columns. For "select": what can be chosen. */
   items: SheetItem[];
-  /** Power breaking also records what was broken, not just the marks. */
-  methodRows?: { key: string; label: string }[];
+  /** For "select": how many rows to offer at minimum. */
+  minRows?: number;
+  /** For "breaking": how many techniques, and how many attempts each. */
+  methods?: number;
+  attempts?: number;
 };
 
 export const PATTERNS: SheetItem[] = [
@@ -47,145 +55,192 @@ export const PATTERNS: SheetItem[] = [
   { key: "choong_moo", label: "Choong-Moo" },
 ];
 
-const BREAKING_ITEMS: SheetItem[] = [1, 2, 3].flatMap((method) =>
-  [1, 2, 3].map((attempt) => ({
-    key: `pb_m${method}_a${attempt}`,
-    label: `Method ${method}, attempt ${attempt}`,
-  })),
-);
+export const STEP_SPARRING_ITEMS: SheetItem[] = [
+  { key: "sambo_matsogi", label: "Sambo Matsogi" },
+  { key: "ilbo_matsogi", label: "Ilbo Matsogi" },
+  { key: "self_defence", label: "Self Defence" },
+];
 
-export const SHEET: SheetComponent[] = [
+/** The sheet used when an event hasn't customised its syllabus. */
+export const DEFAULT_SHEET: SheetComponent[] = [
   {
     key: "fundamental",
     label: "Fundamental",
     max: 15,
     itemMax: 15,
+    kind: "fixed",
     items: [
       { key: "hand_techniques", label: "Hand Techniques" },
       { key: "foot_techniques", label: "Foot Techniques" },
     ],
   },
-  { key: "pattern", label: "Pattern", max: 40, itemMax: 20, items: PATTERNS },
-  {
-    key: "step_sparring",
-    label: "Step-Sparring",
-    max: 10,
-    itemMax: 10,
-    items: [
-      { key: "sambo_matsogi", label: "Sambo Matsogi" },
-      { key: "ilbo_matsogi", label: "Ilbo Matsogi" },
-      { key: "self_defence", label: "Self Defence" },
-    ],
-  },
+  { key: "pattern", label: "Pattern", max: 40, itemMax: 20, kind: "select", items: PATTERNS, minRows: 2 },
+  { key: "step_sparring", label: "Step-Sparring", max: 10, itemMax: 10, kind: "select", items: STEP_SPARRING_ITEMS, minRows: 2 },
   {
     key: "sparring",
     label: "Sparring",
     max: 20,
     itemMax: 10,
+    kind: "fixed",
     items: [
       { key: "round_1", label: "1st round" },
       { key: "round_2", label: "2nd round" },
       { key: "round_3", label: "3rd round" },
     ],
   },
-  {
-    key: "power_breaking",
-    label: "Power Breaking",
-    max: 10,
-    itemMax: 5,
-    items: BREAKING_ITEMS,
-    methodRows: [
-      { key: "pb_method_1", label: "1" },
-      { key: "pb_method_2", label: "2" },
-      { key: "pb_method_3", label: "3" },
-    ],
-  },
+  { key: "power_breaking", label: "Power Breaking", max: 10, itemMax: 5, kind: "breaking", items: [], methods: 3, attempts: 3 },
   {
     key: "attitude",
     label: "Attitude / Characteristic",
     max: 5,
     itemMax: 5,
+    kind: "fixed",
     items: [{ key: "attitude", label: "Attitude / Characteristic" }],
   },
 ];
 
-/** The three columns the breaking grid is laid out in. */
 export const BREAKING_ATTEMPTS = ["1st Attempt", "2nd Attempt", "3rd Attempt"];
 
-export const SHEET_TOTAL_MAX = SHEET.reduce((sum, c) => sum + c.max, 0); // 100
-
 /**
- * A candidate at or above this passes.
- *
- * One number, in one place, because it's the sort of thing a federation
- * revisits. Anything below it fails unless an examiner overrides.
+ * A candidate at or above this passes; 49 and below fails.
+ * The tick is set from the mark, and an examiner can still override it.
  */
-export const PASS_MARK = 49;
+export const PASS_MARK = 50;
+export const REMARK_MAX = 300;
 
-/** Individual marks, keyed by item. Free-text method names live here too. */
-export type SheetMarks = Record<string, number | string | null>;
+/** Individual marks and choices, keyed by item. */
+export type SheetMarks = Record<string, any>;
 
-export function componentByKey(key: string): SheetComponent | undefined {
-  return SHEET.find((c) => c.key === key);
+/** One row of a "select" component: what was performed and what it scored. */
+export type SelectedRow = { item: string; score: number | null };
+
+export function selectedRows(marks: SheetMarks, component: SheetComponent): SelectedRow[] {
+  const raw = marks?.[`${component.key}__rows`];
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((r) => r && typeof r === "object")
+    .map((r: any) => ({ item: String(r.item ?? ""), score: numberOrNull(r.score) }));
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (value === "" || value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 /** Read one mark, ignoring anything that isn't a usable number. */
 export function markValue(marks: SheetMarks, key: string): number | null {
-  const raw = marks?.[key];
-  if (raw === "" || raw == null) return null;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : null;
+  return numberOrNull(marks?.[key]);
 }
 
 /** Keep a mark inside 0..max, or null when nothing has been entered. */
 export function cleanMark(value: unknown, max: number): number | null {
-  if (value === "" || value == null) return null;
-  const n = Number(value);
-  if (!Number.isFinite(n)) return null;
+  const n = numberOrNull(value);
+  if (n == null) return null;
   return Math.min(Math.max(Math.round(n * 10) / 10, 0), max);
 }
 
-/** What a component was awarded: its columns added up, capped at its Max. */
+/** The label for one of a component's choices. */
+export function itemLabel(component: SheetComponent, key: string): string {
+  return component.items.find((i) => i.key === key)?.label ?? key;
+}
+
+/** What a component was awarded: its rows added up, capped at its Max. */
 export function componentTotal(component: SheetComponent, marks: SheetMarks): number {
-  const sum = component.items.reduce((total, item) => total + (markValue(marks, item.key) ?? 0), 0);
+  let sum = 0;
+  if (component.kind === "select") {
+    sum = selectedRows(marks, component).reduce((t, r) => t + (r.item ? r.score ?? 0 : 0), 0);
+  } else if (component.kind === "breaking") {
+    for (let m = 1; m <= (component.methods ?? 3); m++) {
+      for (let a = 1; a <= (component.attempts ?? 3); a++) {
+        sum += markValue(marks, `pb_m${m}_a${a}`) ?? 0;
+      }
+    }
+  } else {
+    sum = component.items.reduce((t, item) => t + (markValue(marks, item.key) ?? 0), 0);
+  }
   return Math.min(Math.round(sum * 10) / 10, component.max);
 }
 
-/** Whether any mark has been entered for a component. */
-export function componentStarted(component: SheetComponent, marks: SheetMarks): boolean {
-  return component.items.some((item) => markValue(marks, item.key) != null);
-}
-
 /** The components a category is marked on. Empty or missing means all of them. */
-export function componentsFor(keys: readonly string[] | null | undefined): SheetComponent[] {
-  if (!keys || keys.length === 0) return SHEET;
+export function componentsFor(
+  keys: readonly string[] | null | undefined,
+  sheet: SheetComponent[] = DEFAULT_SHEET,
+): SheetComponent[] {
+  if (!keys || keys.length === 0) return sheet;
   const wanted = new Set(keys);
-  const chosen = SHEET.filter((c) => wanted.has(c.key));
-  return chosen.length > 0 ? chosen : SHEET;
+  const chosen = sheet.filter((c) => wanted.has(c.key));
+  return chosen.length > 0 ? chosen : sheet;
 }
 
 /** The candidate's mark out of 100. */
-export function sheetTotal(marks: SheetMarks, components: SheetComponent[] = SHEET): number {
+export function sheetTotal(marks: SheetMarks, components: SheetComponent[] = DEFAULT_SHEET): number {
   const sum = components.reduce((total, c) => total + componentTotal(c, marks), 0);
   return Math.round(sum * 10) / 10;
 }
 
-/** Whether the marks alone pass, before any examiner override. */
-export function marksSayPassed(marks: SheetMarks, components: SheetComponent[] = SHEET): boolean {
+/** Whether the marks pass, before any examiner override. */
+export function marksSayPassed(marks: SheetMarks, components: SheetComponent[] = DEFAULT_SHEET): boolean {
   return sheetTotal(marks, components) >= PASS_MARK;
 }
 
-/** How many columns have been marked, for a progress read on the picker. */
-export function marksGiven(marks: SheetMarks, components: SheetComponent[] = SHEET): number {
-  return components.reduce(
-    (n, c) => n + c.items.filter((item) => markValue(marks, item.key) != null).length,
-    0,
-  );
+/** How many rows have been marked, for a progress read on the picker. */
+export function marksGiven(marks: SheetMarks, components: SheetComponent[] = DEFAULT_SHEET): number {
+  let n = 0;
+  for (const c of components) {
+    if (c.kind === "select") {
+      n += selectedRows(marks, c).filter((r) => r.item && r.score != null).length;
+    } else if (c.kind === "breaking") {
+      for (let m = 1; m <= (c.methods ?? 3); m++) {
+        for (let a = 1; a <= (c.attempts ?? 3); a++) if (markValue(marks, `pb_m${m}_a${a}`) != null) n++;
+      }
+    } else {
+      n += c.items.filter((item) => markValue(marks, item.key) != null).length;
+    }
+  }
+  return n;
 }
 
-/** Total number of columns for the components in play. */
-export function marksPossible(components: SheetComponent[] = SHEET): number {
-  return components.reduce((n, c) => n + c.items.length, 0);
+/** Total number of markable rows, for "3 of 12" style progress. */
+export function marksPossible(components: SheetComponent[] = DEFAULT_SHEET): number {
+  return components.reduce((n, c) => {
+    if (c.kind === "select") return n + (c.minRows ?? 2);
+    if (c.kind === "breaking") return n + (c.methods ?? 3) * (c.attempts ?? 3);
+    return n + c.items.length;
+  }, 0);
 }
 
-export const REMARK_MAX = 300;
+export function sheetMax(components: SheetComponent[] = DEFAULT_SHEET): number {
+  return components.reduce((n, c) => n + c.max, 0);
+}
+
+export const SHEET_TOTAL_MAX = sheetMax(DEFAULT_SHEET); // 100
+
+/**
+ * Read a stored syllabus back into components, discarding anything malformed.
+ *
+ * A syllabus is edited by people, so it's treated as untrusted: a component
+ * missing a key or a max is dropped rather than allowed to break marking.
+ */
+export function parseSheet(raw: unknown): SheetComponent[] {
+  if (!Array.isArray(raw)) return DEFAULT_SHEET;
+  const kinds: ComponentKind[] = ["fixed", "select", "breaking"];
+  const parsed = raw
+    .filter((c: any) => c && typeof c.key === "string" && c.key.trim())
+    .map((c: any) => ({
+      key: String(c.key).trim(),
+      label: String(c.label ?? c.key).trim() || String(c.key),
+      max: Math.max(0, Number(c.max) || 0),
+      itemMax: Math.max(1, Number(c.itemMax) || 10),
+      kind: (kinds.includes(c.kind) ? c.kind : "fixed") as ComponentKind,
+      items: Array.isArray(c.items)
+        ? c.items
+            .filter((i: any) => i && typeof i.key === "string" && i.key.trim())
+            .map((i: any) => ({ key: String(i.key).trim(), label: String(i.label ?? i.key).trim() || String(i.key) }))
+        : [],
+      minRows: c.minRows != null ? Math.max(1, Number(c.minRows) || 1) : undefined,
+      methods: c.methods != null ? Math.max(1, Number(c.methods) || 1) : undefined,
+      attempts: c.attempts != null ? Math.max(1, Number(c.attempts) || 1) : undefined,
+    }));
+  return parsed.length > 0 ? parsed : DEFAULT_SHEET;
+}

@@ -8,11 +8,15 @@ import { gradeLabel, nextGrade, GRADE_OPTIONS } from "@/lib/belts";
 import { computeAge } from "@/lib/eligibility";
 import { effectiveEventStatus, canOverrideLocks } from "@/lib/eventStatus";
 import {
-  SHEET,
+  DEFAULT_SHEET,
   componentsFor,
+  parseSheet,
   cleanMark,
   sheetTotal,
+  marksSayPassed,
+  selectedRows,
   REMARK_MAX,
+  type SheetComponent,
   type SheetMarks,
 } from "@/lib/gradingSheet";
 import { ensureCategoryForTarget, syncGradingCategory } from "@/lib/gradingCategory";
@@ -82,18 +86,44 @@ async function assertCanMark(eventId: string) {
   return { session, supabase, event };
 }
 
-/** Keep only marks the sheet knows about, each inside its column's range. */
-function cleanMarks(input: SheetMarks): SheetMarks {
+/** An event's own syllabus, or the built-in one when it hasn't set one. */
+export async function loadSyllabus(eventId: string): Promise<SheetComponent[]> {
+  const { data } = await supabaseAdmin().from("exam_syllabus").select("sheet").eq("event_id", eventId).maybeSingle();
+  return data ? parseSheet(data.sheet) : DEFAULT_SHEET;
+}
+
+/**
+ * Keep only marks the sheet knows about, each inside its row's range.
+ *
+ * The browser sends whatever it likes, so nothing here trusts the shape: a
+ * chosen pattern that isn't on the syllabus, or a mark above its ceiling, is
+ * dropped rather than stored.
+ */
+function cleanMarks(input: SheetMarks, sheet: SheetComponent[]): SheetMarks {
   const out: SheetMarks = {};
-  for (const component of SHEET) {
+  for (const component of sheet) {
+    if (component.kind === "select") {
+      const allowed = new Set(component.items.map((i) => i.key));
+      const rows = selectedRows(input, component)
+        .filter((r) => allowed.has(r.item))
+        .map((r) => ({ item: r.item, score: cleanMark(r.score, component.itemMax) }));
+      if (rows.length > 0) out[`${component.key}__rows`] = rows;
+      continue;
+    }
+    if (component.kind === "breaking") {
+      for (let m = 1; m <= (component.methods ?? 3); m++) {
+        const chosen = String(input?.[`pb_method_${m}`] ?? "").trim();
+        if (chosen) out[`pb_method_${m}`] = chosen.slice(0, 80);
+        for (let a = 1; a <= (component.attempts ?? 3); a++) {
+          const value = cleanMark(input?.[`pb_m${m}_a${a}`], component.itemMax);
+          if (value != null) out[`pb_m${m}_a${a}`] = value;
+        }
+      }
+      continue;
+    }
     for (const item of component.items) {
       const value = cleanMark(input?.[item.key], component.itemMax);
       if (value != null) out[item.key] = value;
-    }
-    // What was broken, alongside the marks for breaking it.
-    for (const row of component.methodRows ?? []) {
-      const text = String(input?.[row.key] ?? "").trim();
-      if (text) out[row.key] = text.slice(0, 80);
     }
   }
   return out;
@@ -169,10 +199,12 @@ export type ExamSaveInput = {
   registrationId: string;
   marks: SheetMarks;
   remark: string;
-  passed: boolean;
+  /** Left undefined to let the mark decide. */
+  passed?: boolean;
   approvedRank: string | null;
-  examinerName: string | null;
   examinerSignature: string | null;
+  /** Finish (Submit) saves and locks in one step. */
+  lock?: boolean;
 };
 
 export async function saveExamRow(input: ExamSaveInput): Promise<ExamSaveResult> {
@@ -186,19 +218,26 @@ export async function saveExamRow(input: ExamSaveInput): Promise<ExamSaveResult>
       .maybeSingle();
     if (existing?.locked) return { error: "This candidate's sheet is locked. Unlock it before making changes." };
 
-    // The components in play come from the category, not the browser, so a
-    // stale page can't quietly widen what counts towards the total.
+    // The components in play come from the event's syllabus and the category,
+    // not the browser, so a stale page can't quietly widen what counts.
+    const sheet = await loadSyllabus(input.eventId);
     const { data: reg } = await supabase
       .from("event_registrations")
       .select("event_categories(name, exam_events)")
       .eq("id", input.registrationId)
       .maybeSingle();
-    const components = componentsFor(((reg as any)?.event_categories?.exam_events as string[] | null) ?? []);
+    const components = componentsFor(((reg as any)?.event_categories?.exam_events as string[] | null) ?? [], sheet);
 
-    const marks = cleanMarks(input.marks);
+    const marks = cleanMarks(input.marks, sheet);
     const total = sheetTotal(marks, components);
     const remark = input.remark.trim().slice(0, REMARK_MAX);
 
+    // The tick follows the mark unless somebody has deliberately set it the
+    // other way, which is the only reason `passed` is sent at all.
+    const passed = input.passed ?? marksSayPassed(marks, components);
+
+    // The examiner is whoever is signed in — not a name typed into a box.
+    const examinerName = session.fullName || session.username;
     const signature = input.examinerSignature && input.examinerSignature.startsWith("data:image/png;base64,")
       ? input.examinerSignature.slice(0, 400_000)
       : null;
@@ -209,9 +248,9 @@ export async function saveExamRow(input: ExamSaveInput): Promise<ExamSaveResult>
         marks,
         total,
         remark: remark || null,
-        passed: input.passed,
+        passed,
         approved_rank: input.approvedRank,
-        examiner_name: input.examinerName?.trim() || null,
+        examiner_name: examinerName,
         ...(signature ? { examiner_signature: signature } : {}),
         updated_by: session.sub,
         updated_at: new Date().toISOString(),
@@ -219,6 +258,15 @@ export async function saveExamRow(input: ExamSaveInput): Promise<ExamSaveResult>
       { onConflict: "registration_id" },
     );
     if (error) return { error: "Could not save this sheet. Please try again." };
+
+    // Finish (Submit) is a save and a lock together, so a submitted sheet can't
+    // drift afterwards without somebody pressing Resubmit.
+    if (input.lock) {
+      await supabase
+        .from("grading_exam_scores")
+        .update({ locked: true, locked_by: session.sub, locked_at: new Date().toISOString() })
+        .eq("registration_id", input.registrationId);
+    }
 
     const row = await reloadRow(supabase, input.registrationId);
     if (!row) return { error: "Saved, but the sheet could not be reloaded. Refresh the page." };
@@ -324,6 +372,50 @@ export async function setCategoryEvents(input: {
     if (isRedirect(e)) throw e;
     return { error: e instanceof Error ? e.message : "Could not save the components." };
   }
+}
+
+/** The signed-in examiner's own saved signature, for the Import button. */
+export async function loadMySignature(): Promise<{ name: string; signature: string | null }> {
+  const session = await requireSession();
+  const { data } = await supabaseAdmin().from("app_users").select("full_name, username, signature_png").eq("id", session.sub).maybeSingle();
+  return {
+    name: data?.full_name || data?.username || session.fullName || session.username,
+    signature: data?.signature_png ?? null,
+  };
+}
+
+/** Save the event's syllabus: its components, contents and marks. */
+export async function saveSyllabus(input: {
+  eventId: string;
+  sheet: unknown;
+}): Promise<{ ok: true } | { error: string }> {
+  try {
+    const { session, supabase } = await assertCanMark(input.eventId);
+    const sheet = parseSheet(input.sheet);
+    const total = sheet.reduce((n, c) => n + c.max, 0);
+    if (total <= 0) return { error: "The syllabus needs at least one component worth some marks." };
+
+    const { error } = await supabase.from("exam_syllabus").upsert(
+      { event_id: input.eventId, sheet, updated_by: session.sub, updated_at: new Date().toISOString() },
+      { onConflict: "event_id" },
+    );
+    if (error) return { error: "The syllabus could not be saved. Please try again." };
+
+    revalidatePath(`/events/${input.eventId}`);
+    return { ok: true };
+  } catch (e) {
+    if (isRedirect(e)) throw e;
+    return { error: e instanceof Error ? e.message : "The syllabus could not be saved." };
+  }
+}
+
+/** Put the syllabus back to the built-in sheet. */
+export async function resetSyllabus(formData: FormData) {
+  const eventId = String(formData.get("eventId") || "");
+  if (!eventId) return;
+  const { supabase } = await assertCanMark(eventId);
+  await supabase.from("exam_syllabus").delete().eq("event_id", eventId);
+  revalidatePath(`/events/${eventId}`);
 }
 
 /** Create every grading category up front, before anybody has registered. */

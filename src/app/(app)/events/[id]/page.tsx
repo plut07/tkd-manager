@@ -280,7 +280,12 @@ export default async function EventDetailPage({ params, searchParams }: { params
           {searchParams.category && (<BracketView eventId={event.id} categoryId={searchParams.category} canEdit={canEditNow} backHref={`/events/${event.id}?tab=draws`} backLabel="Back to draws list" />)}
         </div>
       ) : tab === "exam" ? (
-        <ExamTab eventId={event.id} canMark={canMarkNow} />
+        <ExamTab
+          eventId={event.id}
+          canMark={canMarkNow}
+          sub={searchParams.sub === "syllabus" ? "syllabus" : "main"}
+          hrefFor={(next) => `/events/${params.id}?tab=exam&sub=${next}`}
+        />
       ) : tab === "results" ? (
         <ResultTab
           eventId={event.id}

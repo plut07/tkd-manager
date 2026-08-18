@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { deleteUser, approveAccessRequest, rejectAccessRequest } from "./actions";
 import DeleteButton from "@/components/DeleteButton";
+import MySignaturePad from "@/components/MySignaturePad";
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: "Super Admin",
@@ -34,12 +35,13 @@ export default async function UsersPage() {
   const canCreate = hasPermission(session, PERMISSIONS.USER_CREATE);
   const canEdit = hasPermission(session, PERMISSIONS.USER_EDIT);
   const canDelete = hasPermission(session, PERMISSIONS.USER_DELETE);
+  const { data: me } = await supabase.from("app_users").select("signature_png").eq("id", session.sub).maybeSingle();
 
   return (
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Users & Access</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Users &amp; Access</h1>
           <p className="mt-1 text-sm text-gray-500">Manage accounts and who can do what.</p>
         </div>
         <div className="flex gap-2">
@@ -151,6 +153,10 @@ export default async function UsersPage() {
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="mt-6">
+        <MySignaturePad initial={me?.signature_png ?? null} />
       </div>
     </div>
   );

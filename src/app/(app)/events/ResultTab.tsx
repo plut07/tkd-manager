@@ -2,8 +2,8 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import BeltBadge from "@/components/BeltBadge";
 import { computeAge } from "@/lib/eligibility";
 import { formatEventDateTime } from "@/lib/eventStatus";
-import { sheetTotal, componentsFor, SHEET_TOTAL_MAX, PASS_MARK, type SheetMarks } from "@/lib/gradingSheet";
-import { publishResults, unpublishResults } from "./examActions";
+import { sheetTotal, componentsFor, sheetMax, PASS_MARK, type SheetMarks } from "@/lib/gradingSheet";
+import { publishResults, unpublishResults, loadSyllabus } from "./examActions";
 
 /**
  * The published outcome of a grading.
@@ -24,6 +24,7 @@ export default async function ResultTab({
   canPreview: boolean;
 }) {
   const supabase = supabaseAdmin();
+  const sheet = await loadSyllabus(eventId);
 
   const { data: regs } = await supabase
     .from("event_registrations")
@@ -107,10 +108,12 @@ export default async function ResultTab({
                 <td className="hidden md:table-cell">{computeAge(reg.students?.birthday ?? null) ?? "—"}</td>
                 <td><BeltBadge gup={reg.students?.gup ?? null} dan={reg.students?.dan ?? null} /></td>
                 <td className="hidden lg:table-cell">{score.approved_rank ?? reg.event_categories?.name ?? "—"}</td>
-                <td className="hidden lg:table-cell">{score.total != null ? Number(score.total) : sheetTotal((score.marks ?? {}) as SheetMarks, componentsFor(reg.event_categories?.exam_events ?? []))} / {SHEET_TOTAL_MAX}</td>
+                <td className="hidden lg:table-cell">{score.total != null ? Number(score.total) : sheetTotal((score.marks ?? {}) as SheetMarks, componentsFor(reg.event_categories?.exam_events ?? [], sheet))} / {sheetMax(componentsFor(reg.event_categories?.exam_events ?? [], sheet))}</td>
                 <td>
+                  {/* The same two boxes as the sheet, so the result reads the
+                      same way here as it did when it was marked. */}
                   <span className={`badge ${score.passed ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                    {score.passed ? "PASS" : "Failed"}
+                    {score.passed ? "☑ PASSED" : "☑ FAILED"}
                   </span>
                 </td>
               </tr>

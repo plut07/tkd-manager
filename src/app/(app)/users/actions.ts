@@ -221,3 +221,29 @@ export async function rejectAccessRequest(formData: FormData) {
     .eq("status", "pending");
   revalidatePath("/users");
 }
+
+
+/**
+ * The signed-in user's own signature.
+ *
+ * Anyone can set their own — it isn't a permission, it's a preference — and
+ * nobody can set anybody else's, because the row is chosen from the session
+ * rather than from anything the browser sends.
+ */
+export async function saveMySignature(input: { signature: string | null }): Promise<{ ok: true } | { error: string }> {
+  const session = await requireSession();
+  const png = input.signature;
+
+  if (png != null && !png.startsWith("data:image/png;base64,")) {
+    return { error: "That doesn't look like a signature. Please draw it again." };
+  }
+  if (png != null && png.length > 400_000) {
+    return { error: "That signature is too large. Please clear it and sign again." };
+  }
+
+  const { error } = await supabaseAdmin().from("app_users").update({ signature_png: png }).eq("id", session.sub);
+  if (error) return { error: "Your signature could not be saved. Please try again." };
+
+  revalidatePath("/users");
+  return { ok: true };
+}

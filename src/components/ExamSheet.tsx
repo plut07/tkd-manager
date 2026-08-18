@@ -1,75 +1,95 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
-  SHEET,
   BREAKING_ATTEMPTS,
-  componentsFor,
   componentTotal,
+  componentsFor,
+  itemLabel,
   markValue,
+  selectedRows,
   sheetTotal,
   marksSayPassed,
-  SHEET_TOTAL_MAX,
+  sheetMax,
   PASS_MARK,
   REMARK_MAX,
+  type SheetComponent,
   type SheetMarks,
+  type SelectedRow,
 } from "@/lib/gradingSheet";
+import { breakingGroups } from "@/lib/powerBreaking";
+import { loadMySignature } from "@/app/(app)/events/examActions";
 
 export type SheetDraft = {
   marks: SheetMarks;
   remark: string;
-  passed: boolean;
+  /** Undefined means "follow the mark"; set only when overridden by hand. */
+  passed?: boolean;
   approvedRank: string;
-  examinerName: string;
   examinerSignature: string | null;
 };
 
 /**
  * One candidate's marking sheet, laid out like the paper form.
  *
- * Components down the left, their columns across the middle, Max and Alloted on
- * the right. Alloted adds the columns up and stops at the component's Max, so
- * over-generous individual marks can't inflate a component past its share.
+ * Components down the left, their contents in the middle, Max and Alloted on
+ * the right. Alloted adds the rows up and stops at the component's Max.
+ *
+ * Pattern and Step-Sparring aren't fixed columns: the examiner picks what was
+ * actually performed, and a spare row is always waiting at the bottom for one
+ * more. Power breaking works the same way, from the technique list.
  */
 export default function ExamSheet({
   studentName,
   clubName,
   currentGrade,
   categoryName,
+  sheet,
   components,
   draft,
   locked,
   canMark,
+  examinerName,
   onChange,
 }: {
   studentName: string;
   clubName: string | null;
   currentGrade: string;
   categoryName: string | null;
+  sheet: SheetComponent[];
   components: string[];
   draft: SheetDraft;
   locked: boolean;
   canMark: boolean;
+  examinerName: string;
   onChange: (patch: Partial<SheetDraft>) => void;
 }) {
-  const inPlay = componentsFor(components);
+  const inPlay = componentsFor(components, sheet);
   const inPlayKeys = new Set(inPlay.map((c) => c.key));
   const total = sheetTotal(draft.marks, inPlay);
-  const wouldPass = marksSayPassed(draft.marks, inPlay);
+  const autoPass = marksSayPassed(draft.marks, inPlay);
+  // The tick follows the mark until somebody deliberately sets it otherwise.
+  const passed = draft.passed ?? autoPass;
+  const overridden = draft.passed != null && draft.passed !== autoPass;
   const disabled = !canMark || locked;
+  const max = sheetMax(inPlay);
 
-  function setMark(key: string, value: string, max: number) {
+  function setMark(key: string, value: string, itemMax: number) {
     const next = { ...draft.marks };
     if (value === "") delete next[key];
-    else next[key] = Math.min(Math.max(Number(value) || 0, 0), max);
+    else next[key] = Math.min(Math.max(Number(value) || 0, 0), itemMax);
     onChange({ marks: next });
   }
 
-  function setMethod(key: string, value: string) {
+  function setChoice(key: string, value: string) {
     const next = { ...draft.marks };
-    if (value.trim() === "") delete next[key];
-    else next[key] = value.slice(0, 80);
+    if (!value) delete next[key];
+    else next[key] = value;
     onChange({ marks: next });
+  }
+
+  function setRows(component: SheetComponent, rows: SelectedRow[]) {
+    onChange({ marks: { ...draft.marks, [`${component.key}__rows`]: rows } });
   }
 
   return (
@@ -85,10 +105,10 @@ export default function ExamSheet({
         <div className="text-right">
           <p className="text-2xl font-bold text-gray-900">
             {total}
-            <span className="text-sm font-normal text-gray-400"> / {SHEET_TOTAL_MAX}</span>
+            <span className="text-sm font-normal text-gray-400"> / {max}</span>
           </p>
-          <span className={`badge ${draft.passed ? "bg-green-100 text-green-700" : wouldPass ? "bg-green-50 text-green-700" : "bg-red-100 text-red-700"}`}>
-            {draft.passed ? "PASSED" : wouldPass ? `PASSED (${PASS_MARK}+)` : "FAILED"}
+          <span className={`badge ${passed ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+            {passed ? "PASSED" : "FAILED"}
           </span>
         </div>
       </div>
@@ -97,16 +117,15 @@ export default function ExamSheet({
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="bg-gray-50">
-              <th className="border border-gray-300 px-2 py-1 text-left">Components</th>
+              <th className="w-48 border border-gray-300 px-2 py-1 text-left">Components</th>
               <th className="border border-gray-300 px-2 py-1 text-left">Content</th>
               <th className="w-16 border border-gray-300 px-2 py-1 text-center">Max</th>
               <th className="w-20 border border-gray-300 px-2 py-1 text-center">Alloted</th>
             </tr>
           </thead>
           <tbody>
-            {SHEET.map((component) => {
+            {sheet.map((component) => {
               const active = inPlayKeys.has(component.key);
-              const alloted = componentTotal(component, draft.marks);
               return (
                 <tr key={component.key} className={active ? undefined : "opacity-40"}>
                   <td className="border border-gray-300 px-2 py-2 align-top font-semibold text-gray-800">
@@ -116,53 +135,21 @@ export default function ExamSheet({
                   <td className="border border-gray-300 px-2 py-2">
                     {!active ? (
                       <span className="text-xs text-gray-400">Not part of this category&apos;s exam.</span>
-                    ) : component.methodRows ? (
-                      <table className="w-full border-collapse text-xs">
-                        <thead>
-                          <tr>
-                            <th className="w-8 px-1 py-0.5 text-left text-gray-500"></th>
-                            <th className="px-1 py-0.5 text-left text-gray-500">Method</th>
-                            {BREAKING_ATTEMPTS.map((a) => (
-                              <th key={a} className="w-24 px-1 py-0.5 text-center text-gray-500">{a}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {component.methodRows.map((row, i) => (
-                            <tr key={row.key}>
-                              <td className="px-1 py-0.5 text-gray-500">{row.label}</td>
-                              <td className="px-1 py-0.5">
-                                <input
-                                  type="text"
-                                  className="input !py-1 text-xs"
-                                  placeholder="What was broken"
-                                  value={String(draft.marks[row.key] ?? "")}
-                                  disabled={disabled}
-                                  onChange={(e) => setMethod(row.key, e.target.value)}
-                                />
-                              </td>
-                              {[1, 2, 3].map((attempt) => {
-                                const key = `pb_m${i + 1}_a${attempt}`;
-                                return (
-                                  <td key={key} className="px-1 py-0.5 text-center">
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      max={component.itemMax}
-                                      step="0.5"
-                                      className="input !w-16 !px-1 !py-1 text-center text-xs"
-                                      value={markValue(draft.marks, key) ?? ""}
-                                      disabled={disabled}
-                                      aria-label={`Method ${i + 1}, attempt ${attempt}`}
-                                      onChange={(e) => setMark(key, e.target.value, component.itemMax)}
-                                    />
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    ) : component.kind === "select" ? (
+                      <SelectRows
+                        component={component}
+                        rows={selectedRows(draft.marks, component)}
+                        disabled={disabled}
+                        onChange={(rows) => setRows(component, rows)}
+                      />
+                    ) : component.kind === "breaking" ? (
+                      <BreakingRows
+                        component={component}
+                        marks={draft.marks}
+                        disabled={disabled}
+                        onScore={(key, value) => setMark(key, value, component.itemMax)}
+                        onMethod={setChoice}
+                      />
                     ) : (
                       <div className="flex flex-wrap gap-2">
                         {component.items.map((item) => (
@@ -184,18 +171,16 @@ export default function ExamSheet({
                       </div>
                     )}
                   </td>
-                  <td className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">
-                    {component.max}
-                  </td>
+                  <td className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-700">{component.max}</td>
                   <td className="border border-gray-300 px-2 py-2 text-center font-semibold text-gray-900">
-                    {active ? alloted : "—"}
+                    {active ? componentTotal(component, draft.marks) : "—"}
                   </td>
                 </tr>
               );
             })}
             <tr className="bg-gray-50">
               <td className="border border-gray-300 px-2 py-1 text-right font-semibold" colSpan={2}>Total</td>
-              <td className="border border-gray-300 px-2 py-1 text-center font-semibold">{SHEET_TOTAL_MAX}</td>
+              <td className="border border-gray-300 px-2 py-1 text-center font-semibold">{max}</td>
               <td className="border border-gray-300 px-2 py-1 text-center text-lg font-bold text-gray-900">{total}</td>
             </tr>
           </tbody>
@@ -226,32 +211,44 @@ export default function ExamSheet({
               disabled={disabled}
               onChange={(e) => onChange({ approvedRank: e.target.value })}
             />
-            <p className="mt-1 text-xs text-gray-400">The grade being taken. Change it only if the candidate is passed to a different rank.</p>
+            <p className="mt-1 text-xs text-gray-400">The grade being taken.</p>
           </div>
 
           <div className="flex flex-wrap items-end gap-3">
             <div className="grow">
-              <label className="label text-xs">Examiner</label>
-              <input
-                type="text"
-                className="input"
-                placeholder="Examiner's name"
-                value={draft.examinerName}
-                disabled={disabled}
-                onChange={(e) => onChange({ examinerName: e.target.value })}
-              />
+              <span className="label text-xs">Examiner</span>
+              <p className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">{examinerName}</p>
             </div>
-            <label className="flex items-center gap-2 pb-2 text-sm font-medium text-gray-800">
-              <input
-                type="checkbox"
-                className="h-5 w-5"
-                checked={draft.passed}
-                disabled={disabled}
-                onChange={(e) => onChange({ passed: e.target.checked })}
-              />
-              Passed
-            </label>
+            <div className="pb-1">
+              <span className="label text-xs">Result</span>
+              <div className="flex gap-3 text-sm">
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    className="h-5 w-5"
+                    checked={passed}
+                    disabled={disabled}
+                    onChange={(e) => onChange({ passed: e.target.checked })}
+                  />
+                  Passed
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    className="h-5 w-5"
+                    checked={!passed}
+                    disabled={disabled}
+                    onChange={(e) => onChange({ passed: !e.target.checked })}
+                  />
+                  Failed
+                </label>
+              </div>
+            </div>
           </div>
+          <p className="text-xs text-gray-400">
+            Ticked from the mark — {PASS_MARK} and above passes.
+            {overridden && <span className="ml-1 font-medium text-amber-700">Set by hand, against the mark.</span>}
+          </p>
 
           <ExaminerSignature
             value={draft.examinerSignature}
@@ -264,7 +261,147 @@ export default function ExamSheet({
   );
 }
 
-/** The examiner's own signature at the foot of the sheet. */
+/** Pattern and Step-Sparring: pick what was performed, mark it, add another. */
+function SelectRows({
+  component,
+  rows,
+  disabled,
+  onChange,
+}: {
+  component: SheetComponent;
+  rows: SelectedRow[];
+  disabled: boolean;
+  onChange: (rows: SelectedRow[]) => void;
+}) {
+  // Always show one empty row beyond what's filled in, so there is never a
+  // button to press before the next thing can be recorded.
+  const shown: SelectedRow[] = [...rows];
+  while (shown.length < Math.max(component.minRows ?? 2, rows.length + 1)) shown.push({ item: "", score: null });
+
+  const taken = new Set(rows.map((r) => r.item).filter(Boolean));
+
+  function update(index: number, patch: Partial<SelectedRow>) {
+    const next = shown.map((r, i) => (i === index ? { ...r, ...patch } : r));
+    onChange(next.filter((r) => r.item || r.score != null));
+  }
+
+  return (
+    <div className="space-y-1">
+      {shown.map((row, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <select
+            className="input !w-56 !py-1 text-xs"
+            value={row.item}
+            disabled={disabled}
+            onChange={(e) => update(i, { item: e.target.value })}
+          >
+            <option value="">{i < (component.minRows ?? 2) ? "Choose…" : "Add another…"}</option>
+            {component.items
+              .filter((item) => item.key === row.item || !taken.has(item.key))
+              .map((item) => (
+                <option key={item.key} value={item.key}>{item.label}</option>
+              ))}
+          </select>
+          <input
+            type="number"
+            min={0}
+            max={component.itemMax}
+            step="0.5"
+            className="input !w-20 !px-1 !py-1 text-center text-xs"
+            placeholder={`0-${component.itemMax}`}
+            value={row.score ?? ""}
+            disabled={disabled || !row.item}
+            aria-label={`Mark for ${row.item ? itemLabel(component, row.item) : "this row"}`}
+            onChange={(e) => update(i, { score: e.target.value === "" ? null : Number(e.target.value) })}
+          />
+          {row.item && !disabled && (
+            <button
+              type="button"
+              className="text-xs font-medium text-red-600 hover:underline"
+              onClick={() => onChange(shown.filter((_, j) => j !== i).filter((r) => r.item || r.score != null))}
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Power breaking: three chosen techniques, three attempts each. */
+function BreakingRows({
+  component,
+  marks,
+  disabled,
+  onScore,
+  onMethod,
+}: {
+  component: SheetComponent;
+  marks: SheetMarks;
+  disabled: boolean;
+  onScore: (key: string, value: string) => void;
+  onMethod: (key: string, value: string) => void;
+}) {
+  const methods = component.methods ?? 3;
+  const attempts = component.attempts ?? 3;
+  const groups = breakingGroups();
+
+  return (
+    <table className="w-full border-collapse text-xs">
+      <thead>
+        <tr>
+          <th className="w-6 px-1 py-0.5 text-left text-gray-500"></th>
+          <th className="px-1 py-0.5 text-left text-gray-500">Technique</th>
+          {BREAKING_ATTEMPTS.slice(0, attempts).map((a) => (
+            <th key={a} className="w-20 px-1 py-0.5 text-center text-gray-500">{a}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {Array.from({ length: methods }, (_, i) => i + 1).map((m) => (
+          <tr key={m}>
+            <td className="px-1 py-0.5 text-gray-500">{m}</td>
+            <td className="px-1 py-0.5">
+              <select
+                className="input !w-56 !py-1 text-xs"
+                value={String(marks[`pb_method_${m}`] ?? "")}
+                disabled={disabled}
+                onChange={(e) => onMethod(`pb_method_${m}`, e.target.value)}
+              >
+                <option value="">Choose a technique…</option>
+                {groups.map((g) => (
+                  <optgroup key={g.launch} label={g.launch}>
+                    {g.options.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </td>
+            {Array.from({ length: attempts }, (_, k) => k + 1).map((a) => (
+              <td key={a} className="px-1 py-0.5 text-center">
+                <input
+                  type="number"
+                  min={0}
+                  max={component.itemMax}
+                  step="0.5"
+                  className="input !w-16 !px-1 !py-1 text-center text-xs"
+                  value={markValue(marks, `pb_m${m}_a${a}`) ?? ""}
+                  disabled={disabled}
+                  aria-label={`Method ${m}, attempt ${a}`}
+                  onChange={(e) => onScore(`pb_m${m}_a${a}`, e.target.value)}
+                />
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** The examiner's signature, imported from their own account. */
 function ExaminerSignature({
   value,
   disabled,
@@ -274,98 +411,43 @@ function ExaminerSignature({
   disabled: boolean;
   onChange: (png: string | null) => void;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [hasInk, setHasInk] = useState(Boolean(value));
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || disabled) return;
-    const ratio = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * ratio;
-    canvas.height = rect.height * ratio;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.scale(ratio, ratio);
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = "#111827";
-
-    let drawing = false;
-    const pos = (e: PointerEvent) => {
-      const r = canvas.getBoundingClientRect();
-      return { x: e.clientX - r.left, y: e.clientY - r.top };
-    };
-    const down = (e: PointerEvent) => {
-      drawing = true;
-      canvas.setPointerCapture(e.pointerId);
-      const { x, y } = pos(e);
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      setHasInk(true);
-    };
-    const move = (e: PointerEvent) => {
-      if (!drawing) return;
-      const { x, y } = pos(e);
-      ctx.lineTo(x, y);
-      ctx.stroke();
-      e.preventDefault();
-    };
-    const up = () => {
-      if (!drawing) return;
-      drawing = false;
-      onChange(canvas.toDataURL("image/png"));
-    };
-
-    canvas.addEventListener("pointerdown", down);
-    canvas.addEventListener("pointermove", move);
-    canvas.addEventListener("pointerup", up);
-    canvas.addEventListener("pointerleave", up);
-    return () => {
-      canvas.removeEventListener("pointerdown", down);
-      canvas.removeEventListener("pointermove", move);
-      canvas.removeEventListener("pointerup", up);
-      canvas.removeEventListener("pointerleave", up);
-    };
-    // onChange is a stable callback from the parent.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disabled]);
-
-  if (disabled) {
-    return (
-      <div>
-        <span className="label text-xs">Examiner signature</span>
-        {value ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={value} alt="Examiner signature" className="h-16 rounded-md border border-gray-200 bg-white" />
-        ) : (
-          <p className="text-xs text-gray-400">Not signed.</p>
-        )}
-      </div>
-    );
+  async function importSignature() {
+    setBusy(true);
+    setMessage("");
+    const mine = await loadMySignature();
+    setBusy(false);
+    if (!mine.signature) {
+      setMessage("You haven't drawn a signature yet — add one on the User & Access page.");
+      return;
+    }
+    onChange(mine.signature);
   }
 
   return (
     <div>
       <span className="label text-xs">Examiner signature</span>
-      <canvas ref={canvasRef} className="h-20 w-full touch-none rounded-md border border-dashed border-gray-300 bg-white" />
-      <div className="mt-1 flex items-center gap-3">
-        <button
-          type="button"
-          className="btn-secondary !px-2 !py-1 text-xs"
-          onClick={() => {
-            const canvas = canvasRef.current;
-            const ctx = canvas?.getContext("2d");
-            if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-            setHasInk(false);
-            onChange(null);
-          }}
-        >
-          Clear
-        </button>
-        <span className="text-xs text-gray-400">{hasInk ? "Signed" : "Not signed"}</span>
-      </div>
+      {value ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={value} alt="Examiner signature" className="h-16 rounded-md border border-gray-200 bg-white" />
+      ) : (
+        <p className="rounded-md border border-dashed border-gray-300 px-3 py-3 text-xs text-gray-400">Not signed.</p>
+      )}
+      {!disabled && (
+        <div className="mt-1 flex flex-wrap items-center gap-3">
+          <button type="button" className="btn-secondary !px-2 !py-1 text-xs" disabled={busy} onClick={() => { void importSignature(); }}>
+            {busy ? "Importing..." : "Import my signature"}
+          </button>
+          {value && (
+            <button type="button" className="text-xs font-medium text-gray-500 hover:underline" onClick={() => onChange(null)}>
+              Clear
+            </button>
+          )}
+          {message && <span className="text-xs text-amber-700">{message}</span>}
+        </div>
+      )}
     </div>
   );
 }
