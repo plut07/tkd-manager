@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { SHEET, componentsFor, SHEET_TOTAL_MAX } from "@/lib/gradingSheet";
+import { DEFAULT_SHEET as SHEET, componentsFor, SHEET_TOTAL_MAX } from "@/lib/gradingSheet";
 import { setCategoryEvents } from "@/app/(app)/events/examActions";
 
 /**
