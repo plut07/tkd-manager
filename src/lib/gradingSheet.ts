@@ -20,6 +20,8 @@
  * definitions drive the marking screen, the save, the result list and the PDF.
  */
 
+import { isCompleteBreakingValue } from "./powerBreaking";
+
 export type SheetItem = { key: string; label: string };
 
 export type ComponentKind = "fixed" | "select" | "breaking";
@@ -194,7 +196,9 @@ export function componentTotal(component: SheetComponent, marks: SheetMarks): nu
     // candidate breaking two isn't marked as though they attempted three.
     const chosen: string[] = [];
     for (let m = 1; m <= methods; m++) {
-      if (String(marks?.[`pb_method_${m}`] ?? "").trim()) chosen.push(`pb_outcome_${m}`);
+      // Half-made picks don't count: "hand__" is somebody mid-choice, not a
+      // technique they attempted.
+      if (isCompleteBreakingValue(String(marks?.[`pb_method_${m}`] ?? ""))) chosen.push(`pb_outcome_${m}`);
     }
     const count = chosen.length;
     let allBroke = count > 0;

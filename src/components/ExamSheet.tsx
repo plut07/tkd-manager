@@ -18,7 +18,7 @@ import {
   type SheetMarks,
   type SelectedRow,
 } from "@/lib/gradingSheet";
-import { LIMBS, LAUNCHES, techniquesFor, breakingValue, parseBreakingValue, type Limb } from "@/lib/powerBreaking";
+import { LIMBS, LAUNCHES, techniquesFor, breakingValue, parseBreakingValue, isCompleteBreakingValue, type Limb } from "@/lib/powerBreaking";
 import { loadMySignature } from "@/app/(app)/events/examActions";
 
 export type SheetDraft = {
@@ -356,14 +356,16 @@ function BreakingRows({
 }) {
   const methods = component.methods ?? 3;
 
+  // Only fully-picked techniques count towards the share, so the per-attempt
+  // worth doesn't jump about while somebody is still choosing.
   const chosenCount = Array.from({ length: methods }, (_, i) => i + 1).filter((m) =>
-    String(marks[`pb_method_${m}`] ?? "").trim(),
+    isCompleteBreakingValue(String(marks[`pb_method_${m}`] ?? "")),
   ).length;
 
   const allBroke =
     chosenCount > 0 &&
     Array.from({ length: methods }, (_, i) => i + 1)
-      .filter((m) => String(marks[`pb_method_${m}`] ?? "").trim())
+      .filter((m) => isCompleteBreakingValue(String(marks[`pb_method_${m}`] ?? "")))
       .every((m) => {
         const outcome = String(marks[`pb_outcome_${m}`] ?? "");
         return outcome && outcome !== "ftb";

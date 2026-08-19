@@ -50,13 +50,14 @@ export function slug(s: string): string {
 /**
  * The three parts of a choice, stored as one value: limb__launch__technique.
  *
- * Keeping the limb in the value means a saved choice can be reopened with all
- * three dropdowns already filled in, rather than the examiner having to
- * remember which limb they picked.
+ * A half-made choice is still a value — "hand__" or "hand__flying__" — because
+ * the examiner picks one level at a time and the next dropdown can only appear
+ * once the previous answer has been kept. Only a value with all three parts
+ * counts as a technique; see isCompleteBreakingValue.
  */
 export function breakingValue(limb: Limb | "", launch: string, technique: string): string {
-  if (!limb || !launch || !technique) return "";
-  return `${limb}__${slug(launch)}__${slug(technique)}`;
+  if (!limb) return "";
+  return `${limb}__${launch ? slug(launch) : ""}__${technique ? slug(technique) : ""}`;
 }
 
 export type BreakingChoice = { limb: Limb | ""; launch: string; technique: string };
@@ -71,10 +72,16 @@ export function parseBreakingValue(value: string | null | undefined): BreakingCh
   return { limb, launch, technique };
 }
 
+/** True once all three levels have been answered. */
+export function isCompleteBreakingValue(value: string | null | undefined): boolean {
+  const { limb, launch, technique } = parseBreakingValue(value);
+  return Boolean(limb && launch && technique);
+}
+
 /** What the examiner sees and what prints: launch then technique. */
 export function breakingLabel(value: string | null | undefined): string {
   if (!value) return "";
   const { launch, technique } = parseBreakingValue(value);
   if (launch && technique) return `${launch} ${technique}`;
-  return String(value);
+  return "";
 }
