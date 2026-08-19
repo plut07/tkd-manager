@@ -99,7 +99,45 @@ export const DEFAULT_SHEET: SheetComponent[] = [
   },
 ];
 
-export const BREAKING_ATTEMPTS = ["1st Attempt", "2nd Attempt", "3rd Attempt"];
+/**
+ * How a technique ended: broken on one of three attempts, or not at all.
+ * One outcome per technique, so these are a choice rather than a checklist.
+ */
+export const BREAKING_OUTCOMES = [
+  { key: "1", label: "1st Attempt" },
+  { key: "2", label: "2nd Attempt" },
+  { key: "3", label: "3rd Attempt" },
+  { key: "ftb", label: "FTB" },
+] as const;
+
+export type BreakingOutcome = (typeof BREAKING_OUTCOMES)[number]["key"];
+
+/**
+ * What one technique earns, given how many techniques the candidate is breaking.
+ *
+ *   1st attempt   9 / n
+ *   2nd attempt   9 / (n + 1.5)
+ *   3rd attempt   9 / (n + 3)
+ *   FTB           nothing
+ *
+ * Each attempt steps the divisor by the same 1.5, so a later attempt always
+ * scores less than an earlier one however many techniques are being broken.
+ * (The earlier "n + n" did that for three techniques but inverted at one,
+ * where a third attempt would have outscored a second.)
+ *
+ * First-time breaks come to 9 across the board, and the last mark is the bonus
+ * below — so a clean sheet is worth exactly 10 and anything less can't reach it.
+ */
+export function breakingPoints(outcome: string, techniqueCount: number): number {
+  const n = Math.max(1, techniqueCount);
+  if (outcome === "1") return 9 / n;
+  if (outcome === "2") return 9 / (n + 1.5);
+  if (outcome === "3") return 9 / (n + 3);
+  return 0;
+}
+
+/** The extra mark for breaking everything, however many attempts it took. */
+export const BREAKING_BONUS = 1;
 
 /**
  * A candidate at or above this passes; 49 and below fails.
@@ -151,15 +189,27 @@ export function componentTotal(component: SheetComponent, marks: SheetMarks): nu
   if (component.kind === "select") {
     sum = selectedRows(marks, component).reduce((t, r) => t + (r.item ? r.score ?? 0 : 0), 0);
   } else if (component.kind === "breaking") {
-    for (let m = 1; m <= (component.methods ?? 3); m++) {
-      for (let a = 1; a <= (component.attempts ?? 3); a++) {
-        sum += markValue(marks, `pb_m${m}_a${a}`) ?? 0;
-      }
+    const methods = component.methods ?? 3;
+    // Only techniques that were actually chosen count towards the share, so a
+    // candidate breaking two isn't marked as though they attempted three.
+    const chosen: string[] = [];
+    for (let m = 1; m <= methods; m++) {
+      if (String(marks?.[`pb_method_${m}`] ?? "").trim()) chosen.push(`pb_outcome_${m}`);
     }
+    const count = chosen.length;
+    let allBroke = count > 0;
+    for (const key of chosen) {
+      const outcome = String(marks?.[key] ?? "");
+      if (outcome === "" || outcome === "ftb") allBroke = false;
+      sum += breakingPoints(outcome, count);
+    }
+    if (allBroke) sum += BREAKING_BONUS;
   } else {
     sum = component.items.reduce((t, item) => t + (markValue(marks, item.key) ?? 0), 0);
   }
-  return Math.min(Math.round(sum * 10) / 10, component.max);
+  // Rounded here rather than per row: the exact shares rarely divide evenly,
+  // and rounding each one first would quietly cost a mark.
+  return Math.min(Math.round(sum), component.max);
 }
 
 /** The components a category is marked on. Empty or missing means all of them. */
@@ -192,7 +242,7 @@ export function marksGiven(marks: SheetMarks, components: SheetComponent[] = DEF
       n += selectedRows(marks, c).filter((r) => r.item && r.score != null).length;
     } else if (c.kind === "breaking") {
       for (let m = 1; m <= (c.methods ?? 3); m++) {
-        for (let a = 1; a <= (c.attempts ?? 3); a++) if (markValue(marks, `pb_m${m}_a${a}`) != null) n++;
+        if (String(marks?.[`pb_outcome_${m}`] ?? "")) n++;
       }
     } else {
       n += c.items.filter((item) => markValue(marks, item.key) != null).length;
@@ -205,7 +255,7 @@ export function marksGiven(marks: SheetMarks, components: SheetComponent[] = DEF
 export function marksPossible(components: SheetComponent[] = DEFAULT_SHEET): number {
   return components.reduce((n, c) => {
     if (c.kind === "select") return n + (c.minRows ?? 2);
-    if (c.kind === "breaking") return n + (c.methods ?? 3) * (c.attempts ?? 3);
+    if (c.kind === "breaking") return n + (c.methods ?? 3);
     return n + c.items.length;
   }, 0);
 }

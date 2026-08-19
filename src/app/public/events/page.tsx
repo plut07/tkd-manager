@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { EVENT_TYPE_LABELS } from "@/lib/eventCategories";
 import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange, isActiveEvent } from "@/lib/eventStatus";
 import CountryFlag from "@/components/CountryFlag";
+import { PHOTO_BUCKET } from "@/lib/eventPhotos";
 
 // These pages read live data but never touch cookies, so Next would otherwise
 // prerender them at build time and keep serving that snapshot — edits and
@@ -23,6 +24,16 @@ export default async function PublicEventsPage() {
     .in("status", ["upcoming", "ongoing", "completed", "cancelled"])
     .order("start_date", { ascending: false });
 
+  // The header photo fronts each card. One query for all of them rather than
+  // one per event.
+  const { data: headerRows } = await supabase
+    .from("event_photos")
+    .select("event_id, storage_path")
+    .eq("kind", "header");
+  const headerByEvent = new Map(
+    (headerRows ?? []).map((p: any) => [p.event_id, supabase.storage.from(PHOTO_BUCKET).getPublicUrl(p.storage_path).data.publicUrl]),
+  );
+
   return (
     <div>
       <h1 className="text-xl font-semibold text-gray-900">Upcoming events</h1>
@@ -37,8 +48,13 @@ export default async function PublicEventsPage() {
           <Link
             key={e.id}
             href={`/public/events/${e.id}`}
-            className={`card border-l-4 p-5 hover:border-brand-300 ${i % 2 === 0 ? "border-l-blue-600" : "border-l-red-600"}`}
+            className={`card overflow-hidden border-l-4 p-0 hover:border-brand-300 ${i % 2 === 0 ? "border-l-blue-600" : "border-l-red-600"}`}
           >
+            {headerByEvent.get(e.id) && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={headerByEvent.get(e.id)} alt="" className="h-40 w-full object-cover" loading="lazy" />
+            )}
+            <div className="p-5">
             <div className="flex items-start justify-between gap-2">
               <h2 className="font-semibold text-gray-900">{e.name}</h2>
               <div className="flex shrink-0 flex-col items-end gap-1">
@@ -50,7 +66,7 @@ export default async function PublicEventsPage() {
             <p className="mt-1 text-sm text-gray-500">
               {e.country && <CountryFlag country={e.country} showName={false} className="mr-1.5 align-[-2px]" />}{[e.venue, e.country].filter(Boolean).join(", ") || "Venue TBA"}
             </p>
-            
+            </div>
           </Link>
         ))}
         {(events ?? []).filter((e: any) => isActiveEvent(e)).length === 0 && (

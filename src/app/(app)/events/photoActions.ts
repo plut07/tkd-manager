@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
-import { PHOTO_BUCKET } from "@/lib/eventPhotos";
+import { PHOTO_BUCKET, type PhotoKind } from "@/lib/eventPhotos";
 
 /**
  * Photos on an event's info pack.
@@ -22,6 +22,8 @@ export async function uploadEventPhoto(_prev: PhotoState, formData: FormData): P
   const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
   const eventId = String(formData.get("eventId") || "");
   const caption = String(formData.get("caption") || "").trim();
+  const requested = String(formData.get("kind") || "gallery");
+  const kind: PhotoKind = requested === "background" || requested === "header" ? requested : "gallery";
   const files = formData.getAll("photos").filter((f): f is File => f instanceof File && f.size > 0);
 
   if (!eventId) return { ok: false, error: "Missing event." };
@@ -47,11 +49,27 @@ export async function uploadEventPhoto(_prev: PhotoState, formData: FormData): P
       .upload(path, await file.arrayBuffer(), { contentType: file.type, upsert: false });
     if (uploadError) return { ok: false, error: "The picture could not be saved. Please try again." };
 
+    // Only one background and one header per event, so a new one replaces the
+    // old rather than leaving the page to choose between them.
+    if (kind !== "gallery") {
+      const { data: previous } = await supabase
+        .from("event_photos")
+        .select("id, storage_path")
+        .eq("event_id", eventId)
+        .eq("kind", kind);
+      if ((previous ?? []).length > 0) {
+        await supabase.from("event_photos").delete().eq("event_id", eventId).eq("kind", kind);
+        const paths = (previous ?? []).map((p: any) => p.storage_path).filter(Boolean);
+        if (paths.length > 0) await supabase.storage.from(PHOTO_BUCKET).remove(paths);
+      }
+    }
+
     const { error } = await supabase.from("event_photos").insert({
       event_id: eventId,
       storage_path: path,
       caption: caption || null,
       sort_order: order,
+      kind,
       uploaded_by: session.sub,
     });
     if (error) {

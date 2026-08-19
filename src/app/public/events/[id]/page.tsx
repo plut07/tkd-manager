@@ -44,12 +44,13 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
 
   const { data: photoRows } = await supabase
     .from("event_photos")
-    .select("id, storage_path, caption")
+    .select("id, storage_path, caption, kind")
     .eq("event_id", params.id)
     .order("sort_order");
   const photos = (photoRows ?? []).map((p: any) => ({
     id: p.id,
     caption: p.caption ?? null,
+    kind: (p.kind ?? "gallery") as "background" | "header" | "gallery",
     url: supabase.storage.from(PHOTO_BUCKET).getPublicUrl(p.storage_path).data.publicUrl,
   }));
 
@@ -74,8 +75,28 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
     .in("event_category_id", (categories ?? []).map((c) => c.id).length > 0 ? (categories ?? []).map((c) => c.id) : ["00000000-0000-0000-0000-000000000000"]);
   const publishedCategoryIds = new Set((publishedBrackets ?? []).map((b) => b.event_category_id));
 
+  const headerPhoto = photos.find((p) => p.kind === "header") ?? null;
+  const backgroundPhoto = photos.find((p) => p.kind === "background") ?? null;
+
   return (
     <div className="space-y-6">
+      {/* The background sits behind the whole page, dimmed hard so text on top
+          of it stays readable whatever picture was uploaded. */}
+      {backgroundPhoto && (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 -z-10 bg-cover bg-center"
+          style={{ backgroundImage: `linear-gradient(rgba(255,255,255,0.88), rgba(255,255,255,0.94)), url(${backgroundPhoto.url})` }}
+        />
+      )}
+
+      {headerPhoto && (
+        <div className="overflow-hidden rounded-lg border border-gray-200">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={headerPhoto.url} alt={event.name} className="max-h-[28rem] w-full object-contain bg-gray-900" />
+        </div>
+      )}
+
       <div className="card p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -138,7 +159,7 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
         {event.description && <p className="mt-4 whitespace-pre-line text-sm text-gray-700">{event.description}</p>}
       </div>
 
-      <EventPhotos eventId={params.id} photos={photos} canEdit={false} />
+      <EventPhotos eventId={params.id} photos={photos.filter((p) => p.kind === "gallery")} canEdit={false} />
 
       {event.event_type === "competition" && (
         <div className="card p-6">

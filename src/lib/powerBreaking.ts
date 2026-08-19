@@ -1,11 +1,20 @@
 /**
  * The power-breaking techniques an examiner can pick from.
  *
- * Built from three levels — how it's launched, whether it's hand or foot, and
- * the technique itself. Only the first and third are shown, because "Stationary
- * Punch" and "Flying Back Kick" are what people say out loud; the middle level
- * exists to decide which techniques are on offer.
+ * Chosen one level at a time — hand or kick, then how it's launched, then the
+ * technique itself — because the technique list depends on the limb and picking
+ * from 39 options at once is slower than three short ones.
+ *
+ * What gets stored and printed is the launch and the technique: "Stationary
+ * Punch", "Flying Back Kick". The limb only narrows the choices.
  */
+
+export type Limb = "hand" | "kick";
+
+export const LIMBS: { value: Limb; label: string }[] = [
+  { value: "hand", label: "Hand" },
+  { value: "kick", label: "Kick" },
+];
 
 export const LAUNCHES = ["Stationary", "Flying", "Jumping"] as const;
 
@@ -28,51 +37,44 @@ export const KICK_TECHNIQUES = [
   "Reverse Turning Kick",
 ] as const;
 
-export type BreakingOption = {
-  /** Stored value, stable even if a label is reworded. */
-  value: string;
-  /** What the examiner sees and what prints: "Flying Back Kick". */
-  label: string;
-  launch: string;
-  limb: "Hand" | "Kick";
-  technique: string;
-};
+export function techniquesFor(limb: Limb | ""): readonly string[] {
+  if (limb === "hand") return HAND_TECHNIQUES;
+  if (limb === "kick") return KICK_TECHNIQUES;
+  return [];
+}
 
-function slug(s: string): string {
+export function slug(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 }
 
-export const BREAKING_OPTIONS: BreakingOption[] = LAUNCHES.flatMap((launch) => [
-  ...HAND_TECHNIQUES.map((technique) => ({
-    value: `${slug(launch)}__hand__${slug(technique)}`,
-    label: `${launch} ${technique}`,
-    launch,
-    limb: "Hand" as const,
-    technique,
-  })),
-  ...KICK_TECHNIQUES.map((technique) => ({
-    value: `${slug(launch)}__kick__${slug(technique)}`,
-    label: `${launch} ${technique}`,
-    launch,
-    limb: "Kick" as const,
-    technique,
-  })),
-]);
-
-const BY_VALUE = new Map(BREAKING_OPTIONS.map((o) => [o.value, o]));
-
-/** The printable name for a stored choice; falls back to whatever was typed. */
-export function breakingLabel(value: string | null | undefined): string {
-  if (!value) return "";
-  return BY_VALUE.get(value)?.label ?? value;
+/**
+ * The three parts of a choice, stored as one value: limb__launch__technique.
+ *
+ * Keeping the limb in the value means a saved choice can be reopened with all
+ * three dropdowns already filled in, rather than the examiner having to
+ * remember which limb they picked.
+ */
+export function breakingValue(limb: Limb | "", launch: string, technique: string): string {
+  if (!limb || !launch || !technique) return "";
+  return `${limb}__${slug(launch)}__${slug(technique)}`;
 }
 
-export type BreakingGroup = { launch: string; options: BreakingOption[] };
+export type BreakingChoice = { limb: Limb | ""; launch: string; technique: string };
 
-/** Grouped for the dropdown, so the list reads as three sections. */
-export function breakingGroups(): BreakingGroup[] {
-  return LAUNCHES.map((launch) => ({
-    launch,
-    options: BREAKING_OPTIONS.filter((o) => o.launch === launch),
-  }));
+export function parseBreakingValue(value: string | null | undefined): BreakingChoice {
+  const empty: BreakingChoice = { limb: "", launch: "", technique: "" };
+  if (!value) return empty;
+  const [limbPart, launchPart, techniquePart] = String(value).split("__");
+  const limb: Limb | "" = limbPart === "hand" || limbPart === "kick" ? limbPart : "";
+  const launch = LAUNCHES.find((l) => slug(l) === launchPart) ?? "";
+  const technique = techniquesFor(limb).find((t) => slug(t) === techniquePart) ?? "";
+  return { limb, launch, technique };
+}
+
+/** What the examiner sees and what prints: launch then technique. */
+export function breakingLabel(value: string | null | undefined): string {
+  if (!value) return "";
+  const { launch, technique } = parseBreakingValue(value);
+  if (launch && technique) return `${launch} ${technique}`;
+  return String(value);
 }

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import {
-  BREAKING_ATTEMPTS,
+  BREAKING_OUTCOMES,
+  breakingPoints,
   componentTotal,
   componentsFor,
   itemLabel,
@@ -17,7 +18,7 @@ import {
   type SheetMarks,
   type SelectedRow,
 } from "@/lib/gradingSheet";
-import { breakingGroups } from "@/lib/powerBreaking";
+import { LIMBS, LAUNCHES, techniquesFor, breakingValue, parseBreakingValue, type Limb } from "@/lib/powerBreaking";
 import { loadMySignature } from "@/app/(app)/events/examActions";
 
 export type SheetDraft = {
@@ -329,7 +330,17 @@ function SelectRows({
   );
 }
 
-/** Power breaking: three chosen techniques, three attempts each. */
+/**
+ * Power breaking: three chosen techniques, and how each one ended.
+ *
+ * The technique is picked a level at a time — hand or kick, how it's launched,
+ * then the technique — because the third list depends on the first.
+ *
+ * A technique either breaks on one of three attempts or fails, so the outcome
+ * is one choice rather than three ticks. What each is worth depends on how many
+ * techniques are being broken, and it's shown next to the choice so the
+ * examiner can see the arithmetic rather than take it on trust.
+ */
 function BreakingRows({
   component,
   marks,
@@ -344,60 +355,113 @@ function BreakingRows({
   onMethod: (key: string, value: string) => void;
 }) {
   const methods = component.methods ?? 3;
-  const attempts = component.attempts ?? 3;
-  const groups = breakingGroups();
+
+  const chosenCount = Array.from({ length: methods }, (_, i) => i + 1).filter((m) =>
+    String(marks[`pb_method_${m}`] ?? "").trim(),
+  ).length;
+
+  const allBroke =
+    chosenCount > 0 &&
+    Array.from({ length: methods }, (_, i) => i + 1)
+      .filter((m) => String(marks[`pb_method_${m}`] ?? "").trim())
+      .every((m) => {
+        const outcome = String(marks[`pb_outcome_${m}`] ?? "");
+        return outcome && outcome !== "ftb";
+      });
 
   return (
-    <table className="w-full border-collapse text-xs">
-      <thead>
-        <tr>
-          <th className="w-6 px-1 py-0.5 text-left text-gray-500"></th>
-          <th className="px-1 py-0.5 text-left text-gray-500">Technique</th>
-          {BREAKING_ATTEMPTS.slice(0, attempts).map((a) => (
-            <th key={a} className="w-20 px-1 py-0.5 text-center text-gray-500">{a}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {Array.from({ length: methods }, (_, i) => i + 1).map((m) => (
-          <tr key={m}>
-            <td className="px-1 py-0.5 text-gray-500">{m}</td>
-            <td className="px-1 py-0.5">
+    <div className="space-y-2">
+      {Array.from({ length: methods }, (_, i) => i + 1).map((m) => {
+        const choice = parseBreakingValue(String(marks[`pb_method_${m}`] ?? ""));
+        const outcome = String(marks[`pb_outcome_${m}`] ?? "");
+        const techniques = techniquesFor(choice.limb);
+
+        function setPart(part: Partial<{ limb: Limb | ""; launch: string; technique: string }>) {
+          const next = { ...choice, ...part };
+          // Changing an earlier level clears what depended on it, so a hand
+          // launch can never be left attached to a kick.
+          if (part.limb !== undefined) { next.technique = ""; }
+          onMethod(`pb_method_${m}`, breakingValue(next.limb, next.launch, next.technique));
+        }
+
+        return (
+          <div key={m} className="flex flex-wrap items-center gap-2 rounded-md border border-gray-200 p-2">
+            <span className="w-4 text-xs text-gray-500">{m}</span>
+
+            <select
+              className="input !w-28 !py-1 text-xs"
+              value={choice.limb}
+              disabled={disabled}
+              aria-label={`Technique ${m}: hand or kick`}
+              onChange={(e) => setPart({ limb: e.target.value as Limb | "" })}
+            >
+              <option value="">Hand / Kick…</option>
+              {LIMBS.map((l) => (
+                <option key={l.value} value={l.value}>{l.label}</option>
+              ))}
+            </select>
+
+            {choice.limb && (
               <select
-                className="input !w-56 !py-1 text-xs"
-                value={String(marks[`pb_method_${m}`] ?? "")}
+                className="input !w-32 !py-1 text-xs"
+                value={choice.launch}
                 disabled={disabled}
-                onChange={(e) => onMethod(`pb_method_${m}`, e.target.value)}
+                aria-label={`Technique ${m}: how it is launched`}
+                onChange={(e) => setPart({ launch: e.target.value })}
               >
-                <option value="">Choose a technique…</option>
-                {groups.map((g) => (
-                  <optgroup key={g.launch} label={g.launch}>
-                    {g.options.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </optgroup>
+                <option value="">Launch…</option>
+                {LAUNCHES.map((l) => (
+                  <option key={l} value={l}>{l}</option>
                 ))}
               </select>
-            </td>
-            {Array.from({ length: attempts }, (_, k) => k + 1).map((a) => (
-              <td key={a} className="px-1 py-0.5 text-center">
-                <input
-                  type="number"
-                  min={0}
-                  max={component.itemMax}
-                  step="0.5"
-                  className="input !w-16 !px-1 !py-1 text-center text-xs"
-                  value={markValue(marks, `pb_m${m}_a${a}`) ?? ""}
-                  disabled={disabled}
-                  aria-label={`Method ${m}, attempt ${a}`}
-                  onChange={(e) => onScore(`pb_m${m}_a${a}`, e.target.value)}
-                />
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
+            )}
+
+            {choice.limb && choice.launch && (
+              <select
+                className="input !w-48 !py-1 text-xs"
+                value={choice.technique}
+                disabled={disabled}
+                aria-label={`Technique ${m}`}
+                onChange={(e) => setPart({ technique: e.target.value })}
+              >
+                <option value="">Technique…</option>
+                {techniques.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            )}
+
+            {choice.launch && choice.technique && (
+              <div className="flex flex-wrap items-center gap-3 border-l border-gray-200 pl-3">
+                {BREAKING_OUTCOMES.map((o) => {
+                  const worth = breakingPoints(o.key, chosenCount || 1);
+                  return (
+                    <label key={o.key} className="flex items-center gap-1 text-xs text-gray-700">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={outcome === o.key}
+                        disabled={disabled}
+                        onChange={(e) => onScore(`pb_outcome_${m}`, e.target.checked ? o.key : "")}
+                      />
+                      {o.label}
+                      <span className="text-gray-400">{o.key === "ftb" ? "0" : worth.toFixed(2)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      <p className="text-xs text-gray-400">
+        {chosenCount === 0
+          ? "Choose a technique to start marking."
+          : `${chosenCount} technique${chosenCount === 1 ? "" : "s"} · 1st attempt ${(9 / chosenCount).toFixed(2)} each · every technique broken adds 1.`}
+        {allBroke && <span className="ml-1 font-medium text-green-700">All broken — bonus counted.</span>}
+      </p>
+    </div>
   );
 }
 

@@ -67,10 +67,11 @@ export default async function EventDetailPage({ params, searchParams }: { params
 
   const { data: categories } = await supabase.from("event_categories").select("*").eq("event_id", event.id).order("sort_order").order("name");
   const { data: documents } = await supabase.from("event_documents").select("*").eq("event_id", event.id).order("uploaded_at", { ascending: false });
-  const { data: photoRows } = await supabase.from("event_photos").select("id, storage_path, caption").eq("event_id", event.id).order("sort_order");
+  const { data: photoRows } = await supabase.from("event_photos").select("id, storage_path, caption, kind").eq("event_id", event.id).order("sort_order");
   const photos = (photoRows ?? []).map((p: any) => ({
     id: p.id,
     caption: p.caption ?? null,
+    kind: (p.kind ?? "gallery") as "background" | "header" | "gallery",
     url: supabase.storage.from(PHOTO_BUCKET).getPublicUrl(p.storage_path).data.publicUrl,
   }));
   const { count: pendingCount } = await supabase.from("event_registrations").select("id", { count: "exact", head: true }).eq("event_id", event.id).eq("status", "pending");
