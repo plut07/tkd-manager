@@ -505,7 +505,10 @@ async function promotePassedCandidates(supabase: any, eventId: string): Promise<
     .from("grading_exam_scores")
     .select("registration_id, passed, approved_rank")
     .in("registration_id", ids);
-  const scoreByReg = new Map((scores ?? []).map((s: any) => [s.registration_id, s]));
+  type PublishedScore = { passed: boolean | null; approved_rank: string | null };
+  const scoreByReg = new Map<string, PublishedScore>(
+    (scores ?? []).map((s: any) => [String(s.registration_id), s] as [string, PublishedScore]),
+  );
 
   let promoted = 0;
   for (const reg of regs ?? []) {
