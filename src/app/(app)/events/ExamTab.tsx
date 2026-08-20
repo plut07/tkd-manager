@@ -3,6 +3,8 @@ import ExamGrid from "@/components/ExamGrid";
 import Link from "next/link";
 import { requireSession } from "@/lib/authz";
 import SyllabusEditor from "@/components/SyllabusEditor";
+import TemplateTab from "@/components/TemplateTab";
+import { catalogueFor } from "@/lib/templateFields";
 import { loadExamRows, loadSyllabus, syncAllGradingCategories, addAllGradingCategories } from "./examActions";
 
 /**
@@ -17,12 +19,15 @@ export default async function ExamTab({
   canMark,
   sub,
   hrefFor,
+  templateId,
 }: {
   eventId: string;
   canMark: boolean;
-  /** "main" or "syllabus". */
+  /** "main", "syllabus" or "form". */
   sub: string;
   hrefFor: (sub: string) => string;
+  /** Which result template's boxes are open, if any. */
+  templateId?: string;
 }) {
   const session = await requireSession();
   const sheet = await loadSyllabus(eventId);
@@ -38,7 +43,37 @@ export default async function ExamTab({
   const tabs = [
     { key: "main", label: "Main Page" },
     { key: "syllabus", label: "Exam Syllabus" },
+    { key: "form", label: "Result Form" },
   ];
+
+  // The result form can place anything on this event's syllabus, so its field
+  // list is built from the same sheet the marking screen uses.
+  const catalogue = catalogueFor(sheet);
+
+  const { data: templateRows } = sub === "form"
+    ? await supabase
+        .from("event_form_templates")
+        .select("id, name, page_count, page_width, page_height, is_default, created_at, offset_x, offset_y, scale")
+        .eq("event_id", eventId)
+        .eq("purpose", "exam")
+        .order("created_at")
+    : { data: null };
+  const templateIds = (templateRows ?? []).map((t: any) => t.id);
+  const { data: allFields } = templateIds.length > 0
+    ? await supabase.from("event_form_fields").select("template_id, field_key, page, x, y, width, height, font_size, align").in("template_id", templateIds)
+    : { data: null };
+  const fieldsByTemplate = new Map<string, any[]>();
+  for (const f of allFields ?? []) {
+    if (!fieldsByTemplate.has(f.template_id)) fieldsByTemplate.set(f.template_id, []);
+    fieldsByTemplate.get(f.template_id)!.push(f);
+  }
+  const templates = (templateRows ?? []).map((t: any) => ({
+    id: t.id, name: t.name, page_count: t.page_count, page_width: t.page_width, page_height: t.page_height,
+    is_default: t.is_default, field_count: (fieldsByTemplate.get(t.id) ?? []).length,
+    alignment: { offsetX: Number(t.offset_x) || 0, offsetY: Number(t.offset_y) || 0, scale: Number(t.scale) || 1 },
+  }));
+  const editingTemplate =
+    templates.find((t) => t.id === templateId) ?? templates.find((t) => t.is_default) ?? templates[0] ?? null;
 
   return (
     <div className="space-y-4">
@@ -58,6 +93,30 @@ export default async function ExamTab({
 
       {sub === "syllabus" ? (
         <SyllabusEditor eventId={eventId} initialSheet={sheet} canEdit={canMark} />
+      ) : sub === "form" ? (
+        <div className="space-y-4">
+          <TemplateTab
+            eventId={eventId}
+            templates={templates}
+            editing={editingTemplate}
+            fields={editingTemplate ? fieldsByTemplate.get(editingTemplate.id) ?? [] : []}
+            canEdit={canMark}
+            registeredCount={rows.length}
+            purpose="exam"
+            catalogue={catalogue}
+            title="Result form"
+            intro="The form each candidate's result is printed on. Place the syllabus fields — a component's alloted mark, a pattern and what it scored, the total, PASSED or FAILED, the examiner's signature — and every candidate in this exam prints on it, filled with their own marks."
+            linkPrefix="?tab=exam&sub=form"
+          />
+          {templates.length > 0 && rows.length > 0 && (
+            <div className="card p-4">
+              <a href={`/api/export/exam-form?eventId=${eventId}`} target="_blank" rel="noopener noreferrer" className="btn-secondary">
+                Print every marked candidate
+              </a>
+              <span className="ml-3 text-xs text-gray-400">One copy each, in competition-number order.</span>
+            </div>
+          )}
+        </div>
       ) : (
       <>
       <div className="card p-6">

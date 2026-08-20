@@ -2,6 +2,7 @@
 import { useFormState, useFormStatus } from "react-dom";
 import TemplateDesigner from "./TemplateDesigner";
 import { uploadTemplate, deleteTemplate, setDefaultTemplate, type TemplateState } from "@/app/(app)/events/templateActions";
+import type { TemplateFieldDef } from "@/lib/templateFields";
 
 export type TemplateSummary = {
   id: string;
@@ -34,6 +35,11 @@ export default function TemplateTab({
   fields,
   canEdit,
   registeredCount = 0,
+  purpose = "registration",
+  catalogue,
+  title = "Form templates",
+  intro,
+  linkPrefix = "?tab=registration&sub=template",
 }: {
   eventId: string;
   templates: TemplateSummary[];
@@ -42,17 +48,22 @@ export default function TemplateTab({
   fields: any[];
   canEdit: boolean;
   registeredCount?: number;
+  /** "registration" for the form a candidate signs, "exam" for the result form. */
+  purpose?: "registration" | "exam";
+  catalogue?: TemplateFieldDef[];
+  title?: string;
+  intro?: string;
+  linkPrefix?: string;
 }) {
   const [state, action] = useFormState<TemplateState, FormData>(uploadTemplate, undefined);
 
   return (
     <div className="space-y-6">
       <div className="card p-6">
-        <h2 className="text-lg font-semibold text-gray-900">Form templates</h2>
+        <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
         <p className="mt-1 text-sm text-gray-500">
-          Upload the printed forms for this event and mark where each detail should appear. The form marked{" "}
-          <strong>Default</strong> is the one a registrant&apos;s PDF is printed on. Templates stay here until you
-          remove them.
+          {intro ??
+            "Upload the printed forms for this event and mark where each detail should appear. The form marked Default is the one a registrant's PDF is printed on. Templates stay here until you remove them."}
         </p>
 
         {templates.length > 0 ? (
@@ -74,7 +85,7 @@ export default function TemplateTab({
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   {canEdit && editing?.id !== t.id && (
-                    <a href={`?tab=registration&sub=template&template=${t.id}`} className="text-sm font-medium text-brand-700 hover:underline">
+                    <a href={`${linkPrefix}&template=${t.id}`} className="text-sm font-medium text-brand-700 hover:underline">
                       Place fields
                     </a>
                   )}
@@ -100,13 +111,14 @@ export default function TemplateTab({
           <p className="mt-4 text-sm text-gray-500">No templates uploaded yet — printed forms use the built-in layout.</p>
         )}
 
-        {templates.length > 0 && (
-          <p className="mt-3 text-xs text-gray-400">Applies to {registeredCount} registered student{registeredCount === 1 ? "" : "s"}.</p>
+        {templates.length > 0 && registeredCount > 0 && (
+          <p className="mt-3 text-xs text-gray-400">Applies to all {registeredCount} registered student{registeredCount === 1 ? "" : "s"}.</p>
         )}
 
         {canEdit && (
           <form action={action} className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
             <input type="hidden" name="eventId" value={eventId} />
+            <input type="hidden" name="purpose" value={purpose} />
             <input type="file" name="file" accept="application/pdf,.pdf" required
               className="block text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-brand-600 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-brand-700" />
             <Submit label="Upload another form" />
@@ -138,6 +150,7 @@ export default function TemplateTab({
                 font_size: Number(f.font_size), align: f.align,
               }))}
               alignment={editing.alignment}
+              catalogue={catalogue}
             />
           </div>
         </div>

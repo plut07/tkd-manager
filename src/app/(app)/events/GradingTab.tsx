@@ -7,6 +7,6 @@ import PendingCandidates from "./PendingCandidates";
  * there is no external form to create or sync. What mattered here — the queue
  * of people waiting on approval — lives on the Registration page.
  */
-export default function GradingTab({ eventId, isSuperAdmin }: { eventId: string; canEdit?: boolean; isSuperAdmin: boolean }) {
-  return <PendingCandidates eventId={eventId} isSuperAdmin={isSuperAdmin} />;
+export default function GradingTab({ eventId, canEdit = false, isSuperAdmin }: { eventId: string; canEdit?: boolean; isSuperAdmin: boolean }) {
+  return <PendingCandidates eventId={eventId} isSuperAdmin={isSuperAdmin} canEdit={canEdit} />;
 }

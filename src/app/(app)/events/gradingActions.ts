@@ -226,40 +226,50 @@ export async function approveCandidate(formData: FormData) {
   revalidatePath(`/events/${eventId}/register`);
 }
 /**
- * Create a club from what a registrant typed, and approve them into it.
+ * Create a club from what a registrant typed, so they can be approved into it.
  *
- * Somebody registering from a club we've never recorded shouldn't have to be
- * filed under the wrong one. The club is created inactive-free and minimal —
- * an organiser fills in the rest on the Clubs page afterwards.
+ * Somebody registering from a club we've never recorded shouldn't be filed
+ * under the wrong one to get past the approval. The club is created with just
+ * a name and country; an organiser fills in the rest on the Clubs page.
  */
-export async function generateClubForCandidate(formData: FormData) {
-  const session = await requireSuperAdmin();
-  const candidateId = String(formData.get("candidateId") || "");
-  const eventId = String(formData.get("eventId") || "");
-  if (!candidateId) return;
+export async function createClubForCandidate(input: {
+  candidateId: string;
+  eventId: string;
+  name: string;
+}): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requireSuperAdmin();
+    const name = input.name.trim();
+    if (!name) return { error: "Give the club a name." };
 
-  const supabase = supabaseAdmin();
-  const { data: candidate } = await supabase.from("grading_candidates").select("club_name_raw, nationality").eq("id", candidateId).maybeSingle();
-  const name = (candidate?.club_name_raw ?? "").trim();
-  if (!name) throw new Error("There is no club name on this submission to create.");
+    const supabase = supabaseAdmin();
+    const { data: candidate } = await supabase
+      .from("grading_candidates")
+      .select("nationality")
+      .eq("id", input.candidateId)
+      .maybeSingle();
 
-  // Don't make a second copy of a club that already exists under that name.
-  const { data: clubs } = await supabase.from("clubs").select("id, name");
-  const existing = (clubs ?? []).find((c: any) => normalize(c.name) === normalize(name));
+    // Don't make a second copy of a club that already exists under that name.
+    const { data: clubs } = await supabase.from("clubs").select("id, name");
+    const existing = (clubs ?? []).find((c: any) => normalize(c.name) === normalize(name));
 
-  let clubId = existing?.id ?? null;
-  if (!clubId) {
-    const { data: created, error } = await supabase
-      .from("clubs")
-      .insert({ name, country: candidate?.nationality || null, active: true })
-      .select("id")
-      .single();
-    if (error || !created) throw new Error("That club could not be created.");
-    clubId = created.id;
+    let clubId = existing?.id ?? null;
+    if (!clubId) {
+      const { data: created, error } = await supabase
+        .from("clubs")
+        .insert({ name, country: candidate?.nationality || null, active: true })
+        .select("id")
+        .single();
+      if (error || !created) return { error: "That club could not be created." };
+      clubId = created.id;
+    }
+
+    await supabase.from("grading_candidates").update({ matched_club_id: clubId }).eq("id", input.candidateId);
+    revalidatePath(`/events/${input.eventId}`);
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "That club could not be created." };
   }
-
-  await supabase.from("grading_candidates").update({ matched_club_id: clubId }).eq("id", candidateId);
-  revalidatePath(`/events/${eventId}`);
 }
 
 export async function rejectCandidate(formData: FormData) {

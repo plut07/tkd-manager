@@ -216,7 +216,7 @@ export async function saveExamRow(input: ExamSaveInput): Promise<ExamSaveResult>
       .select("locked")
       .eq("registration_id", input.registrationId)
       .maybeSingle();
-    if (existing?.locked) return { error: "This candidate's sheet is locked. Unlock it before making changes." };
+    if (existing?.locked) return { error: "This candidate's sheet is completed. Press Resubmit before making changes." };
 
     // The components in play come from the event's syllabus and the category,
     // not the browser, so a stale page can't quietly widen what counts.

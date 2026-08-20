@@ -311,7 +311,7 @@ export default function ExamGrid({
                 >
                   {r.studentName}
                   <span className="ml-1 text-gray-400">
-                    {r.locked ? "🔒" : `${done}/${marksPossible(comps)}`}
+                    {r.locked ? "done" : `${done}/${marksPossible(comps)}`}
                   </span>
                 </button>
               );
@@ -380,7 +380,7 @@ export default function ExamGrid({
                   className="btn-secondary"
                   disabled={busy[row.registrationId]}
                   onClick={() => { void lock(row, false); }}
-                  title="Unlock this sheet so it can be changed again"
+                  title="Reopen this sheet so it can be changed again"
                 >
                   Resubmit
                 </button>
@@ -395,7 +395,7 @@ export default function ExamGrid({
                 {errors[row.registrationId] ? (
                   <span className="text-red-600">{errors[row.registrationId]}</span>
                 ) : row.locked ? (
-                  "Locked"
+                  "Completed"
                 ) : saved[row.registrationId] ? (
                   "Saved"
                 ) : row.updatedBy ? (
@@ -539,7 +539,7 @@ export default function ExamGrid({
                     <td className="text-sm text-gray-600">{done} of {marksPossible(comps)}</td>
                     <td>
                       {row.locked ? (
-                        <span className="badge bg-gray-100 text-gray-500">Locked</span>
+                        <span className="badge bg-green-100 text-green-700">Completed</span>
                       ) : done > 0 ? (
                         <span className="badge bg-amber-100 text-amber-700">In progress</span>
                       ) : (

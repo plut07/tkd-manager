@@ -13,6 +13,8 @@ const MAX_BYTES = 8 * 1024 * 1024;
 export async function uploadTemplate(_prev: TemplateState, formData: FormData): Promise<TemplateState> {
   const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
   const eventId = String(formData.get("eventId") || "");
+  const requested = String(formData.get("purpose") || "registration");
+  const purpose = requested === "exam" ? "exam" : "registration";
   const file = formData.get("file") as File | null;
   if (!eventId) return { ok: false, error: "Missing event." };
   if (!file || file.size === 0) return { ok: false, error: "Choose a PDF to upload." };
@@ -40,7 +42,8 @@ export async function uploadTemplate(_prev: TemplateState, formData: FormData): 
   const { count: existingCount } = await supabase
     .from("event_form_templates")
     .select("id", { count: "exact", head: true })
-    .eq("event_id", eventId);
+    .eq("event_id", eventId)
+    .eq("purpose", purpose);
   const isFirst = (existingCount ?? 0) === 0;
 
   const { data, error } = await supabase
@@ -53,6 +56,7 @@ export async function uploadTemplate(_prev: TemplateState, formData: FormData): 
       page_width: info.width,
       page_height: info.height,
       is_default: isFirst,
+      purpose,
       created_by: session.sub,
     })
     .select("id")
@@ -152,7 +156,11 @@ export async function setDefaultTemplate(formData: FormData) {
   if (!templateId || !eventId) return;
 
   const supabase = supabaseAdmin();
-  await supabase.from("event_form_templates").update({ is_default: false }).eq("event_id", eventId);
+  // Default is per purpose, so making a result form the default leaves the
+  // registration form alone.
+  const { data: target } = await supabase.from("event_form_templates").select("purpose").eq("id", templateId).maybeSingle();
+  const purpose = target?.purpose ?? "registration";
+  await supabase.from("event_form_templates").update({ is_default: false }).eq("event_id", eventId).eq("purpose", purpose);
   await supabase.from("event_form_templates").update({ is_default: true }).eq("id", templateId).eq("event_id", eventId);
   revalidatePath(`/events/${eventId}`);
 }
@@ -163,7 +171,7 @@ export async function deleteTemplate(formData: FormData) {
   const eventId = String(formData.get("eventId") || "");
   if (!templateId) return;
   const supabase = supabaseAdmin();
-  const { data: tpl } = await supabase.from("event_form_templates").select("storage_path, is_default, event_id").eq("id", templateId).maybeSingle();
+  const { data: tpl } = await supabase.from("event_form_templates").select("storage_path, is_default, event_id, purpose").eq("id", templateId).maybeSingle();
   await supabase.from("event_form_templates").delete().eq("id", templateId);
   if (tpl?.storage_path) await supabase.storage.from(TEMPLATE_BUCKET).remove([tpl.storage_path]);
 
@@ -174,6 +182,7 @@ export async function deleteTemplate(formData: FormData) {
       .from("event_form_templates")
       .select("id")
       .eq("event_id", tpl.event_id)
+      .eq("purpose", tpl.purpose)
       .order("created_at")
       .limit(1)
       .maybeSingle();

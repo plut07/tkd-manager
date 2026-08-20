@@ -55,7 +55,6 @@ export default async function RegistrationPanel({ eventId }: { eventId: string }
   const canEdit = canEditRaw && !locked;
   const canManageAll = session.role === "super_admin" || session.role === "event_manager";
 
-  const pending = ((registrations ?? []) as any[]).filter((r) => r.status === "pending");
   const confirmed = ((registrations ?? []) as any[]).filter((r) => r.status === "confirmed");
 
   const byClub = new Map<string, { clubName: string; rows: any[] }>();
@@ -95,60 +94,11 @@ export default async function RegistrationPanel({ eventId }: { eventId: string }
           <p className="mt-4 text-sm text-gray-500">No active students available to register.</p>
         )}
         <p className="mt-2 text-xs text-gray-400">
-          New entries wait in the pending list below until an organizer approves them. Approved competitors are given a
-          competition number automatically.
+          New entries wait for approval below. Approved competitors are given a competition number automatically.
         </p>
       </div>
 
-      {event.event_type === "grading" && (
-        <PendingCandidates eventId={event.id} isSuperAdmin={session.role === "super_admin"} />
-      )}
-
-      <div className="card p-6">
-        <h2 className="text-lg font-semibold text-gray-900">Pending approval ({pending.length})</h2>
-        <p className="mt-1 text-sm text-gray-500">Entries waiting for an organizer to confirm.</p>
-        <div className="mt-4 overflow-x-auto">
-          <table className="table-base">
-            <thead>
-              <tr>
-                <th>No.</th><th>Student</th><th>Club</th><th>Category</th><th>Age</th><th>Weight</th><th>Height</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {pending.map((r: any) => (
-                <tr key={r.id}>
-                  <td>{r.competition_number ?? "—"}</td>
-                  <td>{r.students?.full_name}</td>
-                  <td>{r.clubs?.name ?? "—"}</td>
-                  <td>{r.event_categories?.name ?? "Unassigned category"}</td>
-                  <td>{computeAge(r.students?.birthday ?? null) ?? "—"}</td>
-                  <td>{fmtWeight(r.students?.weight_kg ?? null)}</td>
-                  <td>{fmtHeight(r.students?.height_cm ?? null)}</td>
-                  <td className="whitespace-nowrap text-right">
-                    {canEdit && (
-                      <form action={approveRegistration} className="inline">
-                        <input type="hidden" name="registrationId" value={r.id} />
-                        <input type="hidden" name="eventId" value={event.id} />
-                        <button type="submit" className="mr-3 text-sm font-medium text-green-700 hover:underline">Approve</button>
-                      </form>
-                    )}
-                    {canRemove(r.clubs?.id ?? null) && (
-                      <form action={unregisterStudent} className="inline">
-                        <input type="hidden" name="registrationId" value={r.id} />
-                        <input type="hidden" name="eventId" value={event.id} />
-                        <button type="submit" className="text-sm font-medium text-red-600 hover:underline">Remove</button>
-                      </form>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {pending.length === 0 && (
-                <tr><td colSpan={8} className="py-4 text-center text-gray-400">Nothing pending.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <PendingCandidates eventId={event.id} isSuperAdmin={session.role === "super_admin"} canEdit={canEdit} />
 
       <div className="card p-6">
         <h2 className="text-lg font-semibold text-gray-900">Confirmed ({confirmed.length})</h2>

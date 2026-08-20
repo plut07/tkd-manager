@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useRef, useState } from "react";
-import { TEMPLATE_FIELDS, isImageField } from "@/lib/templateFields";
+import { TEMPLATE_FIELDS, isImageField, type TemplateFieldDef } from "@/lib/templateFields";
 import PdfPageCanvas from "./PdfPageCanvas";
 import { saveTemplateFields, saveTemplateAlignment } from "@/app/(app)/events/templateActions";
 
@@ -28,6 +28,7 @@ export default function TemplateDesigner({
   pageHeight,
   initialFields,
   alignment,
+  catalogue = TEMPLATE_FIELDS as TemplateFieldDef[],
 }: {
   templateId: string;
   eventId: string;
@@ -36,6 +37,8 @@ export default function TemplateDesigner({
   pageHeight: number;
   initialFields: Box[];
   alignment: { offsetX: number; offsetY: number; scale: number };
+  /** What can be placed. Result forms add the event's syllabus to this. */
+  catalogue?: TemplateFieldDef[];
 }) {
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [page, setPage] = useState(1);
@@ -90,7 +93,7 @@ export default function TemplateDesigner({
       setDrawing(null);
       if (box.width < 0.02 || box.height < 0.008) return; // ignore stray clicks
       const id = `b${Date.now()}${Math.random().toString(16).slice(2, 6)}`;
-      setBoxes((prev) => [...prev, { id, field_key: TEMPLATE_FIELDS[0].key, page, font_size: 11, align: "left", ...box }]);
+      setBoxes((prev) => [...prev, { id, field_key: catalogue[0]?.key ?? "participant.name", page, font_size: 11, align: "left", ...box }]);
       setSelected(id);
     };
     window.addEventListener("mousemove", move);
@@ -199,9 +202,9 @@ export default function TemplateDesigner({
                     selected === b.id ? "border-brand-600 bg-brand-600/30" : "border-brand-400/80 bg-brand-400/20"
                   }`}
                   style={{ left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.width * 100}%`, height: `${b.height * 100}%`, cursor: "move" }}
-                  title={labelFor(b.field_key)}
+                  title={labelFor(b.field_key, catalogue)}
                 >
-                  <span className="truncate text-brand-900">{isImageField(b.field_key) ? "✎ " : ""}{labelFor(b.field_key)}</span>
+                  <span className="truncate text-brand-900">{isImageField(b.field_key) ? "✎ " : ""}{labelFor(b.field_key, catalogue)}</span>
                 </div>
               ))}
 
@@ -225,7 +228,7 @@ export default function TemplateDesigner({
                 <div>
                   <label className="label text-xs">Contents</label>
                   <select className="input" value={current.field_key} onChange={(e) => update(current.id, { field_key: e.target.value })}>
-                    {groupedFields().map(([group, items]) => (
+                    {groupedFields(catalogue).map(([group, items]) => (
                       <optgroup key={group} label={group}>
                         {items.map((f) => (<option key={f.key} value={f.key}>{f.label}</option>))}
                       </optgroup>
@@ -276,7 +279,7 @@ export default function TemplateDesigner({
               {onPage.map((b) => (
                 <li key={b.id}>
                   <button type="button" className={`text-left hover:underline ${selected === b.id ? "font-semibold text-brand-700" : "text-gray-700"}`} onClick={() => setSelected(b.id)}>
-                    {labelFor(b.field_key)}
+                    {labelFor(b.field_key, catalogue)}
                   </button>
                 </li>
               ))}
@@ -339,12 +342,14 @@ export default function TemplateDesigner({
 }
 
 function clamp(v: number) { return Math.min(Math.max(v, 0), 1); }
-function labelFor(key: string) { return TEMPLATE_FIELDS.find((f) => f.key === key)?.label ?? key; }
-function groupedFields(): [string, typeof TEMPLATE_FIELDS][] {
-  const groups = new Map<string, typeof TEMPLATE_FIELDS>();
-  for (const f of TEMPLATE_FIELDS) {
-    if (!groups.has(f.group)) groups.set(f.group, [] as unknown as typeof TEMPLATE_FIELDS);
-    (groups.get(f.group) as any).push(f);
+function labelFor(key: string, catalogue: TemplateFieldDef[]) {
+  return catalogue.find((f) => f.key === key)?.label ?? key;
+}
+function groupedFields(catalogue: TemplateFieldDef[]): [string, TemplateFieldDef[]][] {
+  const groups = new Map<string, TemplateFieldDef[]>();
+  for (const f of catalogue) {
+    if (!groups.has(f.group)) groups.set(f.group, []);
+    groups.get(f.group)!.push(f);
   }
   return Array.from(groups.entries());
 }

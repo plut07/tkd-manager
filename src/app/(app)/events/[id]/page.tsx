@@ -94,7 +94,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
   // list can say which are ready to print without a query per row.
   const showTemplates = tab === "registration" && sub === "template";
   const { data: templateRows } = showTemplates
-    ? await supabase.from("event_form_templates").select("id, name, page_count, page_width, page_height, is_default, created_at, offset_x, offset_y, scale").eq("event_id", event.id).order("created_at")
+    ? await supabase.from("event_form_templates").select("id, name, page_count, page_width, page_height, is_default, created_at, offset_x, offset_y, scale").eq("event_id", event.id).eq("purpose", "registration").order("created_at")
     : { data: null };
   const templateIds = (templateRows ?? []).map((t: any) => t.id);
   const { data: allFields } = templateIds.length > 0
@@ -284,8 +284,9 @@ export default async function EventDetailPage({ params, searchParams }: { params
         <ExamTab
           eventId={event.id}
           canMark={canMarkNow}
-          sub={searchParams.sub === "syllabus" ? "syllabus" : "main"}
+          sub={searchParams.sub === "syllabus" || searchParams.sub === "form" ? searchParams.sub : "main"}
           hrefFor={(next) => `/events/${params.id}?tab=exam&sub=${next}`}
+          templateId={searchParams.template}
         />
       ) : tab === "results" ? (
         <ResultTab

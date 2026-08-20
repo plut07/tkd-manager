@@ -1,7 +1,7 @@
 import "server-only";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { supabaseAdmin } from "./supabaseAdmin";
-import { resolveTemplateField, isImageField, type TemplateData } from "./templateFields";
+import { resolveTemplateField, isImageField, imageForField, type TemplateData } from "./templateFields";
 
 export const TEMPLATE_BUCKET = "event-templates";
 
@@ -83,7 +83,7 @@ export async function fillTemplate(
       // written into it. A missing or unreadable image just leaves the space
       // blank — the rest of the form still prints.
       if (isImageField(f.field_key)) {
-        const png = data.participant?.signaturePng;
+        const png = imageForField(f.field_key, data);
         if (!png) continue;
         try {
           const image = await out.embedPng(png);
