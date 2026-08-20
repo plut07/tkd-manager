@@ -40,6 +40,14 @@ export default async function ExamTab({
     .order("name");
 
   const rows = await loadExamRows(eventId, []);
+
+  const { data: resultForm } = await supabase
+    .from("event_form_templates")
+    .select("id")
+    .eq("event_id", eventId)
+    .eq("purpose", "exam")
+    .eq("is_default", true)
+    .maybeSingle();
   const tabs = [
     { key: "main", label: "Main Page" },
     { key: "syllabus", label: "Exam Syllabus" },
@@ -155,6 +163,7 @@ export default async function ExamTab({
         canMark={canMark}
         sheet={sheet}
         examinerName={session.fullName || session.username}
+        hasResultForm={Boolean(resultForm)}
       />
       </>
       )}

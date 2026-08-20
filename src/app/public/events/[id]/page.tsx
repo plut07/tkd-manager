@@ -75,6 +75,30 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
     .in("event_category_id", (categories ?? []).map((c) => c.id).length > 0 ? (categories ?? []).map((c) => c.id) : ["00000000-0000-0000-0000-000000000000"]);
   const publishedCategoryIds = new Set((publishedBrackets ?? []).map((b) => b.event_category_id));
 
+  // Published grading results, for anyone with the link. Names and outcomes
+  // only — the marks behind them stay with the organisers.
+  const resultsPublished = isGrading && Boolean((event as any).results_published_at);
+  let results: any[] = [];
+  if (resultsPublished) {
+    const { data: regs } = await supabase
+      .from("event_registrations")
+      .select("id, competition_number, clubs(name), event_categories(name), students(full_name)")
+      .eq("event_id", event.id)
+      .order("competition_number", { nullsFirst: false });
+    const ids = (regs ?? []).map((r: any) => r.id);
+    if (ids.length > 0) {
+      const { data: scores } = await supabase
+        .from("grading_exam_scores")
+        .select("registration_id, passed, approved_rank")
+        .in("registration_id", ids);
+      const byReg = new Map((scores ?? []).map((s: any) => [s.registration_id, s]));
+      results = (regs ?? [])
+        .map((r: any) => ({ reg: r, score: byReg.get(r.id) }))
+        .filter((x: any) => x.score)
+        .sort((a: any, b: any) => (a.reg.students?.full_name ?? "").localeCompare(b.reg.students?.full_name ?? ""));
+    }
+  }
+
   const headerPhoto = photos.find((p) => p.kind === "header") ?? null;
   const backgroundPhoto = photos.find((p) => p.kind === "background") ?? null;
 
@@ -158,6 +182,46 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
 
         {event.description && <p className="mt-4 whitespace-pre-line text-sm text-gray-700">{event.description}</p>}
       </div>
+
+      {resultsPublished && (
+        <div className="card p-6">
+          <h2 className="text-lg font-semibold text-gray-900">Results</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            {results.filter((x: any) => x.score.passed === true).length} of {results.length} passed.
+          </p>
+          <div className="mt-4 overflow-x-auto">
+            <table className="table-base">
+              <thead>
+                <tr>
+                  <th>No.</th>
+                  <th>Name</th>
+                  <th className="hidden sm:table-cell">Club</th>
+                  <th>Graded for</th>
+                  <th>Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {results.map(({ reg, score }: any) => (
+                  <tr key={reg.id}>
+                    <td>{reg.competition_number ?? "—"}</td>
+                    <td className="font-medium text-gray-900">{reg.students?.full_name}</td>
+                    <td className="hidden sm:table-cell">{reg.clubs?.name ?? "—"}</td>
+                    <td>{score.approved_rank ?? reg.event_categories?.name ?? "—"}</td>
+                    <td>
+                      <span className={`badge ${score.passed ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                        {score.passed ? "PASSED" : "FAILED"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {results.length === 0 && (
+                  <tr><td colSpan={5} className="py-6 text-center text-gray-400">No results to show.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <EventPhotos eventId={params.id} photos={photos.filter((p) => p.kind === "gallery")} canEdit={false} />
 

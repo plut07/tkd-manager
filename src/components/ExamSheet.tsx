@@ -3,7 +3,6 @@
 import { useState } from "react";
 import {
   BREAKING_OUTCOMES,
-  breakingPoints,
   componentTotal,
   componentsFor,
   itemLabel,
@@ -435,22 +434,22 @@ function BreakingRows({
 
             {choice.launch && choice.technique && (
               <div className="flex flex-wrap items-center gap-3 border-l border-gray-200 pl-3">
-                {BREAKING_OUTCOMES.map((o) => {
-                  const worth = breakingPoints(o.key, chosenCount || 1);
-                  return (
-                    <label key={o.key} className="flex items-center gap-1 text-xs text-gray-700">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4"
-                        checked={outcome === o.key}
-                        disabled={disabled}
-                        onChange={(e) => onScore(`pb_outcome_${m}`, e.target.checked ? o.key : "")}
-                      />
-                      {o.label}
-                      <span className="text-gray-400">{o.key === "ftb" ? "0" : worth.toFixed(2)}</span>
-                    </label>
-                  );
-                })}
+                {/* No per-attempt figure here: what an attempt is worth depends
+                    on how many techniques are being broken, and showing four
+                    shifting numbers per row invites second-guessing. The
+                    component's Alloted mark is the answer. */}
+                {BREAKING_OUTCOMES.map((o) => (
+                  <label key={o.key} className="flex items-center gap-1 text-xs text-gray-700">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={outcome === o.key}
+                      disabled={disabled}
+                      onChange={(e) => onScore(`pb_outcome_${m}`, e.target.checked ? o.key : "")}
+                    />
+                    {o.label}
+                  </label>
+                ))}
               </div>
             )}
           </div>
@@ -460,7 +459,7 @@ function BreakingRows({
       <p className="text-xs text-gray-400">
         {chosenCount === 0
           ? "Choose a technique to start marking."
-          : `${chosenCount} technique${chosenCount === 1 ? "" : "s"} · 1st attempt ${(9 / chosenCount).toFixed(2)} each · every technique broken adds 1.`}
+          : `${chosenCount} technique${chosenCount === 1 ? "" : "s"} · the earlier it breaks the more it scores · breaking them all adds a mark.`}
         {allBroke && <span className="ml-1 font-medium text-green-700">All broken — bonus counted.</span>}
       </p>
     </div>

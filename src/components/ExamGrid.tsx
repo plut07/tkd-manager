@@ -41,6 +41,7 @@ export default function ExamGrid({
   canMark,
   sheet,
   examinerName,
+  hasResultForm = false,
 }: {
   eventId: string;
   categories: Category[];
@@ -48,6 +49,8 @@ export default function ExamGrid({
   canMark: boolean;
   sheet: SheetComponent[];
   examinerName: string;
+  /** Whether a result form has been set up, so the print links mean something. */
+  hasResultForm?: boolean;
 }) {
   const [rows, setRows] = useState<ExamRowDto[]>(initialRows);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(categories.map((c) => c.id));
@@ -390,6 +393,17 @@ export default function ExamGrid({
                   Use this signature on all {marking.length}
                 </button>
               )}
+              {hasResultForm && (
+                <a
+                  href={`/api/export/exam-form?registrationId=${row.registrationId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-brand-700 hover:underline"
+                  title="Their marks on the event's result form"
+                >
+                  Result form (PDF)
+                </a>
+              )}
 
               <span className="ml-auto text-xs text-gray-400">
                 {errors[row.registrationId] ? (
@@ -513,6 +527,7 @@ export default function ExamGrid({
                 <th className="hidden md:table-cell">Current grade</th>
                 <th>Marked</th>
                 <th>Status</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -546,12 +561,24 @@ export default function ExamGrid({
                         <span className="badge bg-gray-100 text-gray-500">Not started</span>
                       )}
                     </td>
+                    <td className="whitespace-nowrap text-right">
+                      {hasResultForm && done > 0 && (
+                        <a
+                          href={`/api/export/exam-form?registrationId=${row.registrationId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-medium text-brand-700 hover:underline"
+                        >
+                          Result form
+                        </a>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
               {inCategories.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-6 text-center text-gray-400">
+                  <td colSpan={7} className="py-6 text-center text-gray-400">
                     {categories.length === 0
                       ? "Nobody has been registered for this grading yet."
                       : "Nobody matches — tick a category above, or clear the search."}

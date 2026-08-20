@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission, requireSession } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
-import { gradeLabel, nextGrade, GRADE_OPTIONS } from "@/lib/belts";
+import { gradeLabel, nextGrade, gradeRank, parseGradeText, GRADE_OPTIONS } from "@/lib/belts";
 import { computeAge } from "@/lib/eligibility";
 import { effectiveEventStatus, canOverrideLocks } from "@/lib/eventStatus";
 import {
@@ -474,7 +474,59 @@ export async function publishResults(formData: FormData) {
     .from("events")
     .update({ results_published_at: new Date().toISOString(), results_published_by: session.sub })
     .eq("id", eventId);
+
+  await promotePassedCandidates(supabase, eventId);
+
   revalidatePath(`/events/${eventId}`);
+  revalidatePath("/students");
+  revalidatePath(`/public/events/${eventId}`);
+}
+
+/**
+ * Move everyone who passed up to the rank they were approved for.
+ *
+ * Publishing is the moment the result becomes real, so it's also the moment the
+ * grade changes. Only passes count, and only upwards — a result that would move
+ * somebody *down* is left alone, since that's far more likely to be a typo in
+ * the approved rank than a demotion.
+ *
+ * Re-publishing is harmless: a student already at that grade is skipped.
+ */
+async function promotePassedCandidates(supabase: any, eventId: string): Promise<number> {
+  const { data: regs } = await supabase
+    .from("event_registrations")
+    .select("id, student_id, event_categories(name), students(gup, dan)")
+    .eq("event_id", eventId);
+
+  const ids = (regs ?? []).map((r: any) => r.id);
+  if (ids.length === 0) return 0;
+
+  const { data: scores } = await supabase
+    .from("grading_exam_scores")
+    .select("registration_id, passed, approved_rank")
+    .in("registration_id", ids);
+  const scoreByReg = new Map((scores ?? []).map((s: any) => [s.registration_id, s]));
+
+  let promoted = 0;
+  for (const reg of regs ?? []) {
+    const score = scoreByReg.get(reg.id);
+    if (!score || score.passed !== true || !reg.student_id) continue;
+
+    const label = String(score.approved_rank ?? (reg as any).event_categories?.name ?? "").trim();
+    if (!label) continue;
+
+    // The rank is text an examiner could have edited, so it's read back through
+    // the same parser the rest of the app uses rather than trusted.
+    const { gup, dan } = parseGradeText(label);
+    if (gup == null && dan == null) continue;
+
+    const current = (reg as any).students ?? {};
+    if (gradeRank(gup, dan) <= gradeRank(current.gup ?? null, current.dan ?? null)) continue;
+
+    await supabase.from("students").update({ gup, dan }).eq("id", reg.student_id);
+    promoted++;
+  }
+  return promoted;
 }
 
 export async function unpublishResults(formData: FormData) {
