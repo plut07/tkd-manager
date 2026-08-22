@@ -378,6 +378,13 @@ function BreakingRows({
 }) {
   const methods = component.methods ?? 3;
 
+  // The syllabus can narrow what may be chosen; an empty list means everything,
+  // so a component that hasn't been restricted still offers the full list.
+  const allowedLaunches = component.launches?.length
+    ? LAUNCHES.filter((l) => component.launches!.includes(l))
+    : LAUNCHES;
+  const allowedTechnique = (t: string) => !component.techniques?.length || component.techniques.includes(t);
+
   // Only fully-picked techniques count towards the share, so the per-attempt
   // worth doesn't jump about while somebody is still choosing.
   const chosenCount = Array.from({ length: methods }, (_, i) => i + 1).filter((m) =>
