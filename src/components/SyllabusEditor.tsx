@@ -4,11 +4,17 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DEFAULT_SHEET, sheetMax, syllabusFor, type ComponentKind, type SheetComponent, type SyllabusSet } from "@/lib/gradingSheet";
 import { GRADE_OPTIONS } from "@/lib/belts";
+import { LAUNCHES, HAND_TECHNIQUES, KICK_TECHNIQUES } from "@/lib/powerBreaking";
 import { saveSyllabus, resetSyllabus } from "@/app/(app)/events/examActions";
 
 const KINDS: { value: ComponentKind; label: string; note: string }[] = [
   { value: "fixed", label: "Fixed columns", note: "Every content column is always marked." },
   { value: "select", label: "Chosen from a list", note: "The examiner picks what was performed and can add more." },
+  {
+    value: "mixed",
+    label: "Fixed columns + chosen from a list",
+    note: "Set the patterns everyone must perform, then let the candidate's own choices be added alongside.",
+  },
   { value: "breaking", label: "Techniques × attempts", note: "Chosen techniques, several attempts each." },
 ];
 
@@ -262,14 +268,75 @@ export default function SyllabusEditor({
                   onChange={(e) => update(index, { attempts: Math.max(1, Number(e.target.value) || 1) })}
                 />
               </div>
-              <p className="w-full text-xs text-gray-400">
-                Techniques are chosen from the standard list — Stationary, Flying and Jumping, hand and kick.
-              </p>
+              <div className="w-full">
+                <span className="label text-xs">Techniques an examiner may choose from</span>
+                <p className="text-xs text-gray-400">
+                  Tick nothing to allow the whole list. Narrowing it here keeps the marking screen to the techniques
+                  this rank actually breaks.
+                </p>
+
+                <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700">Launched from</p>
+                    {LAUNCHES.map((l) => (
+                      <label key={l} className="mt-1 flex items-center gap-2 text-xs text-gray-700">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          disabled={!canEdit}
+                          checked={(component.launches ?? []).includes(l)}
+                          onChange={(e) =>
+                            update(index, {
+                              launches: e.target.checked
+                                ? [...(component.launches ?? []), l]
+                                : (component.launches ?? []).filter((v) => v !== l),
+                            })
+                          }
+                        />
+                        {l}
+                      </label>
+                    ))}
+                  </div>
+
+                  {[
+                    { title: "Hand", list: HAND_TECHNIQUES },
+                    { title: "Kick", list: KICK_TECHNIQUES },
+                  ].map((group) => (
+                    <div key={group.title}>
+                      <p className="text-xs font-semibold text-gray-700">{group.title}</p>
+                      {group.list.map((t) => (
+                        <label key={t} className="mt-1 flex items-center gap-2 text-xs text-gray-700">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            disabled={!canEdit}
+                            checked={(component.techniques ?? []).includes(t)}
+                            onChange={(e) =>
+                              update(index, {
+                                techniques: e.target.checked
+                                  ? [...(component.techniques ?? []), t]
+                                  : (component.techniques ?? []).filter((v) => v !== t),
+                              })
+                            }
+                          />
+                          {t}
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+
+                <p className="mt-2 text-xs text-gray-500">
+                  {(component.launches?.length ?? 0) === 0 && (component.techniques?.length ?? 0) === 0
+                    ? "All 39 combinations are offered."
+                    : `${(component.launches?.length || LAUNCHES.length) * (component.techniques?.length || HAND_TECHNIQUES.length + KICK_TECHNIQUES.length)} combinations offered.`}
+                </p>
+              </div>
             </div>
           ) : (
             <div className="mt-3">
               <span className="label text-xs">
-                {component.kind === "select" ? "Choices the examiner can pick from" : "Columns"}
+                {component.kind === "select" || component.kind === "mixed" ? "Choices the examiner can pick from" : "Columns"}
               </span>
               <div className="mt-1 flex flex-wrap gap-2">
                 {component.items.map((item, itemIndex) => (
@@ -294,9 +361,42 @@ export default function SyllabusEditor({
               {canEdit && (
                 <AddItem onAdd={(label) => addItem(index, label)} />
               )}
-              {component.kind === "select" && (
+              {component.kind === "mixed" && (
+                <div className="mt-3 border-t border-gray-100 pt-3">
+                  <span className="label text-xs">Columns everybody is marked on</span>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {(component.fixed ?? []).map((item, itemIndex) => (
+                      <span key={item.key} className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50 px-2 py-1 text-xs">
+                        {item.label}
+                        {canEdit && (
+                          <button
+                            type="button"
+                            className="text-red-600"
+                            aria-label={`Remove ${item.label}`}
+                            onClick={() => update(index, { fixed: (component.fixed ?? []).filter((_, j) => j !== itemIndex) })}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                    {(component.fixed ?? []).length === 0 && <span className="text-xs text-gray-400">None — everything is chosen.</span>}
+                  </div>
+                  {canEdit && (
+                    <AddItem
+                      onAdd={(label) => {
+                        const trimmed = label.trim();
+                        if (!trimmed) return;
+                        update(index, { fixed: [...(component.fixed ?? []), { key: slug(trimmed), label: trimmed }] });
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+
+              {(component.kind === "select" || component.kind === "mixed") && (
                 <div className="mt-2">
-                  <label className="label text-xs">Rows shown before adding more</label>
+                  <label className="label text-xs">Chosen rows shown before adding more</label>
                   <input
                     type="number"
                     min={1}

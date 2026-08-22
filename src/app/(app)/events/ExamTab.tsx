@@ -69,7 +69,7 @@ export default async function ExamTab({
   const { data: templateRows } = sub === "form"
     ? await supabase
         .from("event_form_templates")
-        .select("id, name, page_count, page_width, page_height, is_default, created_at, offset_x, offset_y, scale")
+        .select("id, name, page_count, page_width, page_height, is_default, created_at, offset_x, offset_y, scale, grades")
         .eq("event_id", eventId)
         .eq("purpose", "exam")
         .order("created_at")
@@ -87,6 +87,7 @@ export default async function ExamTab({
     id: t.id, name: t.name, page_count: t.page_count, page_width: t.page_width, page_height: t.page_height,
     is_default: t.is_default, field_count: (fieldsByTemplate.get(t.id) ?? []).length,
     alignment: { offsetX: Number(t.offset_x) || 0, offsetY: Number(t.offset_y) || 0, scale: Number(t.scale) || 1 },
+    grades: (t.grades as string[] | null) ?? [],
   }));
   const editingTemplate =
     templates.find((t) => t.id === templateId) ?? templates.find((t) => t.is_default) ?? templates[0] ?? null;
@@ -121,7 +122,7 @@ export default async function ExamTab({
             purpose="exam"
             catalogue={catalogue}
             title="Result form"
-            intro="The form each candidate's result is printed on. Place the syllabus fields — a component's alloted mark, a pattern and what it scored, the total, PASSED or FAILED, the examiner's signature — and every candidate in this exam prints on it, filled with their own marks."
+            intro="The forms results are printed on. Place the syllabus fields — a component's alloted mark, a pattern and what it scored, the total, PASSED or FAILED, the examiner's signature. Upload one form per group of ranks and set which grades each covers; a candidate prints on the form naming their grade, or the default if none does."
             linkPrefix="?tab=exam&sub=form"
           />
           {templates.length > 0 && rows.length > 0 && (

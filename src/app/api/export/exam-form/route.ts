@@ -4,7 +4,9 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { downloadTemplate, fillTemplate } from "@/lib/pdfTemplates";
 import { type TemplateData } from "@/lib/templateFields";
-import { componentsFor, parseSheet, DEFAULT_SHEET, sheetTotal, type SheetMarks } from "@/lib/gradingSheet";
+import { componentsFor, syllabusFor, parseSheet, DEFAULT_SHEET, sheetTotal, type SheetComponent, type SheetMarks } from "@/lib/gradingSheet";
+import { parseGradeText, gradeValue } from "@/lib/belts";
+import { PDFDocument } from "pdf-lib";
 
 export const dynamic = "force-dynamic";
 
@@ -51,22 +53,46 @@ export async function GET(request: NextRequest) {
     .maybeSingle();
   if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 });
 
-  const { data: template } = await supabase
+  const { data: templates } = await supabase
     .from("event_form_templates")
-    .select("id, storage_path, offset_x, offset_y, scale")
+    .select("id, storage_path, offset_x, offset_y, scale, grades, is_default, created_at")
     .eq("event_id", eventId as string)
     .eq("purpose", "exam")
-    .eq("is_default", true)
-    .maybeSingle();
-  if (!template) {
+    .order("created_at");
+  if (!templates || templates.length === 0) {
     return NextResponse.json(
       { error: "No result form has been set up for this event. Upload one on the Exam page." },
       { status: 400 },
     );
   }
 
-  const { data: syllabus } = await supabase.from("exam_syllabus").select("sheet").eq("event_id", eventId as string).maybeSingle();
-  const sheet = syllabus ? parseSheet(syllabus.sheet) : DEFAULT_SHEET;
+  /**
+   * The form a candidate prints on: one naming their grade, else the default,
+   * else whatever exists. Grade wins over default so a rank-specific form is
+   * never overridden by a general one.
+   */
+  const templateForGrade = (grade: string | null) => {
+    const named = grade ? templates.find((t: any) => (t.grades ?? []).includes(grade)) : null;
+    return named ?? templates.find((t: any) => t.is_default) ?? templates[0];
+  };
+
+  // Each rank can be marked on its own syllabus, so the sheet is resolved per
+  // candidate rather than once for the event.
+  const { data: syllabusRows } = await supabase
+    .from("exam_syllabus")
+    .select("grade_value, sheet")
+    .eq("event_id", eventId as string);
+  const byGrade: Record<string, SheetComponent[]> = {};
+  let fallback = DEFAULT_SHEET;
+  for (const row of syllabusRows ?? []) {
+    if (row.grade_value) byGrade[row.grade_value] = parseSheet(row.sheet);
+    else fallback = parseSheet(row.sheet);
+  }
+  const syllabusSet = { byGrade, fallback };
+  const gradeCodeFor = (r: any) => {
+    const g = parseGradeText(String(r?.event_categories?.name ?? ""));
+    return gradeValue(g.gup, g.dan) || null;
+  };
 
   const ids = rows.map((r) => r.id);
   let scores: any[] = [];
@@ -93,9 +119,12 @@ export async function GET(request: NextRequest) {
     endDate: (event as any).end_date ?? null,
   };
 
-  const data: TemplateData[] = printable.map((r) => {
+  const gradeCodes = printable.map(gradeCodeFor);
+
+  const data: TemplateData[] = printable.map((r, i) => {
     const score = scoreByReg.get(r.id);
     const marks = (score?.marks ?? {}) as SheetMarks;
+    const sheet = syllabusFor(syllabusSet, gradeCodes[i]);
     const components = componentsFor((r.event_categories?.exam_events as string[] | null) ?? [], sheet);
     return {
       participant: {
@@ -127,17 +156,35 @@ export async function GET(request: NextRequest) {
     };
   });
 
-  const { data: fields } = await supabase
-    .from("event_form_fields")
-    .select("field_key, page, x, y, width, height, font_size, align")
-    .eq("template_id", template.id);
-
-  const bytes = await downloadTemplate(template.storage_path);
-  const filled = await fillTemplate(bytes, (fields ?? []) as any, data, {
-    offsetX: Number(template.offset_x) || 0,
-    offsetY: Number(template.offset_y) || 0,
-    scale: Number(template.scale) || 1,
+  // Candidates on different forms are printed in separate passes and the pages
+  // joined, so one download covers a mixed set of ranks.
+  const byTemplate = new Map<string, { template: any; rows: TemplateData[] }>();
+  data.forEach((row, i) => {
+    const grade = gradeCodes[i];
+    const t = templateForGrade(grade);
+    const bucket = byTemplate.get(t.id) ?? { template: t, rows: [] };
+    bucket.rows.push(row);
+    byTemplate.set(t.id, bucket);
   });
+
+  const merged = await PDFDocument.create();
+  for (const { template, rows: forThisForm } of Array.from(byTemplate.values())) {
+    const { data: fields } = await supabase
+      .from("event_form_fields")
+      .select("field_key, page, x, y, width, height, font_size, align")
+      .eq("template_id", template.id);
+
+    const bytes = await downloadTemplate(template.storage_path);
+    const filled = await fillTemplate(bytes, (fields ?? []) as any, forThisForm, {
+      offsetX: Number(template.offset_x) || 0,
+      offsetY: Number(template.offset_y) || 0,
+      scale: Number(template.scale) || 1,
+    });
+    const part = await PDFDocument.load(filled);
+    const pages = await merged.copyPages(part, part.getPageIndices());
+    pages.forEach((page) => merged.addPage(page));
+  }
+  const filled = await merged.save();
 
   const who = registrationId ? (printable[0]?.students?.full_name ?? "") : "all-candidates";
   const filename = `result-${(who || "form").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.pdf`;

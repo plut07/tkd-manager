@@ -4,6 +4,7 @@ import { requirePermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { inspectPdf, TEMPLATE_BUCKET } from "@/lib/pdfTemplates";
+import { GRADE_OPTIONS } from "@/lib/belts";
 
 export type TemplateState = { ok: true; templateId: string } | { ok: false; error: string } | undefined;
 
@@ -15,6 +16,7 @@ export async function uploadTemplate(_prev: TemplateState, formData: FormData): 
   const eventId = String(formData.get("eventId") || "");
   const requested = String(formData.get("purpose") || "registration");
   const purpose = requested === "exam" ? "exam" : "registration";
+  const grades = formData.getAll("grades").map((g) => String(g)).filter(Boolean);
   const file = formData.get("file") as File | null;
   if (!eventId) return { ok: false, error: "Missing event." };
   if (!file || file.size === 0) return { ok: false, error: "Choose a PDF to upload." };
@@ -57,6 +59,7 @@ export async function uploadTemplate(_prev: TemplateState, formData: FormData): 
       page_height: info.height,
       is_default: isFirst,
       purpose,
+      grades,
       created_by: session.sub,
     })
     .select("id")
@@ -149,6 +152,33 @@ export async function saveTemplateAlignment(formData: FormData) {
  * Exactly one template per event is the default; setting a new one clears the
  * rest so the print button is never ambiguous.
  */
+/**
+ * Which grades a result form covers.
+ *
+ * An empty list means any grade, so a single general form keeps working. When
+ * several forms cover the same grade the default breaks the tie.
+ */
+export async function setTemplateGrades(input: {
+  templateId: string;
+  eventId: string;
+  grades: string[];
+}): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requirePermission(PERMISSIONS.EVENT_EDIT);
+    const valid = input.grades.filter((g) => GRADE_OPTIONS.some((o) => o.value === g));
+    const { error } = await supabaseAdmin()
+      .from("event_form_templates")
+      .update({ grades: valid })
+      .eq("id", input.templateId)
+      .eq("event_id", input.eventId);
+    if (error) return { error: "Those grades could not be saved." };
+    revalidatePath(`/events/${input.eventId}`);
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Those grades could not be saved." };
+  }
+}
+
 export async function setDefaultTemplate(formData: FormData) {
   await requirePermission(PERMISSIONS.EVENT_EDIT);
   const templateId = String(formData.get("templateId") || "");

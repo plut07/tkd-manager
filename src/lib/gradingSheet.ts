@@ -24,7 +24,7 @@ import { isCompleteBreakingValue } from "./powerBreaking";
 
 export type SheetItem = { key: string; label: string };
 
-export type ComponentKind = "fixed" | "select" | "breaking";
+export type ComponentKind = "fixed" | "select" | "mixed" | "breaking";
 
 export type SheetComponent = {
   key: string;
@@ -34,13 +34,27 @@ export type SheetComponent = {
   /** The most any single row may be given. */
   itemMax: number;
   kind: ComponentKind;
-  /** For "fixed": the columns. For "select": what can be chosen. */
+  /** For "fixed": the columns. For "select" and "mixed": what can be chosen. */
   items: SheetItem[];
-  /** For "select": how many rows to offer at minimum. */
+  /**
+   * For "mixed": columns everybody is marked on, alongside the chosen rows.
+   * Set patterns everyone must perform here and leave the rest to choice.
+   */
+  fixed?: SheetItem[];
+  /** For "select" and "mixed": how many chosen rows to offer at minimum. */
   minRows?: number;
   /** For "breaking": how many techniques, and how many attempts each. */
   methods?: number;
   attempts?: number;
+  /**
+   * For "breaking": which techniques an examiner may choose from.
+   *
+   * Empty means the whole list. Narrowing it here is how a syllabus says
+   * "these ranks break these things", so the marking screen offers a short
+   * relevant list rather than all thirty-nine.
+   */
+  launches?: string[];
+  techniques?: string[];
 };
 
 export const PATTERNS: SheetItem[] = [
@@ -188,8 +202,9 @@ export function itemLabel(component: SheetComponent, key: string): string {
 /** What a component was awarded: its rows added up, capped at its Max. */
 export function componentTotal(component: SheetComponent, marks: SheetMarks): number {
   let sum = 0;
-  if (component.kind === "select") {
+  if (component.kind === "select" || component.kind === "mixed") {
     sum = selectedRows(marks, component).reduce((t, r) => t + (r.item ? r.score ?? 0 : 0), 0);
+    for (const item of component.fixed ?? []) sum += markValue(marks, item.key) ?? 0;
   } else if (component.kind === "breaking") {
     const methods = component.methods ?? 3;
     // Only techniques that were actually chosen count towards the share, so a
@@ -242,8 +257,9 @@ export function marksSayPassed(marks: SheetMarks, components: SheetComponent[] =
 export function marksGiven(marks: SheetMarks, components: SheetComponent[] = DEFAULT_SHEET): number {
   let n = 0;
   for (const c of components) {
-    if (c.kind === "select") {
+    if (c.kind === "select" || c.kind === "mixed") {
       n += selectedRows(marks, c).filter((r) => r.item && r.score != null).length;
+      n += (c.fixed ?? []).filter((item) => markValue(marks, item.key) != null).length;
     } else if (c.kind === "breaking") {
       for (let m = 1; m <= (c.methods ?? 3); m++) {
         if (String(marks?.[`pb_outcome_${m}`] ?? "")) n++;
@@ -259,6 +275,7 @@ export function marksGiven(marks: SheetMarks, components: SheetComponent[] = DEF
 export function marksPossible(components: SheetComponent[] = DEFAULT_SHEET): number {
   return components.reduce((n, c) => {
     if (c.kind === "select") return n + (c.minRows ?? 2);
+    if (c.kind === "mixed") return n + (c.fixed ?? []).length + (c.minRows ?? 2);
     if (c.kind === "breaking") return n + (c.methods ?? 3);
     return n + c.items.length;
   }, 0);
@@ -278,7 +295,15 @@ export const SHEET_TOTAL_MAX = sheetMax(DEFAULT_SHEET); // 100
  */
 export function parseSheet(raw: unknown): SheetComponent[] {
   if (!Array.isArray(raw)) return DEFAULT_SHEET;
-  const kinds: ComponentKind[] = ["fixed", "select", "breaking"];
+  const kinds: ComponentKind[] = ["fixed", "select", "mixed", "breaking"];
+  const itemList = (raw: unknown): SheetItem[] =>
+    Array.isArray(raw)
+      ? raw
+          .filter((i: any) => i && typeof i.key === "string" && i.key.trim())
+          .map((i: any) => ({ key: String(i.key).trim(), label: String(i.label ?? i.key).trim() || String(i.key) }))
+      : [];
+  const stringList = (raw: unknown): string[] | undefined =>
+    Array.isArray(raw) ? raw.filter((v: any) => typeof v === "string" && v.trim()).map((v: string) => v.trim()) : undefined;
   const parsed = raw
     .filter((c: any) => c && typeof c.key === "string" && c.key.trim())
     .map((c: any) => ({
@@ -287,14 +312,13 @@ export function parseSheet(raw: unknown): SheetComponent[] {
       max: Math.max(0, Number(c.max) || 0),
       itemMax: Math.max(1, Number(c.itemMax) || 10),
       kind: (kinds.includes(c.kind) ? c.kind : "fixed") as ComponentKind,
-      items: Array.isArray(c.items)
-        ? c.items
-            .filter((i: any) => i && typeof i.key === "string" && i.key.trim())
-            .map((i: any) => ({ key: String(i.key).trim(), label: String(i.label ?? i.key).trim() || String(i.key) }))
-        : [],
+      items: itemList(c.items),
+      fixed: itemList(c.fixed),
       minRows: c.minRows != null ? Math.max(1, Number(c.minRows) || 1) : undefined,
       methods: c.methods != null ? Math.max(1, Number(c.methods) || 1) : undefined,
       attempts: c.attempts != null ? Math.max(1, Number(c.attempts) || 1) : undefined,
+      launches: stringList(c.launches),
+      techniques: stringList(c.techniques),
     }));
   return parsed.length > 0 ? parsed : DEFAULT_SHEET;
 }

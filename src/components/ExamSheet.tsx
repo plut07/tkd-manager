@@ -135,13 +135,36 @@ export default function ExamSheet({
                   <td className="border border-gray-300 px-2 py-2">
                     {!active ? (
                       <span className="text-xs text-gray-400">Not part of this category&apos;s exam.</span>
-                    ) : component.kind === "select" ? (
-                      <SelectRows
-                        component={component}
-                        rows={selectedRows(draft.marks, component)}
-                        disabled={disabled}
-                        onChange={(rows) => setRows(component, rows)}
-                      />
+                    ) : component.kind === "select" || component.kind === "mixed" ? (
+                      <div className="space-y-2">
+                        {/* Columns everybody sits, then the ones they chose. */}
+                        {(component.fixed ?? []).length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {(component.fixed ?? []).map((item) => (
+                              <label key={item.key} className="text-xs text-gray-600">
+                                <span className="block whitespace-nowrap">{item.label}</span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={component.itemMax}
+                                  step="0.5"
+                                  className="input !w-20 !px-1 !py-1 text-center"
+                                  value={markValue(draft.marks, item.key) ?? ""}
+                                  disabled={disabled}
+                                  placeholder={`0-${component.itemMax}`}
+                                  onChange={(e) => setMark(item.key, e.target.value, component.itemMax)}
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        <SelectRows
+                          component={component}
+                          rows={selectedRows(draft.marks, component)}
+                          disabled={disabled}
+                          onChange={(rows) => setRows(component, rows)}
+                        />
+                      </div>
                     ) : component.kind === "breaking" ? (
                       <BreakingRows
                         component={component}
@@ -411,7 +434,7 @@ function BreakingRows({
                 onChange={(e) => setPart({ launch: e.target.value })}
               >
                 <option value="">Launch…</option>
-                {LAUNCHES.map((l) => (
+                {allowedLaunches.map((l) => (
                   <option key={l} value={l}>{l}</option>
                 ))}
               </select>
@@ -426,7 +449,7 @@ function BreakingRows({
                 onChange={(e) => setPart({ technique: e.target.value })}
               >
                 <option value="">Technique…</option>
-                {techniques.map((t) => (
+                {techniques.filter(allowedTechnique).map((t) => (
                   <option key={t} value={t}>{t}</option>
                 ))}
               </select>

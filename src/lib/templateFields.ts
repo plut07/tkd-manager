@@ -98,7 +98,12 @@ export function examFieldsForSheet(sheet: SheetComponent[]): TemplateFieldDef[] 
       }
       continue;
     }
-    if (component.kind === "select") {
+    if (component.kind === "select" || component.kind === "mixed") {
+      // The columns everybody sits print by name; the chosen ones print as a
+      // name-and-mark pair, since which pattern lands in row 2 varies.
+      for (const item of component.fixed ?? []) {
+        out.push({ key: `exam.item.${item.key}`, label: `${item.label} — mark`, group: `Exam: ${component.label}` });
+      }
       const rows = component.minRows ?? 2;
       for (let i = 1; i <= rows + 2; i++) {
         out.push({ key: `exam.row.${component.key}.${i}.name`, label: `${component.label} ${i} — name`, group: `Exam: ${component.label}` });

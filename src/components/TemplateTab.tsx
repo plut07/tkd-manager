@@ -3,6 +3,7 @@ import { useFormState, useFormStatus } from "react-dom";
 import TemplateDesigner from "./TemplateDesigner";
 import { uploadTemplate, deleteTemplate, setDefaultTemplate, type TemplateState } from "@/app/(app)/events/templateActions";
 import type { TemplateFieldDef } from "@/lib/templateFields";
+import TemplateGrades from "./TemplateGrades";
 
 export type TemplateSummary = {
   id: string;
@@ -13,6 +14,8 @@ export type TemplateSummary = {
   is_default: boolean;
   field_count: number;
   alignment: { offsetX: number; offsetY: number; scale: number };
+  /** For result forms: the grades this one covers. Empty means any. */
+  grades?: string[];
 };
 
 function Submit({ label }: { label: string }) {
@@ -83,7 +86,10 @@ export default function TemplateTab({
                     View the uploaded file
                   </a>
                 </div>
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="relative flex flex-wrap items-center gap-3">
+                  {purpose === "exam" && (
+                    <TemplateGrades templateId={t.id} eventId={eventId} grades={t.grades ?? []} canEdit={canEdit} />
+                  )}
                   {canEdit && editing?.id !== t.id && (
                     <a href={`${linkPrefix}&template=${t.id}`} className="text-sm font-medium text-brand-700 hover:underline">
                       Place fields
