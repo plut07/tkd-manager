@@ -13,8 +13,9 @@ import {
   marksGiven,
   marksPossible,
   marksSayPassed,
-  type SheetComponent,
+  syllabusFor,
   type SheetMarks,
+  type SyllabusSet,
 } from "@/lib/gradingSheet";
 import ExamSheet, { type SheetDraft } from "./ExamSheet";
 import CategoryEventsEditor from "./CategoryEventsEditor";
@@ -39,7 +40,7 @@ export default function ExamGrid({
   categories,
   initialRows,
   canMark,
-  sheet,
+  syllabus,
   examinerName,
   hasResultForm = false,
 }: {
@@ -47,7 +48,7 @@ export default function ExamGrid({
   categories: Category[];
   initialRows: ExamRowDto[];
   canMark: boolean;
-  sheet: SheetComponent[];
+  syllabus: SyllabusSet;
   examinerName: string;
   /** Whether a result form has been set up, so the print links mean something. */
   hasResultForm?: boolean;
@@ -130,13 +131,18 @@ export default function ExamGrid({
 
   const unassigned = useMemo(() => rows.filter((r) => !r.categoryId).length, [rows]);
 
+  /** The syllabus this candidate's rank is marked on. */
+  function sheetFor(row: ExamRowDto) {
+    return syllabusFor(syllabus, row.targetGradeValue);
+  }
+
   function valueFor(row: ExamRowDto): Draft {
     const existing = drafts[row.registrationId];
     if (existing) return existing;
     // `passed` is only carried as an override. If the stored tick already
     // agrees with the stored marks, leave it undefined so it keeps following
     // the mark as the examiner types.
-    const inPlay = componentsFor(row.components, sheet);
+    const inPlay = componentsFor(row.components, sheetFor(row));
     const followsMarks = row.passed === marksSayPassed(row.marks, inPlay);
     return {
       marks: row.marks,
@@ -227,6 +233,23 @@ export default function ExamGrid({
     announce();
   }
 
+  /**
+   * Wipe the marks for everyone on screen.
+   *
+   * Only the drafts are cleared — nothing is written until Save all — so a
+   * mis-click is undone by walking away rather than by re-marking twenty
+   * candidates from memory.
+   */
+  function clearAll() {
+    const clearable = marking.filter((r) => !r.locked);
+    if (clearable.length === 0) return;
+    if (!window.confirm(`Clear the marks for ${clearable.length} candidate${clearable.length === 1 ? "" : "s"}? Nothing is saved until you press Save all.`)) return;
+    for (const row of clearable) {
+      edit(row, { marks: {}, remark: "", passed: undefined });
+    }
+    setBulkStatus("Marks cleared on screen — press Save all to wipe them for good.");
+  }
+
   /** Copy this signature onto every other sheet being marked. */
   function applyExaminerToAll() {
     const source = marking[current];
@@ -289,6 +312,11 @@ export default function ExamGrid({
             <div className="flex items-center gap-3">
               {bulkStatus && <span className="text-xs text-gray-600">{bulkStatus}</span>}
               {canMark && (
+                <button type="button" className="btn-secondary" disabled={bulkBusy} onClick={clearAll}>
+                  Clear all
+                </button>
+              )}
+              {canMark && (
                 <button type="button" className="btn-primary" disabled={bulkBusy} onClick={() => { void saveAll(); }}>
                   {bulkBusy ? "Saving..." : `Save all ${marking.filter((r) => !r.locked).length}`}
                 </button>
@@ -299,7 +327,7 @@ export default function ExamGrid({
           {/* Candidate switcher: who is in front of the examiner right now. */}
           <div className="mt-3 flex flex-wrap gap-1 border-t border-gray-100 pt-3">
             {marking.map((r, i) => {
-              const comps = componentsFor(r.components);
+              const comps = componentsFor(r.components, sheetFor(r));
               const d = drafts[r.registrationId];
               const marksNow = (d?.marks ?? r.marks) as SheetMarks;
               const done = marksGiven(marksNow, comps);
@@ -329,7 +357,7 @@ export default function ExamGrid({
               clubName={row.clubName}
               currentGrade={row.currentGrade}
               categoryName={row.categoryName}
-              sheet={sheet}
+              sheet={sheetFor(row)}
               components={row.components}
               draft={draft}
               locked={row.locked}
@@ -374,6 +402,17 @@ export default function ExamGrid({
                     onClick={() => { void save(row); }}
                   >
                     Save without finishing
+                  </button>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-gray-600 hover:underline"
+                    onClick={() => {
+                      if (window.confirm(`Clear ${row.studentName}'s marks? Nothing is saved until you save the sheet.`)) {
+                        edit(row, { marks: {}, remark: "", passed: undefined });
+                      }
+                    }}
+                  >
+                    Clear this sheet
                   </button>
                 </>
               )}

@@ -298,3 +298,21 @@ export function parseSheet(raw: unknown): SheetComponent[] {
     }));
   return parsed.length > 0 ? parsed : DEFAULT_SHEET;
 }
+
+export type SyllabusSet = {
+  /** Keyed by the grade being taken (G10..G1, D1..D9). */
+  byGrade: Record<string, SheetComponent[]>;
+  /** Used by any grade without one of its own. */
+  fallback: SheetComponent[];
+};
+
+/**
+ * The syllabus for one grade.
+ *
+ * A grade with nothing set of its own uses the event's fallback, and an event
+ * with nothing set uses the built-in sheet — so marking always has something to
+ * work from, whatever has or hasn't been configured.
+ */
+export function syllabusFor(set: SyllabusSet, gradeValue: string | null | undefined): SheetComponent[] {
+  return (gradeValue && set.byGrade[gradeValue]) || set.fallback;
+}

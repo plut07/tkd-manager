@@ -2,8 +2,9 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import BeltBadge from "@/components/BeltBadge";
 import { computeAge } from "@/lib/eligibility";
 import { formatEventDateTime } from "@/lib/eventStatus";
-import { sheetTotal, componentsFor, sheetMax, PASS_MARK, type SheetMarks } from "@/lib/gradingSheet";
-import { publishResults, unpublishResults, loadSyllabus } from "./examActions";
+import { sheetTotal, componentsFor, sheetMax, syllabusFor, PASS_MARK, type SheetMarks } from "@/lib/gradingSheet";
+import { parseGradeText, gradeValue } from "@/lib/belts";
+import { publishResults, unpublishResults, loadSyllabusSet } from "./examActions";
 
 /**
  * The published outcome of a grading.
@@ -24,7 +25,7 @@ export default async function ResultTab({
   canPreview: boolean;
 }) {
   const supabase = supabaseAdmin();
-  const sheet = await loadSyllabus(eventId);
+  const syllabus = await loadSyllabusSet(eventId);
 
   const { data: regs } = await supabase
     .from("event_registrations")
@@ -45,6 +46,12 @@ export default async function ResultTab({
     .filter((x) => x.score)
     .sort((a, b) => (a.reg.students?.full_name ?? "").localeCompare(b.reg.students?.full_name ?? ""));
 
+  // Each candidate is totalled against the syllabus their grade was marked on.
+  function sheetForRow(reg: any) {
+    const g = parseGradeText(String(reg?.event_categories?.name ?? ""));
+    return syllabusFor(syllabus, gradeValue(g.gup, g.dan) || null);
+  }
+
   const published = Boolean(publishedAt);
   const passCount = results.filter((x) => x.score.passed === true).length;
 
@@ -64,7 +71,7 @@ export default async function ResultTab({
           <h2 className="text-lg font-semibold text-gray-900">Results</h2>
           <p className="mt-1 text-sm text-gray-500">
             {published
-              ? `Published ${formatEventDateTime(publishedAt)} · ${passCount} of ${results.length} passed (pass mark ${PASS_MARK}).`
+              ? `Published ${formatEventDateTime(publishedAt)} · ${passCount} of ${results.length} passed (pass mark ${PASS_MARK}). Everyone who passed has been moved up to their new rank.`
               : `Not published yet — this is a preview of what will be shown. ${results.length} candidate${results.length === 1 ? "" : "s"} marked so far.`}
           </p>
         </div>
@@ -93,8 +100,8 @@ export default async function ResultTab({
               <th>Name</th>
               <th className="hidden md:table-cell">Gender</th>
               <th className="hidden md:table-cell">Age</th>
-              <th>Current Belt</th>
-              <th className="hidden lg:table-cell">Approved rank</th>
+              <th>Belt held</th>
+              <th>Promoted to</th>
               <th className="hidden lg:table-cell">Total</th>
               <th>Result</th>
             </tr>
@@ -107,8 +114,16 @@ export default async function ResultTab({
                 <td className="hidden capitalize md:table-cell">{reg.students?.gender ?? "—"}</td>
                 <td className="hidden md:table-cell">{computeAge(reg.students?.birthday ?? null) ?? "—"}</td>
                 <td><BeltBadge gup={reg.students?.gup ?? null} dan={reg.students?.dan ?? null} /></td>
-                <td className="hidden lg:table-cell">{score.approved_rank ?? reg.event_categories?.name ?? "—"}</td>
-                <td className="hidden lg:table-cell">{score.total != null ? Number(score.total) : sheetTotal((score.marks ?? {}) as SheetMarks, componentsFor(reg.event_categories?.exam_events ?? [], sheet))} / {sheetMax(componentsFor(reg.event_categories?.exam_events ?? [], sheet))}</td>
+                <td>
+                  {/* Only a pass moves anybody, so a failed candidate shows
+                      nothing here rather than a rank they didn't get. */}
+                  {score.passed ? (
+                    <span className="font-medium text-gray-900">{score.approved_rank ?? reg.event_categories?.name ?? "—"}</span>
+                  ) : (
+                    <span className="text-gray-400">—</span>
+                  )}
+                </td>
+                <td className="hidden lg:table-cell">{score.total != null ? Number(score.total) : sheetTotal((score.marks ?? {}) as SheetMarks, componentsFor(reg.event_categories?.exam_events ?? [], sheetForRow(reg)))} / {sheetMax(componentsFor(reg.event_categories?.exam_events ?? [], sheetForRow(reg)))}</td>
                 <td>
                   {/* The same two boxes as the sheet, so the result reads the
                       same way here as it did when it was marked. */}

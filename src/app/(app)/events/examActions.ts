@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission, requireSession } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
-import { gradeLabel, nextGrade, gradeRank, parseGradeText, GRADE_OPTIONS } from "@/lib/belts";
+import { gradeLabel, nextGrade, gradeRank, gradeValue, parseGradeText, GRADE_OPTIONS } from "@/lib/belts";
 import { computeAge } from "@/lib/eligibility";
 import { effectiveEventStatus, canOverrideLocks } from "@/lib/eventStatus";
 import {
@@ -15,6 +15,8 @@ import {
   sheetTotal,
   marksSayPassed,
   selectedRows,
+  syllabusFor,
+  type SyllabusSet,
   REMARK_MAX,
   type SheetComponent,
   type SheetMarks,
@@ -42,6 +44,8 @@ export type ExamRowDto = {
   categoryName: string | null;
   /** Which components this candidate's category is marked on. */
   components: string[];
+  /** The grade being taken, as a code — picks this candidate's syllabus. */
+  targetGradeValue: string | null;
   status: string;
   marks: SheetMarks;
   remark: string;
@@ -86,10 +90,36 @@ async function assertCanMark(eventId: string) {
   return { session, supabase, event };
 }
 
-/** An event's own syllabus, or the built-in one when it hasn't set one. */
-export async function loadSyllabus(eventId: string): Promise<SheetComponent[]> {
-  const { data } = await supabaseAdmin().from("exam_syllabus").select("sheet").eq("event_id", eventId).maybeSingle();
-  return data ? parseSheet(data.sheet) : DEFAULT_SHEET;
+/**
+ * Every syllabus an event has: one per grade, plus a fallback.
+ *
+ * A grade with nothing set of its own uses the fallback, and an event with
+ * nothing set at all uses the built-in sheet — so marking always has something
+ * to work from.
+ */
+export async function loadSyllabusSet(eventId: string): Promise<SyllabusSet> {
+  const { data } = await supabaseAdmin().from("exam_syllabus").select("grade_value, sheet").eq("event_id", eventId);
+  const byGrade: Record<string, SheetComponent[]> = {};
+  let fallback = DEFAULT_SHEET;
+  for (const row of data ?? []) {
+    if (row.grade_value) byGrade[row.grade_value] = parseSheet(row.sheet);
+    else fallback = parseSheet(row.sheet);
+  }
+  return { byGrade, fallback };
+}
+
+/** The syllabus a single registration is marked on. */
+export async function loadSyllabusForRegistration(eventId: string, registrationId: string): Promise<SheetComponent[]> {
+  const supabase = supabaseAdmin();
+  const { data: reg } = await supabase
+    .from("event_registrations")
+    .select("event_categories(name)")
+    .eq("id", registrationId)
+    .maybeSingle();
+  const set = await loadSyllabusSet(eventId);
+  const label = String((reg as any)?.event_categories?.name ?? "");
+  const grade = parseGradeText(label);
+  return syllabusFor(set, gradeValue(grade.gup, grade.dan) || null);
 }
 
 /**
@@ -146,6 +176,13 @@ function toDto(reg: any, score: any, examinerName: string | null): ExamRowDto {
     categoryId: reg.category_id ?? null,
     categoryName: reg.event_categories?.name ?? null,
     components,
+    targetGradeValue: (() => {
+      // The category is named for the grade being taken, so the code comes
+      // from its name; falling back to the ladder if it was renamed by hand.
+      const fromCategory = parseGradeText(String(reg.event_categories?.name ?? ""));
+      const code = gradeValue(fromCategory.gup, fromCategory.dan);
+      return code || (target ? target.value : null);
+    })(),
     status: reg.status ?? "pending",
     marks,
     remark: score?.remark ?? "",
@@ -220,7 +257,7 @@ export async function saveExamRow(input: ExamSaveInput): Promise<ExamSaveResult>
 
     // The components in play come from the event's syllabus and the category,
     // not the browser, so a stale page can't quietly widen what counts.
-    const sheet = await loadSyllabus(input.eventId);
+    const sheet = await loadSyllabusForRegistration(input.eventId, input.registrationId);
     const { data: reg } = await supabase
       .from("event_registrations")
       .select("event_categories(name, exam_events)")
@@ -355,7 +392,7 @@ export async function setCategoryEvents(input: {
 }): Promise<{ ok: true } | { error: string }> {
   try {
     const { supabase } = await assertCanMark(input.eventId);
-    const valid = (await loadSyllabus(input.eventId)).map((c) => c.key);
+    const valid = (await loadSyllabusSet(input.eventId)).fallback.map((c) => c.key);
     const chosen = input.eventKeys.filter((k) => valid.includes(k));
     if (chosen.length === 0) return { error: "Pick at least one component for this category." };
 
@@ -387,6 +424,8 @@ export async function loadMySignature(): Promise<{ name: string; signature: stri
 /** Save the event's syllabus: its components, contents and marks. */
 export async function saveSyllabus(input: {
   eventId: string;
+  /** Null saves the fallback used by grades without one of their own. */
+  gradeValue: string | null;
   sheet: unknown;
 }): Promise<{ ok: true } | { error: string }> {
   try {
@@ -395,10 +434,19 @@ export async function saveSyllabus(input: {
     const total = sheet.reduce((n, c) => n + c.max, 0);
     if (total <= 0) return { error: "The syllabus needs at least one component worth some marks." };
 
-    const { error } = await supabase.from("exam_syllabus").upsert(
-      { event_id: input.eventId, sheet, updated_by: session.sub, updated_at: new Date().toISOString() },
-      { onConflict: "event_id" },
-    );
+    const grade = input.gradeValue && GRADE_OPTIONS.some((g) => g.value === input.gradeValue) ? input.gradeValue : null;
+
+    // Upsert can't target a partial unique index, so the row is found first and
+    // updated in place. Null needs `.is`, not `.eq`.
+    const lookup = supabase.from("exam_syllabus").select("id").eq("event_id", input.eventId);
+    const { data: found } = grade === null
+      ? await lookup.is("grade_value", null).maybeSingle()
+      : await lookup.eq("grade_value", grade).maybeSingle();
+
+    const row = { event_id: input.eventId, grade_value: grade, sheet, updated_by: session.sub, updated_at: new Date().toISOString() };
+    const { error } = found
+      ? await supabase.from("exam_syllabus").update(row).eq("id", found.id)
+      : await supabase.from("exam_syllabus").insert(row);
     if (error) return { error: "The syllabus could not be saved. Please try again." };
 
     revalidatePath(`/events/${input.eventId}`);
@@ -409,12 +457,15 @@ export async function saveSyllabus(input: {
   }
 }
 
-/** Put the syllabus back to the built-in sheet. */
+/** Drop one grade's syllabus so it goes back to the fallback. */
 export async function resetSyllabus(formData: FormData) {
   const eventId = String(formData.get("eventId") || "");
+  const grade = String(formData.get("gradeValue") || "");
   if (!eventId) return;
   const { supabase } = await assertCanMark(eventId);
-  await supabase.from("exam_syllabus").delete().eq("event_id", eventId);
+  let query = supabase.from("exam_syllabus").delete().eq("event_id", eventId);
+  query = grade ? query.eq("grade_value", grade) : query.is("grade_value", null);
+  await query;
   revalidatePath(`/events/${eventId}`);
 }
 

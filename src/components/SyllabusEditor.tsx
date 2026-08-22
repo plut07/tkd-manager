@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { DEFAULT_SHEET, sheetMax, type ComponentKind, type SheetComponent } from "@/lib/gradingSheet";
-import { saveSyllabus } from "@/app/(app)/events/examActions";
+import { DEFAULT_SHEET, sheetMax, syllabusFor, type ComponentKind, type SheetComponent, type SyllabusSet } from "@/lib/gradingSheet";
+import { GRADE_OPTIONS } from "@/lib/belts";
+import { saveSyllabus, resetSyllabus } from "@/app/(app)/events/examActions";
 
 const KINDS: { value: ComponentKind; label: string; note: string }[] = [
   { value: "fixed", label: "Fixed columns", note: "Every content column is always marked." },
@@ -28,20 +29,30 @@ function slug(s: string): string {
  */
 export default function SyllabusEditor({
   eventId,
-  initialSheet,
+  syllabus,
   canEdit,
 }: {
   eventId: string;
-  initialSheet: SheetComponent[];
+  syllabus: SyllabusSet;
   canEdit: boolean;
 }) {
   const router = useRouter();
-  const [sheet, setSheet] = useState<SheetComponent[]>(initialSheet);
+  // "" is the fallback every grade uses unless it has a sheet of its own.
+  const [grade, setGrade] = useState<string>("");
+  const [sheet, setSheet] = useState<SheetComponent[]>(syllabus.fallback);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
   const total = sheetMax(sheet);
+  const ownSheet = Boolean(grade && syllabus.byGrade[grade]);
+
+  function switchGrade(next: string) {
+    setGrade(next);
+    setSheet(next ? syllabusFor(syllabus, next) : syllabus.fallback);
+    setStatus("");
+    setError("");
+  }
 
   function update(index: number, patch: Partial<SheetComponent>) {
     setSheet((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)));
@@ -77,7 +88,7 @@ export default function SyllabusEditor({
     setBusy(true);
     setError("");
     setStatus("");
-    const result = await saveSyllabus({ eventId, sheet });
+    const result = await saveSyllabus({ eventId, gradeValue: grade || null, sheet });
     setBusy(false);
     if ("error" in result) {
       setError(result.error);
@@ -94,9 +105,35 @@ export default function SyllabusEditor({
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Exam syllabus</h2>
             <p className="mt-1 text-sm text-gray-500">
-              What this event is marked on. Change a component, its contents or its marks, then save to apply it to the
-              Main Page.
+              What each grade is marked on. Set one sheet per rank — a white belt and a 3rd Dan need different things —
+              and any rank you leave alone uses the fallback below.
             </p>
+
+            <div className="mt-3 flex flex-wrap items-end gap-2">
+              <div>
+                <label className="label text-xs" htmlFor="syllabus-grade">Syllabus for</label>
+                <select
+                  id="syllabus-grade"
+                  className="input !w-64"
+                  value={grade}
+                  onChange={(e) => switchGrade(e.target.value)}
+                >
+                  <option value="">All grades (fallback)</option>
+                  {GRADE_OPTIONS.slice(1).map((g) => (
+                    <option key={g.value} value={g.value}>
+                      Grading to {g.label}{syllabus.byGrade[g.value] ? " ✓" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className="pb-2 text-xs text-gray-400">
+                {grade
+                  ? ownSheet
+                    ? "This rank has its own sheet."
+                    : "This rank uses the fallback. Save to give it one of its own."
+                  : "Used by every rank without a sheet of its own. A tick marks the ranks that have one."}
+              </p>
+            </div>
           </div>
           <div className="text-right">
             <p className="text-2xl font-bold text-gray-900">{total}</p>
@@ -119,6 +156,15 @@ export default function SyllabusEditor({
             >
               Reset to the built-in sheet
             </button>
+            {grade && ownSheet && (
+              <form action={resetSyllabus}>
+                <input type="hidden" name="eventId" value={eventId} />
+                <input type="hidden" name="gradeValue" value={grade} />
+                <button type="submit" className="text-sm font-medium text-red-600 hover:underline">
+                  Remove this rank&apos;s sheet
+                </button>
+              </form>
+            )}
             {status && <span className="text-sm text-green-700">{status}</span>}
             {error && <span className="text-sm text-red-600">{error}</span>}
           </div>

@@ -196,7 +196,7 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
                   <th>No.</th>
                   <th>Name</th>
                   <th className="hidden sm:table-cell">Club</th>
-                  <th>Graded for</th>
+                  <th>Promoted to</th>
                   <th>Result</th>
                 </tr>
               </thead>
@@ -206,7 +206,13 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
                     <td>{reg.competition_number ?? "—"}</td>
                     <td className="font-medium text-gray-900">{reg.students?.full_name}</td>
                     <td className="hidden sm:table-cell">{reg.clubs?.name ?? "—"}</td>
-                    <td>{score.approved_rank ?? reg.event_categories?.name ?? "—"}</td>
+                    <td>
+                      {score.passed ? (
+                        <span className="font-medium text-gray-900">{score.approved_rank ?? reg.event_categories?.name ?? "—"}</span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
                     <td>
                       <span className={`badge ${score.passed ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                         {score.passed ? "PASSED" : "FAILED"}

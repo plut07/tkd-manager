@@ -5,7 +5,7 @@ import { requireSession } from "@/lib/authz";
 import SyllabusEditor from "@/components/SyllabusEditor";
 import TemplateTab from "@/components/TemplateTab";
 import { catalogueFor } from "@/lib/templateFields";
-import { loadExamRows, loadSyllabus, syncAllGradingCategories, addAllGradingCategories } from "./examActions";
+import { loadExamRows, loadSyllabusSet, syncAllGradingCategories, addAllGradingCategories } from "./examActions";
 
 /**
  * Marking sheet for a grading event.
@@ -30,7 +30,7 @@ export default async function ExamTab({
   templateId?: string;
 }) {
   const session = await requireSession();
-  const sheet = await loadSyllabus(eventId);
+  const syllabus = await loadSyllabusSet(eventId);
   const supabase = supabaseAdmin();
   const { data: categories } = await supabase
     .from("event_categories")
@@ -56,7 +56,15 @@ export default async function ExamTab({
 
   // The result form can place anything on this event's syllabus, so its field
   // list is built from the same sheet the marking screen uses.
-  const catalogue = catalogueFor(sheet);
+  // The result form can place anything from any of this event's syllabuses, so
+  // a form drawn once still works when different grades sit different sheets.
+  const catalogue = catalogueFor(
+    Array.from(
+      new Map(
+        [syllabus.fallback, ...Object.values(syllabus.byGrade)].flat().map((c) => [c.key, c]),
+      ).values(),
+    ),
+  );
 
   const { data: templateRows } = sub === "form"
     ? await supabase
@@ -100,7 +108,7 @@ export default async function ExamTab({
       </div>
 
       {sub === "syllabus" ? (
-        <SyllabusEditor eventId={eventId} initialSheet={sheet} canEdit={canMark} />
+        <SyllabusEditor eventId={eventId} syllabus={syllabus} canEdit={canMark} />
       ) : sub === "form" ? (
         <div className="space-y-4">
           <TemplateTab
@@ -161,7 +169,7 @@ export default async function ExamTab({
         categories={(categories ?? []).map((c: any) => ({ id: c.id, name: c.name, examEvents: (c.exam_events as string[] | null) ?? [] }))}
         initialRows={rows}
         canMark={canMark}
-        sheet={sheet}
+        syllabus={syllabus}
         examinerName={session.fullName || session.username}
         hasResultForm={Boolean(resultForm)}
       />

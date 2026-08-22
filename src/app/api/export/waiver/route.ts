@@ -59,11 +59,13 @@ export async function GET(request: NextRequest) {
     dan: r.students?.dan ?? null,
   }));
 
-  // An uploaded template wins over the built-in layout.
+  // The *registration* template specifically: an event can also have a result
+  // form marked default, and matching both would make this query ambiguous.
   const { data: template } = await supabase
     .from("event_form_templates")
-    .select("id, storage_path")
+    .select("id, storage_path, offset_x, offset_y, scale")
     .eq("event_id", eventId as string)
+    .eq("purpose", "registration")
     .eq("is_default", true)
     .maybeSingle();
 
@@ -108,7 +110,11 @@ export async function GET(request: NextRequest) {
         },
         event: eventInfo,
       }));
-      const filled = await fillTemplate(bytes, (fields ?? []) as any, rowsForTemplate);
+      const filled = await fillTemplate(bytes, (fields ?? []) as any, rowsForTemplate, {
+        offsetX: Number(template.offset_x) || 0,
+        offsetY: Number(template.offset_y) || 0,
+        scale: Number(template.scale) || 1,
+      });
       return new NextResponse(new Uint8Array(filled), {
         headers: { "Content-Type": "application/pdf", "Content-Disposition": `${disposition}; filename="form.pdf"`, "Cache-Control": "no-store" },
       });
