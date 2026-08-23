@@ -13,6 +13,15 @@ type Student = StudentLite & {
 
 type Category = CategoryCriteria & { id: string; name: string };
 
+/**
+ * Entering one person into one event.
+ *
+ * The student is chosen first and the categories follow, because that is the
+ * order a coach thinks in — "where can Dylan go?", not "who fits this box?".
+ * Only categories that student actually qualifies for are listed; the rest are
+ * left out rather than shown greyed, so nobody spends the morning working out
+ * why an entry keeps being refused.
+ */
 export default function RegisterStudentForm({
   action,
   eventId,
@@ -32,81 +41,90 @@ export default function RegisterStudentForm({
   allowedCountries?: string[];
   isGrading?: boolean;
 }) {
-  const [categoryId, setCategoryId] = useState("");
-  const selectedCategory = categories.find((c) => c.id === categoryId) ?? null;
+  const [studentId, setStudentId] = useState("");
+  const selected = students.find((s) => s.id === studentId) ?? null;
 
-  const decorated = useMemo(() => {
-    return students.map((s) => {
-      const reasons: string[] = [];
+  /** Why this student can't enter the event at all, if they can't. */
+  const blocked = useMemo(() => {
+    if (!selected) return [] as string[];
+    const reasons: string[] = [];
+    const country = checkCountryEligibility(selected.clubs?.country, selected.nationality, allowedCountries);
+    if (!country.eligible && country.reason) reasons.push(country.reason);
+    if (isGrading && isTopGrade(selected.gup, selected.dan)) reasons.push("already at 9th Dan, the highest grade");
+    return reasons;
+  }, [selected, allowedCountries, isGrading]);
 
-      const countryResult = checkCountryEligibility(s.clubs?.country, s.nationality, allowedCountries);
-      if (!countryResult.eligible && countryResult.reason) reasons.push(countryResult.reason);
+  const target = selected && isGrading ? nextGrade(selected.gup, selected.dan) : null;
 
-      if (useCategories && selectedCategory) {
-        const catResult = checkEligibility(s, selectedCategory);
-        if (!catResult.eligible) reasons.push(...catResult.reasons);
-      }
-
-      // A grading tests for the grade above the one held, so there is nothing
-      // for a 9th Dan to be examined for.
-      const target = isGrading ? nextGrade(s.gup, s.dan) : null;
-      if (isGrading && isTopGrade(s.gup, s.dan)) reasons.push("already at 9th Dan, the highest grade");
-
-      return { student: s, eligible: reasons.length === 0, reasons, target };
-    });
-  }, [students, selectedCategory, useCategories, allowedCountries, isGrading]);
-
-  const ineligibleCount = decorated.filter((d) => !d.eligible).length;
+  /** The categories this student qualifies for, and the ones they don't. */
+  const { eligible, ineligible } = useMemo(() => {
+    if (!selected || !useCategories) return { eligible: [] as Category[], ineligible: [] as Category[] };
+    const yes: Category[] = [];
+    const no: Category[] = [];
+    for (const c of categories) {
+      if (checkEligibility(selected, c).eligible) yes.push(c);
+      else no.push(c);
+    }
+    return { eligible: yes, ineligible: no };
+  }, [selected, categories, useCategories]);
 
   return (
-    <form action={action} className="mt-4 flex flex-wrap items-start gap-2 border-t border-gray-100 pt-4">
+    <form action={action} className="mt-4 space-y-3 border-t border-gray-100 pt-4">
       <input type="hidden" name="eventId" value={eventId} />
 
-      {useCategories && (
+      <div className="flex flex-wrap items-start gap-2">
         <select
-          name="categoryId"
+          name="studentId"
           className="input max-w-xs"
-          value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
+          required
+          value={studentId}
+          onChange={(e) => setStudentId(e.target.value)}
         >
-          <option value="">No category yet</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
+          <option value="" disabled>Select a student</option>
+          {students.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.full_name}
+              {showClub ? ` (${s.clubs?.name ?? ""})` : ""}
             </option>
           ))}
         </select>
-      )}
 
-      <select name="studentId" className="input max-w-xs" required defaultValue="">
-        <option value="" disabled>
-          Select a student
-        </option>
-        {decorated.map(({ student: s, eligible, reasons, target }) => (
-          <option key={s.id} value={s.id} disabled={!eligible}>
-            {s.full_name}
-            {showClub ? ` (${s.clubs?.name ?? ""})` : ""}
-            {eligible && target ? ` — grading to ${target.label}` : ""}
-            {!eligible ? ` — not eligible: ${reasons.join(", ")}` : ""}
-          </option>
-        ))}
-      </select>
+        {useCategories && (
+          <select name="categoryId" className="input max-w-xs" disabled={!selected || blocked.length > 0} defaultValue="">
+            <option value="">
+              {!selected
+                ? "Choose a student first"
+                : eligible.length === 0
+                  ? "No category fits this student"
+                  : "No category yet"}
+            </option>
+            {eligible.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
+          </select>
+        )}
 
-      <button type="submit" className="btn-primary">
-        Register
-      </button>
+        <button type="submit" className="btn-primary" disabled={!selected || blocked.length > 0}>Register</button>
+      </div>
 
-      {isGrading && (
-        <p className="w-full text-xs text-gray-500">
-          Grading categories are worked out automatically — each candidate is examined for the grade directly above the
-          one they currently hold.
+      {blocked.length > 0 && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {selected?.full_name} can&apos;t be entered: {blocked.join("; ")}.
         </p>
       )}
 
-      {ineligibleCount > 0 && (
-        <p className="w-full text-xs text-gray-500">
-          {ineligibleCount} of {decorated.length} student{decorated.length === 1 ? "" : "s"} aren&apos;t eligible
-          {useCategories && selectedCategory ? " for this category" : ""} and can&apos;t be selected.
+      {isGrading && selected && blocked.length === 0 && target && (
+        <p className="text-xs text-gray-500">
+          {selected.full_name} will be examined for <strong>{target.label}</strong> — a grading always tests for the
+          grade directly above the one held, so there is nothing to choose.
+        </p>
+      )}
+
+      {useCategories && selected && blocked.length === 0 && (
+        <p className="text-xs text-gray-500">
+          {eligible.length === 0
+            ? `None of the ${categories.length} categories match ${selected.full_name}'s age, grade, gender or weight.`
+            : `${eligible.length} of ${categories.length} categories fit ${selected.full_name}${
+                ineligible.length > 0 ? `; the other ${ineligible.length} don't and aren't shown` : ""
+              }.`}
         </p>
       )}
     </form>

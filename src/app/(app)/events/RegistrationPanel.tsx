@@ -1,34 +1,25 @@
-import { requirePermission, hasPermission, clubScope } from "@/lib/authz";
+import { requirePermission, hasPermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
-import RegisterStudentForm from "./RegisterStudentForm";
 import ClubExportButton from "@/components/ClubExportButton";
-import { type CategoryCriteria, computeAge } from "@/lib/eligibility";
-import { registerStudent, unregisterStudent, approveRegistration } from "./actions";
+import { computeAge } from "@/lib/eligibility";
+import { unregisterStudent } from "./actions";
 import { isRegistrationOpen, canOverrideLocks } from "@/lib/eventStatus";
 import PendingCandidates from "./PendingCandidates";
 
 /**
- * Entering people and approving them.
+ * Approving people, and the list of everyone who is in.
  *
- * Lives here rather than on its own page so it can sit as a tab beside the
- * registered-students list; /events/[id]/register renders the same component,
- * because links to it are already out in the wild.
+ * Adding an entry used to sit at the top of this panel. It moved to the
+ * Registration tab, where a coach starts, so this one is now purely about the
+ * decision: who is waiting, and who has been let in.
  */
 export default async function RegistrationPanel({ eventId }: { eventId: string }) {
   const session = await requirePermission(PERMISSIONS.EVENT_VIEW);
   const supabase = supabaseAdmin();
-  const scope = clubScope(session);
 
   const { data: event } = await supabase.from("events").select("*").eq("id", eventId).maybeSingle();
   if (!event) return <div className="card p-6 text-sm text-gray-500">Event not found.</div>;
-
-  const { data: categories } = await supabase
-    .from("event_categories")
-    .select("*")
-    .eq("event_id", event.id)
-    .order("sort_order")
-    .order("name");
 
   const { data: registrations } = await supabase
     .from("event_registrations")
@@ -37,17 +28,6 @@ export default async function RegistrationPanel({ eventId }: { eventId: string }
     )
     .eq("event_id", event.id)
     .order("registered_at");
-
-  const studentSelect =
-    "id, full_name, club_id, clubs(name, country), gup, dan, gender, birthday, weight_kg, nationality";
-  let studentOptions: any[] = [];
-  if (scope) {
-    const { data } = await supabase.from("students").select(studentSelect).eq("club_id", scope).eq("active", true).order("full_name");
-    studentOptions = (data as any) ?? [];
-  } else {
-    const { data } = await supabase.from("students").select(studentSelect).eq("active", true).order("full_name");
-    studentOptions = (data as any) ?? [];
-  }
 
   const canEditRaw = hasPermission(session, PERMISSIONS.EVENT_EDIT);
   // Entries close at the registration deadline, not when the event runs.
@@ -73,31 +53,6 @@ export default async function RegistrationPanel({ eventId }: { eventId: string }
 
   return (
     <div className="space-y-6">
-      <div className="card p-6">
-        <h2 className="text-lg font-semibold text-gray-900">Add an entry</h2>
-        {locked ? (
-          <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Registration has closed for this event. Entries are shown for reference and can no longer be changed.
-          </p>
-        ) : studentOptions.length > 0 ? (
-          <RegisterStudentForm
-            action={registerStudent}
-            eventId={event.id}
-            students={studentOptions}
-            categories={(categories ?? []) as (CategoryCriteria & { id: string; name: string })[]}
-            showClub={!scope}
-            useCategories={event.event_type === "competition"}
-            allowedCountries={event.allowed_countries ?? []}
-            isGrading={event.event_type === "grading"}
-          />
-        ) : (
-          <p className="mt-4 text-sm text-gray-500">No active students available to register.</p>
-        )}
-        <p className="mt-2 text-xs text-gray-400">
-          New entries wait for approval below. Approved competitors are given a competition number automatically.
-        </p>
-      </div>
-
       <PendingCandidates eventId={event.id} isSuperAdmin={session.role === "super_admin"} canEdit={canEdit} />
 
       <div className="card p-6">

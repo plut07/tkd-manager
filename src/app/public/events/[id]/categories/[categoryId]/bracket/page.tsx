@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { ROUND_ORDER, ROUND_LABELS } from "@/lib/bracket";
+import { ROUND_ORDER, ROUND_LABELS, placings } from "@/lib/bracket";
 
 // These pages read live data but never touch cookies, so Next would otherwise
 // prerender them at build time and keep serving that snapshot — edits and
@@ -9,7 +9,7 @@ import { ROUND_ORDER, ROUND_LABELS } from "@/lib/bracket";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type RegInfo = { name: string; club: string | null };
+type RegInfo = { name: string; club: string | null; number: string | null };
 
 export default async function PublicBracketPage({ params }: { params: { id: string; categoryId: string } }) {
   const supabase = supabaseAdmin();
@@ -40,20 +40,21 @@ export default async function PublicBracketPage({ params }: { params: { id: stri
   if (regIds.size > 0) {
     const { data: regs } = await supabase
       .from("event_registrations")
-      .select("id, students(full_name), clubs(name)")
+      .select("id, competition_number, students(full_name), clubs(name)")
       .in("id", Array.from(regIds));
     (regs ?? []).forEach((r: any) => {
       regMap.set(r.id, {
         name: r.students?.full_name ?? "",
         club: r.clubs?.name ?? null,
+        number: r.competition_number != null ? String(r.competition_number) : null,
       });
     });
   }
   const nameOf = (id: string | null) => (id ? regMap.get(id) ?? null : null);
 
   const mainRounds = ROUND_ORDER.filter((r) => (matches ?? []).some((m) => m.round === r));
-  const thirdPlaceMatch = (matches ?? []).find((m) => m.round === "third_place") ?? null;
   const finalMatch = (matches ?? []).find((m) => m.round === "final") ?? null;
+  const podium = placings((matches ?? []) as any);
 
   return (
     <div className="space-y-6">
@@ -94,14 +95,36 @@ export default async function PublicBracketPage({ params }: { params: { id: stri
           )}
         </div>
 
-        {thirdPlaceMatch && (
-          <div className="mt-8 border-t border-gray-100 pt-6">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Third Place Match</h3>
-            <div className="mt-3 max-w-xs">
-              <MatchBox match={thirdPlaceMatch} nameOf={nameOf} />
-            </div>
+        {/* Both beaten semi-finalists take a bronze, so the podium is read off
+            the draw rather than settled by an extra bout. */}
+        <div className="mt-6 flex justify-end border-t border-gray-100 pt-4">
+          <div className="w-full max-w-xs rounded-md border border-gray-200 bg-gray-50 p-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Placings</h3>
+            <ul className="mt-2 space-y-1">
+              {[
+                { place: "1st", id: podium.first, style: "bg-yellow-100 text-yellow-900" },
+                { place: "2nd", id: podium.second, style: "bg-gray-200 text-gray-800" },
+                { place: "3rd", id: podium.thirds[0] ?? null, style: "bg-amber-100 text-amber-900" },
+                { place: "3rd", id: podium.thirds[1] ?? null, style: "bg-amber-100 text-amber-900" },
+              ].map((row, i) => {
+                const who = nameOf(row.id);
+                return (
+                  <li key={`${row.place}-${i}`} className="flex items-center gap-2 text-sm">
+                    <span className={`w-10 rounded px-1.5 py-0.5 text-center text-xs font-bold ${row.style}`}>{row.place}</span>
+                    {who ? (
+                      <span className="truncate font-medium text-gray-900">
+                        {who.name}
+                        {who.club && <span className="ml-1 text-xs font-normal text-gray-400">({who.club})</span>}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -112,17 +135,23 @@ function MatchBox({ match, nameOf }: { match: any; nameOf: (id: string | null) =
   const c2 = nameOf(match.competitor2_registration_id);
   const hasResult = match.winner_registration_id != null;
 
+  // A bye is a blank line: somebody walked through, and naming an opponent
+  // they never met reads as a real bout. Two blanks is a future match, not a
+  // bye, so that still says TBD.
+  const label = (info: RegInfo | null, present: boolean, opponentPresent: boolean) =>
+    info ? info.name : present ? "—" : opponentPresent ? "" : "TBD";
+
   return (
     <div className="rounded-md border border-gray-200 bg-white p-3 text-sm shadow-sm">
       <MatchRow
-        label={c1?.name ?? (match.competitor1_registration_id ? "—" : match.competitor2_registration_id ? "(bye)" : "TBD")}
+        label={label(c1, !!match.competitor1_registration_id, !!match.competitor2_registration_id)}
         sub={c1?.club}
         won={hasResult && match.winner_registration_id === match.competitor1_registration_id}
         points={match.competitor1_points}
       />
       <div className="my-1 border-t border-dashed border-gray-200" />
       <MatchRow
-        label={c2?.name ?? (match.competitor2_registration_id ? "—" : match.competitor1_registration_id ? "(bye)" : "TBD")}
+        label={label(c2, !!match.competitor2_registration_id, !!match.competitor1_registration_id)}
         sub={c2?.club}
         won={hasResult && match.winner_registration_id === match.competitor2_registration_id}
         points={match.competitor2_points}
@@ -142,13 +171,15 @@ function MatchRow({
   won?: boolean;
   points?: number | null;
 }) {
+  if (!label) return <div className="h-6" />;
+
   return (
-    <div className={`flex items-center justify-between ${won ? "font-semibold text-brand-700" : "text-gray-800"}`}>
-      <span>
+    <div className={`flex items-center justify-between rounded px-1.5 py-0.5 ${won ? "bg-green-100 font-bold text-green-900" : "text-gray-800"}`}>
+      <span className="truncate">
         {label}
         {sub && <span className="ml-1 text-xs font-normal text-gray-400">({sub})</span>}
       </span>
-      {points != null && <span className="text-xs text-gray-500">{points}</span>}
+      {points != null && <span className={`ml-2 text-xs ${won ? "font-bold text-green-900" : "text-gray-500"}`}>{points}</span>}
     </div>
   );
 }

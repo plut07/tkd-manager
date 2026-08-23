@@ -73,14 +73,34 @@ export function buildBracket(eventId: string, categoryId: string, competitors: B
       roundMatches[r].push(row);
     }
   }
-  const sfIndex = rounds.indexOf("semifinal");
-  if (sfIndex >= 0 && roundMatches[sfIndex].length === 2) {
-    const [sf1, sf2] = roundMatches[sfIndex];
-    const thirdPlace = blank("third_place", 0);
-    thirdPlace.is_third_place = true;
-    sf1.loser_next_match_id = thirdPlace.id; sf1.loser_next_slot = 1;
-    sf2.loser_next_match_id = thirdPlace.id; sf2.loser_next_slot = 2;
-    roundMatches.push([thirdPlace]);
-  }
+  // No third-place match: both semi-final losers take a bronze, which is how
+  // Taekwon-Do is medalled, so there is nothing left for them to fight over.
   return { matches: roundMatches.flat() };
+}
+
+/**
+ * Who finished where.
+ *
+ * Read off the draw rather than stored: gold and silver are the two in the
+ * final, and both beaten semi-finalists take a bronze. Nothing is awarded
+ * until the match that decides it has a winner, so a half-finished category
+ * shows a half-finished podium instead of guessing.
+ */
+export type PlacedMatch = { round: string; competitor1_registration_id: string | null; competitor2_registration_id: string | null; winner_registration_id: string | null };
+export type Placings = { first: string | null; second: string | null; thirds: string[] };
+
+export function placings(matches: PlacedMatch[]): Placings {
+  const other = (m: PlacedMatch, id: string) =>
+    m.competitor1_registration_id === id ? m.competitor2_registration_id : m.competitor1_registration_id;
+
+  const final = matches.find((m) => m.round === "final") ?? null;
+  const first = final?.winner_registration_id ?? null;
+  const second = final && first ? other(final, first) : null;
+
+  const thirds = matches
+    .filter((m) => m.round === "semifinal" && m.winner_registration_id)
+    .map((m) => other(m, m.winner_registration_id as string))
+    .filter((id): id is string => Boolean(id));
+
+  return { first, second, thirds };
 }

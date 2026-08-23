@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { EVENT_TYPE_LABELS } from "@/lib/eventCategories";
 import RegistrationPanel from "../../RegistrationPanel";
+import AddEntryCard from "../../AddEntryCard";
 
 /**
  * Entering and approving people, on its own page.
@@ -28,6 +29,9 @@ export default async function EventRegisterPage({ params }: { params: { id: stri
           <Link href={`/events/${event.id}?tab=registration`} className="btn-secondary">Back to event</Link>
         </div>
       </div>
+      {/* This is what the Register button opens, so the entry form comes
+          first and the approval lists follow it. */}
+      <AddEntryCard eventId={event.id} />
       <RegistrationPanel eventId={event.id} />
     </div>
   );

@@ -7,11 +7,13 @@ import DeleteButton from "@/components/DeleteButton";
 import TemplateTab from "@/components/TemplateTab";
 import RegisteredStudentsPanel, { type RegistrationFilters } from "../RegisteredStudentsPanel";
 import RegistrationPanel from "../RegistrationPanel";
+import AddEntryCard from "../AddEntryCard";
 import EventPhotos from "@/components/EventPhotos";
 import { PHOTO_BUCKET } from "@/lib/eventPhotos";
 
 import CategoryForm from "../CategoryForm";
 import BracketView from "../BracketView";
+import ScoreboardTab from "../ScoreboardTab";
 import ExamTab from "../ExamTab";
 import ResultTab from "../ResultTab";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
@@ -20,7 +22,7 @@ import { effectiveEventStatus, canOverrideLocks, STATUS_STYLES, STATUS_LABELS, f
 import { deleteEvent, addCategory, deleteCategory, addDocument, deleteDocument } from "../actions";
 import CountryFlag from "@/components/CountryFlag";
 function formatDate(d: string | null) { if (!d) return "TBA"; return new Date(d).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }); }
-export default async function EventDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { tab?: string; sub?: string; template?: string; category?: string; club?: string; grade?: string; gender?: string; ageGroup?: string; status?: string } }) {
+export default async function EventDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { tab?: string; sub?: string; template?: string; category?: string; club?: string; grade?: string; gender?: string; ageGroup?: string; status?: string; view?: string; ring?: string; catPage?: string } }) {
   const session = await requirePermission(PERMISSIONS.EVENT_VIEW);
   const supabase = supabaseAdmin();
   const { data: event } = await supabase.from("events").select("*, clubs:organizer_club_id(name)").eq("id", params.id).maybeSingle();
@@ -43,6 +45,14 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const subOptions = ["students", "approval", "template"];
   const requestedSub = legacy[rawTab] ?? searchParams.sub ?? "students";
   const sub = subOptions.includes(requestedSub) ? requestedSub : "students";
+
+  // The draw and the scoreboard share one tab; "view" says which half is open.
+  const view = searchParams.view === "scoreboard" ? "scoreboard" : "draw";
+
+  // Categories are listed a page at a time so a long list never buries the
+  // form that creates them.
+  const CATEGORIES_PER_PAGE = 25;
+  const catPage = Math.max(1, Number(searchParams.catPage) || 1);
 
   const filters: RegistrationFilters = {
     club: searchParams.club ?? "",
@@ -164,13 +174,10 @@ export default async function EventDetailPage({ params, searchParams }: { params
       <div className="flex gap-2 overflow-x-auto border-b border-gray-200">
         <Link href={`/events/${event.id}`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "info" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Info pack</Link>
         {isCompetition && (<Link href={`/events/${event.id}?tab=categories`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "categories" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Categories & divisions</Link>)}
-        {isCompetition && (<Link href={`/events/${event.id}?tab=draws`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "draws" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Draws</Link>)}
+        {isCompetition && (<Link href={`/events/${event.id}?tab=draws`} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "draws" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Draw &amp; Scoreboard</Link>)}
         <Link href={registrationHref({ sub: "students" })} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "registration" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Registration Page</Link>
         {isGrading && (<Link href={`/events/${event.id}?tab=exam`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "exam" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Exam</Link>)}
         {isGrading && (<Link href={`/events/${event.id}?tab=results`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "results" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Results</Link>)}
-        {/* The scoreboard is its own page, not a tab: it gets opened on a
-            different screen in the hall and lives there for the day. */}
-        {isCompetition && canEdit && (<Link href={`/events/${event.id}/scoreboard`} className="-mb-px whitespace-nowrap border-b-2 border-transparent px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">Scoreboard</Link>)}
       </div>
       {tab === "info" ? (
         <>
@@ -207,32 +214,71 @@ export default async function EventDetailPage({ params, searchParams }: { params
           <EventPhotos eventId={event.id} photos={photos} canEdit={canEditNow} />
         </>
       ) : tab === "categories" ? (
-        <div className="card p-6">
-          <h2 className="text-lg font-semibold text-gray-900">Categories & divisions</h2>
-          <div className="mt-4 overflow-x-auto">
-            <table className="table-base">
-              <thead><tr><th>Name</th><th>Type</th><th>Eligibility</th><th></th>{canEditNow && <th></th>}</tr></thead>
-              <tbody>
-                {(categories ?? []).map((c) => (
-                  <tr key={c.id}>
-                    <td className="font-medium text-gray-900">{c.name}</td>
-                    <td>{CATEGORY_TYPES[c.type as CategoryTypeCode]?.label ?? c.type ?? "—"}</td>
-                    <td className="text-gray-600">{describeCriteria(c as CategoryCriteria)}</td>
-                    <td className="text-right"><Link href={`/events/${event.id}/categories/${c.id}/bracket`} className="text-sm font-medium text-brand-700 hover:underline">Bracket</Link></td>
-                    {canEditNow && (<td className="text-right"><DeleteButton action={deleteCategory} fieldName="categoryId" fieldValue={c.id} confirmLabel={`Remove category "${c.name}"?`} label="Remove" extraFields={{ eventId: event.id }} /></td>)}
-                  </tr>
-                ))}
-                {(categories ?? []).length === 0 && (<tr><td colSpan={5} className="py-4 text-center text-gray-400">No categories added yet.</td></tr>)}
-              </tbody>
-            </table>
-          </div>
-          {canEditNow && <CategoryForm action={addCategory} eventId={event.id} />}
-        </div>
+        (() => {
+          // Creating comes first and stays put; the list of what already exists
+          // sits underneath and pages, so adding the fortieth category doesn't
+          // mean scrolling past thirty-nine to reach the form.
+          const all = categories ?? [];
+          const pageCount = Math.max(1, Math.ceil(all.length / CATEGORIES_PER_PAGE));
+          const page = Math.min(catPage, pageCount);
+          const shown = all.slice((page - 1) * CATEGORIES_PER_PAGE, page * CATEGORIES_PER_PAGE);
+          const pageHref = (n: number) => `/events/${event.id}?tab=categories&catPage=${n}`;
+
+          return (
+            <div className="space-y-4">
+              {canEditNow && (
+                <div className="card p-6">
+                  <h2 className="text-lg font-semibold text-gray-900">Create a category</h2>
+                  <CategoryForm action={addCategory} eventId={event.id} />
+                </div>
+              )}
+
+              <div className="card p-6">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h2 className="text-lg font-semibold text-gray-900">Created categories ({all.length})</h2>
+                  {pageCount > 1 && (
+                    <span className="text-sm text-gray-500">
+                      Showing {(page - 1) * CATEGORIES_PER_PAGE + 1}–{(page - 1) * CATEGORIES_PER_PAGE + shown.length} of {all.length}
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-4 overflow-x-auto">
+                  <table className="table-base">
+                    <thead><tr><th>Name</th><th>Type</th><th>Eligibility</th><th></th>{canEditNow && <th></th>}</tr></thead>
+                    <tbody>
+                      {shown.map((c) => (
+                        <tr key={c.id}>
+                          <td className="font-medium text-gray-900">{c.name}</td>
+                          <td>{CATEGORY_TYPES[c.type as CategoryTypeCode]?.label ?? c.type ?? "—"}</td>
+                          <td className="text-gray-600">{describeCriteria(c as CategoryCriteria)}</td>
+                          <td className="text-right"><Link href={`/events/${event.id}?tab=draws&category=${c.id}`} className="text-sm font-medium text-brand-700 hover:underline">Draw</Link></td>
+                          {canEditNow && (<td className="text-right"><DeleteButton action={deleteCategory} fieldName="categoryId" fieldValue={c.id} confirmLabel={`Remove category "${c.name}"?`} label="Remove" extraFields={{ eventId: event.id }} /></td>)}
+                        </tr>
+                      ))}
+                      {all.length === 0 && (<tr><td colSpan={5} className="py-4 text-center text-gray-400">No categories added yet.</td></tr>)}
+                    </tbody>
+                  </table>
+                </div>
+
+                {pageCount > 1 && (
+                  <div className="mt-4 flex flex-wrap items-center justify-center gap-2 border-t border-gray-100 pt-4">
+                    <Link href={pageHref(Math.max(1, page - 1))} className={`btn-secondary !px-3 !py-1.5 text-xs ${page === 1 ? "pointer-events-none opacity-40" : ""}`}>Previous</Link>
+                    {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
+                      <Link key={n} href={pageHref(n)} className={`rounded-md px-3 py-1.5 text-sm font-medium ${n === page ? "bg-brand-600 text-white" : "text-gray-600 hover:bg-gray-100"}`}>{n}</Link>
+                    ))}
+                    <Link href={pageHref(Math.min(pageCount, page + 1))} className={`btn-secondary !px-3 !py-1.5 text-xs ${page === pageCount ? "pointer-events-none opacity-40" : ""}`}>Next</Link>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()
       ) : tab === "registration" ? (
         <div className="space-y-4">
           <div className="flex flex-wrap gap-1 rounded-md bg-gray-100 p-1">
-            <Link href={registrationHref({ sub: "students" })} className={`rounded px-3 py-1.5 text-sm font-medium ${sub === "students" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Registered students</Link>
-            <Link href={registrationHref({ sub: "approval" })} className={`rounded px-3 py-1.5 text-sm font-medium ${sub === "approval" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Approval &amp; confirmed</Link>
+            <Link href={registrationHref({ sub: "students" })} className={`rounded px-3 py-1.5 text-sm font-medium ${sub === "students" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Registration</Link>
+            <Link href={registrationHref({ sub: "approval" })} className={`rounded px-3 py-1.5 text-sm font-medium ${sub === "approval" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Pending &amp; Approve</Link>
             {canEdit && (<Link href={registrationHref({ sub: "template" })} className={`rounded px-3 py-1.5 text-sm font-medium ${sub === "template" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Form template</Link>)}
           </div>
           {sub === "approval" ? (
@@ -247,19 +293,39 @@ export default async function EventDetailPage({ params, searchParams }: { params
               registeredCount={(pendingCount ?? 0) + (confirmedCount ?? 0)}
             />
           ) : (
-            <RegisteredStudentsPanel
-              eventId={event.id}
-              isGrading={isGrading}
-              canEdit={canEditNow}
-              baseUrl={baseUrl}
-              filters={filters}
-              hrefFor={(patch) => registrationHref(patch)}
-            />
+            <>
+              {/* Entering somebody comes before listing who is entered — a
+                  coach opens this tab to add their team, not to read it. */}
+              <AddEntryCard eventId={event.id} />
+              <RegisteredStudentsPanel
+                eventId={event.id}
+                isGrading={isGrading}
+                canEdit={canEditNow}
+                baseUrl={baseUrl}
+                filters={filters}
+                hrefFor={(patch) => registrationHref(patch)}
+              />
+            </>
           )}
         </div>
 
       ) : tab === "draws" ? (
         <div className="space-y-6">
+          {/* One tab, two halves: the draw says who fights whom, the scoreboard
+              scores it, and the result goes straight back into the draw. */}
+          <div className="flex flex-wrap gap-1 rounded-md bg-gray-100 p-1">
+            <Link href={`/events/${event.id}?tab=draws`} className={`rounded px-3 py-1.5 text-sm font-medium ${view === "draw" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Draw</Link>
+            {canEdit && (<Link href={`/events/${event.id}?tab=draws&view=scoreboard`} className={`rounded px-3 py-1.5 text-sm font-medium ${view === "scoreboard" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Scoreboard</Link>)}
+          </div>
+
+          {view === "scoreboard" ? (
+            <ScoreboardTab
+              eventId={event.id}
+              ringId={searchParams.ring}
+              hrefFor={(ring) => `/events/${event.id}?tab=draws&view=scoreboard&ring=${ring}`}
+            />
+          ) : (
+          <>
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-gray-900">Draws</h2>
             <p className="mt-1 text-sm text-gray-500">Select a category to view or manage its draw.</p>
@@ -282,6 +348,8 @@ export default async function EventDetailPage({ params, searchParams }: { params
             </div>
           </div>
           {searchParams.category && (<BracketView eventId={event.id} categoryId={searchParams.category} canEdit={canEditNow} backHref={`/events/${event.id}?tab=draws`} backLabel="Back to draws list" />)}
+          </>
+          )}
         </div>
       ) : tab === "exam" ? (
         <ExamTab

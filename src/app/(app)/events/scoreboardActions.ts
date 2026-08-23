@@ -173,7 +173,7 @@ export async function updateRing(input: {
 
     const supabase = supabaseAdmin();
     const { error } = await supabase.from("scoreboard_rings").update(row).eq("id", input.ringId);
-    if (error) return { error: "That change could not be saved." };
+    if (error) return { error: `That change could not be saved: ${error.message}` };
 
     const ring = await readRing({ id: input.ringId });
     if (!ring) return { error: "Ring not found." };
@@ -266,7 +266,7 @@ export async function judgePress(input: {
       value: input.value,
       round: ring.currentRound,
     });
-    if (error) return { error: "That score didn't register. Try again." };
+    if (error) return { error: `That score didn't register: ${error.message}` };
 
     const updated = await readRing({ id: ring.id });
     return updated ? { ok: true, ring: updated } : { error: "Ring not found." };
@@ -333,7 +333,9 @@ export async function refereePress(input: {
       value: 0,
       round: ring.currentRound,
     });
-    if (error) return { error: "That didn't register. Try again." };
+    // The database's own words, not a shrug: a rejected insert here once looked
+    // exactly like a dead button, and the reason was a constraint.
+    if (error) return { error: `That didn't register: ${error.message}` };
 
     const updated = await readRing({ id: ring.id });
     return updated ? { ok: true, ring: updated } : { error: "Ring not found." };

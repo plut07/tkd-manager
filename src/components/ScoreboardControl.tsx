@@ -67,6 +67,24 @@ export default function ScoreboardControl({
     secondsLeft({ state: initial.state, startedAt: initial.clockStartedAt, remaining: initial.clockRemaining }),
   );
   const channelRef = useRef<any>(null);
+  const [showSetup, setShowSetup] = useState(false);
+
+  /**
+   * The ring's settings are edited as a draft and saved in one go.
+   *
+   * These four apply to every bout the ring runs, so they are set once before
+   * the event and then left alone. Saving each keystroke as it was typed made
+   * "5" briefly mean "no judges" on every screen in the hall.
+   */
+  const settingsOf = (r: RingDto) => ({
+    mode: r.mode,
+    judgeCount: r.judgeCount,
+    patternBase: r.patternBase,
+    roundSeconds: r.roundSeconds,
+    rounds: r.rounds,
+  });
+  const [draft, setDraft] = useState(() => settingsOf(initial));
+  const [savedNote, setSavedNote] = useState("");
 
   const refresh = useCallback(async () => {
     const fresh = await loadRing({ ringId: initial.id });
@@ -108,6 +126,28 @@ export default function ScoreboardControl({
     if ("error" in result) { setError(result.error); return; }
     setRing(result.ring);
     announce();
+  }
+
+  const draftChanged = JSON.stringify(draft) !== JSON.stringify(settingsOf(ring));
+
+  async function saveSettings() {
+    setSavedNote("");
+    // An emptied number box reads back as NaN, which would reach the database
+    // as a broken value rather than an error. Each falls back to its default.
+    const num = (value: number, fallback: number) => (Number.isFinite(value) ? value : fallback);
+    await patch({
+      mode: draft.mode,
+      judgeCount: num(draft.judgeCount, 5),
+      patternBase: num(draft.patternBase, 10),
+      roundSeconds: num(draft.roundSeconds, 120),
+      rounds: num(draft.rounds, 2),
+    });
+    setSavedNote("Saved. These apply to every bout on this ring.");
+  }
+
+  function cancelSettings() {
+    setDraft(settingsOf(ring));
+    setSavedNote("");
   }
 
   async function clock(action: "start" | "pause" | "reset" | "finish" | "nextRound") {
@@ -200,13 +240,24 @@ export default function ScoreboardControl({
           <div className="flex flex-wrap gap-2">
             <a href={displayLink} target="_blank" rel="noopener noreferrer" className="btn-secondary">Open display screen</a>
             <a href={judgeLink} target="_blank" rel="noopener noreferrer" className="btn-secondary">Open a judge screen</a>
+            <button
+              type="button"
+              className={showSetup ? "btn-primary" : "btn-secondary"}
+              onClick={() => setShowSetup((open) => !open)}
+            >
+              {showSetup ? "Hide match setup" : "Match setup"}
+            </button>
           </div>
         </div>
       </div>
 
+      {/* Out of the way by default. On the day this is opened once, filled in,
+          and closed again — what the operator needs in front of them for the
+          next eight hours is the clock and the score. */}
+      {showSetup && (
       <div className="card p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-sm font-semibold text-gray-900">Match setup</h3>
+          <h3 className="text-sm font-semibold text-gray-900">This bout</h3>
           {running && <span className="text-xs text-amber-700">The clock is running — pause it to change the setup.</span>}
         </div>
 
@@ -251,45 +302,64 @@ export default function ScoreboardControl({
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-gray-100 pt-3 sm:grid-cols-3 lg:grid-cols-6">
-          <div>
-            <label className="label text-xs">Mode</label>
-            <select className="input" value={ring.mode} disabled={locked} onChange={(e) => { void patch({ mode: e.target.value as ScoreMode }); }}>
-              {MODES.map((m) => (<option key={m.value} value={m.value}>{m.label}</option>))}
-            </select>
+        <div className="mt-3 border-t border-gray-100 pt-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="text-sm font-semibold text-gray-900">Ring settings</h3>
+            <span className="text-xs text-gray-500">These apply to every bout run on this ring, so set them once before the event.</span>
           </div>
-          <div>
-            <label className="label text-xs">Judges</label>
-            <input type="number" min={1} max={9} className="input text-center" value={ring.judgeCount} disabled={locked}
-              onChange={(e) => { void patch({ judgeCount: Number(e.target.value) || 5 }); }} />
+
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <div>
+              <label className="label text-xs">Mode</label>
+              <select className="input" value={draft.mode} disabled={locked}
+                onChange={(e) => setDraft({ ...draft, mode: e.target.value as ScoreMode })}>
+                {MODES.map((m) => (<option key={m.value} value={m.value}>{m.label}</option>))}
+              </select>
+            </div>
+            <div>
+              <label className="label text-xs">Judges</label>
+              <input type="number" min={1} max={9} className="input text-center" value={draft.judgeCount} disabled={locked}
+                onChange={(e) => setDraft({ ...draft, judgeCount: Number(e.target.value) })} />
+            </div>
+            <div>
+              <label className="label text-xs">Pattern starts at</label>
+              <input type="number" step="0.1" min={0} className="input text-center" value={draft.patternBase}
+                disabled={locked || draft.mode !== "pattern"}
+                onChange={(e) => setDraft({ ...draft, patternBase: Number(e.target.value) })} />
+            </div>
+            <div>
+              <label className="label text-xs">Round (seconds)</label>
+              <input type="number" min={10} className="input text-center" value={draft.roundSeconds} disabled={locked}
+                onChange={(e) => setDraft({ ...draft, roundSeconds: Number(e.target.value) })} />
+            </div>
+            <div>
+              <label className="label text-xs">Rounds</label>
+              <input type="number" min={1} className="input text-center" value={draft.rounds} disabled={locked}
+                onChange={(e) => setDraft({ ...draft, rounds: Number(e.target.value) })} />
+            </div>
+            {/* The pattern changes from bout to bout, so it saves on the spot
+                rather than waiting for the settings to be saved with it. */}
+            <div>
+              <label className="label text-xs">Pattern (this bout)</label>
+              <select className="input" value={ring.patternName ?? ""} disabled={locked || ring.mode !== "pattern"}
+                onChange={(e) => { void patch({ patternName: e.target.value || null }); }}>
+                <option value="">Not chosen</option>
+                {PATTERNS.map((p) => (<option key={p} value={p}>{p}</option>))}
+              </select>
+            </div>
           </div>
-          <div>
-            <label className="label text-xs">Pattern starts at</label>
-            <input type="number" step="0.1" min={0} className="input text-center" value={ring.patternBase}
-              disabled={locked || ring.mode !== "pattern"}
-              onChange={(e) => { void patch({ patternBase: Number(e.target.value) || 0 }); }} />
-          </div>
-          <div>
-            <label className="label text-xs">Pattern</label>
-            <select className="input" value={ring.patternName ?? ""} disabled={locked || ring.mode !== "pattern"}
-              onChange={(e) => { void patch({ patternName: e.target.value || null }); }}>
-              <option value="">Not chosen</option>
-              {PATTERNS.map((p) => (<option key={p} value={p}>{p}</option>))}
-            </select>
-          </div>
-          <div>
-            <label className="label text-xs">Round (seconds)</label>
-            <input type="number" min={10} className="input text-center" value={ring.roundSeconds} disabled={locked}
-              onChange={(e) => { void patch({ roundSeconds: Number(e.target.value) || 120 }); }} />
-          </div>
-          <div>
-            <label className="label text-xs">Rounds</label>
-            <input type="number" min={1} className="input text-center" value={ring.rounds} disabled={locked}
-              onChange={(e) => { void patch({ rounds: Number(e.target.value) || 2 }); }} />
+
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button type="button" className="btn-primary" disabled={locked || !draftChanged} onClick={() => { void saveSettings(); }}>
+              {busy ? "Saving..." : "Save settings"}
+            </button>
+            <button type="button" className="btn-secondary" disabled={busy || !draftChanged} onClick={cancelSettings}>Cancel</button>
+            <span className="text-xs text-gray-400">{MODES.find((m) => m.value === draft.mode)?.note}</span>
+            {savedNote && !draftChanged && <span className="text-xs text-green-700">{savedNote}</span>}
           </div>
         </div>
-        <p className="mt-1 text-xs text-gray-400">{MODES.find((m) => m.value === ring.mode)?.note}</p>
       </div>
+      )}
 
       <div className="card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
