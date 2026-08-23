@@ -5,6 +5,7 @@ import {
   judgeScore,
   judgeVerdict,
   judgeHistory,
+  penaltyTally,
   secondsLeft,
   formatClock,
   SPARRING_BUTTONS,
@@ -89,16 +90,20 @@ export default function JudgePad({ initial, joinCode, judgeSlot }: { initial: Ri
   const myVerdict = judgeVerdict(ring.entries, judgeSlot, ring.mode, ring.patternBase);
   const finished = ring.state === "finished";
 
-  const sides: { side: Side; label: string; name: string | null; classes: string }[] = [
-    { side: "red", label: "RED", name: ring.redName, classes: "bg-red-600 hover:bg-red-700" },
-    { side: "blue", label: "BLUE", name: ring.blueName, classes: "bg-blue-600 hover:bg-blue-700" },
+  const sides: { side: Side; label: string; name: string | null; number: string | null; classes: string }[] = [
+    { side: "red", label: "RED", name: ring.redName, number: ring.redNumber, classes: "bg-red-600 hover:bg-red-700" },
+    { side: "blue", label: "BLUE", name: ring.blueName, number: ring.blueNumber, classes: "bg-blue-600 hover:bg-blue-700" },
   ];
 
   return (
     <div className="mx-auto max-w-3xl space-y-3 p-2">
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-gray-900 px-3 py-2 text-white">
         <span className="text-sm font-semibold">{ring.name} · Judge {judgeSlot}</span>
-        <span className="text-sm">{ring.categoryName ?? "No category"}</span>
+        <span className="text-sm">
+          {[ring.categoryName, ring.mode === "pattern" ? ring.patternName : null, `R${ring.currentRound}/${ring.rounds}`]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
         <span className="font-mono text-lg">{formatClock(left)}</span>
       </div>
 
@@ -113,10 +118,20 @@ export default function JudgePad({ initial, joinCode, judgeSlot }: { initial: Ri
           <div key={s.side} className="space-y-2">
             <div className={`rounded-md ${s.side === "red" ? "bg-red-50" : "bg-blue-50"} p-3 text-center`}>
               <p className={`text-xs font-bold ${s.side === "red" ? "text-red-700" : "text-blue-700"}`}>{s.label}</p>
-              <p className="truncate text-sm text-gray-700">{s.name ?? "—"}</p>
+              <p className="truncate text-sm text-gray-700">
+                {s.number ? `#${s.number} ` : ""}
+                {s.name ?? "—"}
+              </p>
               <p className="text-3xl font-bold text-gray-900">
                 {ring.mode === "flag" ? (myVerdict === s.side ? "✓" : "—") : scoreFor(s.side)}
               </p>
+              {/* The referee's calls already come off this mark; showing them
+                  stops a judge wondering why their number moved on its own. */}
+              {penaltyTally(ring.entries, s.side).points > 0 && (
+                <p className="text-xs text-gray-500">
+                  includes −{penaltyTally(ring.entries, s.side).points} from the referee
+                </p>
+              )}
             </div>
 
             {ring.mode === "flag" ? (

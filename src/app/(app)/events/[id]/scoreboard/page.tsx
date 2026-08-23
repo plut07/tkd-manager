@@ -62,26 +62,33 @@ export default async function ScoreboardPage({
         .filter(Boolean) as string[],
     ),
   );
-  let nameByReg = new Map<string, string>();
+  type Competitor = { name: string; number: string | null };
+  let byReg = new Map<string, Competitor>();
   if (regIds.length > 0) {
     const { data: regs } = await supabase
       .from("event_registrations")
-      .select("id, students(full_name)")
+      .select("id, competition_number, students(full_name)")
       .in("id", regIds);
-    nameByReg = new Map<string, string>(
-      (regs ?? []).map((r: any) => [r.id, r.students?.full_name ?? ""] as [string, string]),
+    byReg = new Map<string, Competitor>(
+      (regs ?? []).map((r: any) => [
+        r.id,
+        { name: r.students?.full_name ?? "", number: r.competition_number != null ? String(r.competition_number) : null },
+      ] as [string, Competitor]),
     );
   }
 
   const matches = (matchRows ?? []).map((m: any) => {
-    const red = nameByReg.get(m.competitor1_registration_id) || null;
-    const blue = nameByReg.get(m.competitor2_registration_id) || null;
+    const red = byReg.get(m.competitor1_registration_id) ?? null;
+    const blue = byReg.get(m.competitor2_registration_id) ?? null;
+    const show = (c: Competitor | null) => (c ? `${c.number ? `#${c.number} ` : ""}${c.name}` : "TBC");
     return {
       id: m.id,
       categoryId: m.category_id,
-      red,
-      blue,
-      label: `R${m.round}.${m.slot} — ${red ?? "TBC"} v ${blue ?? "TBC"}${m.winner_registration_id ? " (done)" : ""}`,
+      red: red?.name || null,
+      blue: blue?.name || null,
+      redNumber: red?.number ?? null,
+      blueNumber: blue?.number ?? null,
+      label: `R${m.round}.${m.slot} — ${show(red)} v ${show(blue)}${m.winner_registration_id ? " (done)" : ""}`,
     };
   });
 

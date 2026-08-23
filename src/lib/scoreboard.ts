@@ -31,10 +31,33 @@ export const MODES: { value: ScoreMode; label: string; note: string }[] = [
 export const SPARRING_BUTTONS = [3, 2, 1, -1, -2, -3];
 export const PATTERN_BUTTONS = [-0.2, -0.5, -1];
 
+/**
+ * The twenty-four ITF patterns, in syllabus order.
+ *
+ * Listed lowest grade first, the way a competitor learns them, so the ring
+ * official picking one scrolls in the direction they're already thinking.
+ */
+export const PATTERNS = [
+  "Chon-Ji", "Dan-Gun", "Do-San", "Won-Hyo", "Yul-Gok", "Joong-Gun",
+  "Toi-Gye", "Hwa-Rang", "Choong-Moo", "Kwang-Gae", "Po-Eun", "Ge-Baek",
+  "Eui-Am", "Choong-Jang", "Juche", "Sam-Il", "Yoo-Sin", "Choi-Yong",
+  "Yong-Gae", "Ul-Ji", "Moon-Moo", "So-San", "Se-Jong", "Tong-Il",
+] as const;
+
+/**
+ * Three warnings make a point.
+ *
+ * The referee calls warnings and deductions; the judges never touch them. A
+ * deduction takes a point off straight away, and every third warning does the
+ * same, so the two are counted separately and converted at the end.
+ */
+export const WARNINGS_PER_POINT = 3;
+
 export type Entry = {
+  /** 1..judgeCount for a judge; 0 for the referee's warnings and deductions. */
   judge_slot: number;
   side: Side;
-  kind: "point" | "deduction" | "flag";
+  kind: "point" | "deduction" | "flag" | "warning" | "penalty";
   value: number;
   round?: number;
   voided?: boolean;
@@ -42,14 +65,31 @@ export type Entry = {
 
 const live = (entries: Entry[]) => entries.filter((e) => !e.voided);
 
-/** One judge's mark for one side. */
+/** The referee's count against one side, and what it costs them. */
+export function penaltyTally(
+  entries: Entry[],
+  side: Side,
+): { warnings: number; deductions: number; points: number } {
+  const against = live(entries).filter((e) => e.side === side && e.judge_slot === 0);
+  const warnings = against.filter((e) => e.kind === "warning").length;
+  const deductions = against.filter((e) => e.kind === "penalty").length;
+  return { warnings, deductions, points: Math.floor(warnings / WARNINGS_PER_POINT) + deductions };
+}
+
+/**
+ * One judge's mark for one side.
+ *
+ * Referee penalties come off every judge's mark equally — they are the
+ * referee's ruling on the bout, not one judge's opinion of it — so a deduction
+ * moves the score without changing who each judge favours.
+ */
 export function judgeScore(entries: Entry[], judge: number, side: Side, mode: ScoreMode, base: number): number {
   const mine = live(entries).filter((e) => e.judge_slot === judge && e.side === side);
   if (mode === "flag") return mine.some((e) => e.kind === "flag") ? 1 : 0;
   const sum = mine.reduce((total, e) => total + Number(e.value), 0);
   // Pattern counts down from the mark the event set; sparring counts up from nothing.
   const score = mode === "pattern" ? base + sum : sum;
-  return Math.round(score * 100) / 100;
+  return Math.round((score - penaltyTally(entries, side).points) * 100) / 100;
 }
 
 /** Which side a judge favours, or null when they haven't separated them. */

@@ -30,6 +30,9 @@ export type RingDto = {
   matchId: string | null;
   redName: string | null;
   blueName: string | null;
+  redNumber: string | null;
+  blueNumber: string | null;
+  patternName: string | null;
   mode: ScoreMode;
   judgeCount: number;
   patternBase: number;
@@ -43,7 +46,7 @@ export type RingDto = {
 };
 
 const RING_SELECT =
-  "id, name, join_code, event_id, category_id, match_id, red_name, blue_name, mode, judge_count, pattern_base, round_seconds, rounds, current_round, state, clock_started_at, clock_remaining, event_categories(name)";
+  "id, name, join_code, event_id, category_id, match_id, red_name, blue_name, red_number, blue_number, pattern_name, mode, judge_count, pattern_base, round_seconds, rounds, current_round, state, clock_started_at, clock_remaining, event_categories(name)";
 
 function toDto(ring: any, entries: any[]): RingDto {
   return {
@@ -56,6 +59,9 @@ function toDto(ring: any, entries: any[]): RingDto {
     matchId: ring.match_id,
     redName: ring.red_name,
     blueName: ring.blue_name,
+    redNumber: ring.red_number,
+    blueNumber: ring.blue_number,
+    patternName: ring.pattern_name,
     mode: ring.mode as ScoreMode,
     judgeCount: Number(ring.judge_count) || 5,
     patternBase: Number(ring.pattern_base) || 10,
@@ -64,7 +70,9 @@ function toDto(ring: any, entries: any[]): RingDto {
     currentRound: Number(ring.current_round) || 1,
     state: ring.state,
     clockStartedAt: ring.clock_started_at,
-    clockRemaining: Number(ring.clock_remaining) || 0,
+    // A ring nobody has started yet has no clock stored; it shows a full round
+    // rather than 0:00, which would read as "time up" before anyone began.
+    clockRemaining: ring.clock_remaining == null ? Number(ring.round_seconds) || 120 : Number(ring.clock_remaining),
     entries: (entries ?? []).map((e: any) => ({
       judge_slot: Number(e.judge_slot),
       side: e.side as Side,
@@ -84,12 +92,15 @@ async function readRing(where: { id?: string; joinCode?: string }): Promise<Ring
     : await query.eq("join_code", String(where.joinCode ?? "").toUpperCase()).maybeSingle();
   if (!ring) return null;
 
-  // Only the bout in progress: last night's presses aren't part of this score.
+  // The whole bout, not just the round on the clock. A sparring score carries
+  // from round one into round two, and a warning given in the first round is
+  // still against that competitor in the last. Which round a press came from is
+  // kept on the row for the record; it just doesn't narrow the score. Setting
+  // up the next bout is what clears them.
   const { data: entries } = await supabase
     .from("scoreboard_entries")
     .select("judge_slot, side, kind, value, round, voided")
     .eq("ring_id", ring.id)
-    .eq("round", (ring as any).current_round)
     .order("created_at");
 
   return toDto(ring, entries ?? []);
@@ -132,6 +143,9 @@ export async function updateRing(input: {
     matchId: string | null;
     redName: string | null;
     blueName: string | null;
+    redNumber: string | null;
+    blueNumber: string | null;
+    patternName: string | null;
     mode: ScoreMode;
     judgeCount: number;
     patternBase: number;
@@ -148,6 +162,9 @@ export async function updateRing(input: {
     if (p.matchId !== undefined) row.match_id = p.matchId || null;
     if (p.redName !== undefined) row.red_name = p.redName;
     if (p.blueName !== undefined) row.blue_name = p.blueName;
+    if (p.redNumber !== undefined) row.red_number = p.redNumber;
+    if (p.blueNumber !== undefined) row.blue_number = p.blueNumber;
+    if (p.patternName !== undefined) row.pattern_name = p.patternName;
     if (p.mode !== undefined) row.mode = p.mode;
     if (p.judgeCount !== undefined) row.judge_count = Math.min(Math.max(1, p.judgeCount), 9);
     if (p.patternBase !== undefined) row.pattern_base = Math.max(0, p.patternBase);
@@ -166,10 +183,10 @@ export async function updateRing(input: {
   }
 }
 
-/** Start, pause or reset the clock. */
+/** Start, pause or reset the clock, or move on to the next round. */
 export async function setClock(input: {
   ringId: string;
-  action: "start" | "pause" | "reset" | "finish";
+  action: "start" | "pause" | "reset" | "finish" | "nextRound";
 }): Promise<{ ok: true; ring: RingDto } | { error: string }> {
   try {
     await requirePermission(PERMISSIONS.EVENT_EDIT);
@@ -194,6 +211,13 @@ export async function setClock(input: {
         remaining: current.clockRemaining,
       });
     } else if (input.action === "reset") {
+      row.state = "idle";
+      row.clock_started_at = null;
+      row.clock_remaining = current.roundSeconds;
+    } else if (input.action === "nextRound") {
+      // A fresh clock, but the same score: rounds add up, they don't start over.
+      if (current.currentRound >= current.rounds) return { error: "That was the last round." };
+      row.current_round = current.currentRound + 1;
       row.state = "idle";
       row.clock_started_at = null;
       row.clock_remaining = current.roundSeconds;
@@ -276,6 +300,71 @@ export async function judgeUndo(input: {
     await supabase.from("scoreboard_entries").update({ voided: true }).eq("id", last.id);
     const updated = await readRing({ id: ring.id });
     return updated ? { ok: true, ring: updated } : { error: "Ring not found." };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "That could not be undone." };
+  }
+}
+
+/**
+ * The referee calls a warning or a deduction.
+ *
+ * This is the operator's button, not a judge's: warnings and deductions are the
+ * referee's ruling on the bout, so they are recorded against slot 0 and count
+ * against every judge's score alike. Three warnings make a point; a deduction
+ * is a point straight away.
+ */
+export async function refereePress(input: {
+  ringId: string;
+  side: Side;
+  kind: "warning" | "penalty";
+}): Promise<{ ok: true; ring: RingDto } | { error: string }> {
+  try {
+    await requirePermission(PERMISSIONS.EVENT_EDIT);
+    const ring = await readRing({ id: input.ringId });
+    if (!ring) return { error: "Ring not found." };
+
+    const supabase = supabaseAdmin();
+    const { error } = await supabase.from("scoreboard_entries").insert({
+      ring_id: ring.id,
+      match_id: ring.matchId,
+      judge_slot: 0,
+      side: input.side,
+      kind: input.kind,
+      value: 0,
+      round: ring.currentRound,
+    });
+    if (error) return { error: "That didn't register. Try again." };
+
+    const updated = await readRing({ id: ring.id });
+    return updated ? { ok: true, ring: updated } : { error: "Ring not found." };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "That didn't register." };
+  }
+}
+
+/** Take back the last warning or deduction called against a side. */
+export async function refereeUndo(input: {
+  ringId: string;
+  side: Side;
+}): Promise<{ ok: true; ring: RingDto } | { error: string }> {
+  try {
+    await requirePermission(PERMISSIONS.EVENT_EDIT);
+    const supabase = supabaseAdmin();
+    const { data: last } = await supabase
+      .from("scoreboard_entries")
+      .select("id")
+      .eq("ring_id", input.ringId)
+      .eq("judge_slot", 0)
+      .eq("side", input.side)
+      .eq("voided", false)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!last) return { error: "Nothing to take back." };
+
+    await supabase.from("scoreboard_entries").update({ voided: true }).eq("id", last.id);
+    const ring = await readRing({ id: input.ringId });
+    return ring ? { ok: true, ring } : { error: "Ring not found." };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "That could not be undone." };
   }
