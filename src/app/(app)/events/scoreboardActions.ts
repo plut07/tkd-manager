@@ -95,13 +95,19 @@ async function readRing(where: { id?: string; joinCode?: string }): Promise<Ring
   // The whole bout, not just the round on the clock. A sparring score carries
   // from round one into round two, and a warning given in the first round is
   // still against that competitor in the last. Which round a press came from is
-  // kept on the row for the record; it just doesn't narrow the score. Setting
-  // up the next bout is what clears them.
-  const { data: entries } = await supabase
+  // kept on the row for the record; it just doesn't narrow the score.
+  //
+  // Scoped by bout, not by ring. A ring runs bouts all day, and every press it
+  // has ever taken is still in the table -- so the current score is the presses
+  // belonging to the bout now loaded. That is also what makes a finished bout
+  // readable again afterwards: nothing was ever thrown away to make room.
+  const query = supabase
     .from("scoreboard_entries")
     .select("judge_slot, side, kind, value, round, voided")
-    .eq("ring_id", ring.id)
-    .order("created_at");
+    .eq("ring_id", ring.id);
+  const { data: entries } = (ring as any).match_id
+    ? await query.eq("match_id", (ring as any).match_id).order("created_at")
+    : await query.is("match_id", null).order("created_at");
 
   return toDto(ring, entries ?? []);
 }
@@ -285,16 +291,18 @@ export async function judgeUndo(input: {
     if (!ring) return { error: "That code doesn't match a ring." };
 
     const supabase = supabaseAdmin();
-    const { data: last } = await supabase
+    // Narrowed to this bout as well as this round: a ring keeps every press it
+    // has ever taken, so without it an undo at the start of a bout would reach
+    // back into the last one.
+    let recent = supabase
       .from("scoreboard_entries")
       .select("id")
       .eq("ring_id", ring.id)
       .eq("judge_slot", input.judgeSlot)
       .eq("round", ring.currentRound)
-      .eq("voided", false)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .eq("voided", false);
+    recent = ring.matchId ? recent.eq("match_id", ring.matchId) : recent.is("match_id", null);
+    const { data: last } = await recent.order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (!last) return { error: "Nothing to take back." };
 
     await supabase.from("scoreboard_entries").update({ voided: true }).eq("id", last.id);
@@ -352,16 +360,17 @@ export async function refereeUndo(input: {
   try {
     await requirePermission(PERMISSIONS.EVENT_EDIT);
     const supabase = supabaseAdmin();
-    const { data: last } = await supabase
+    const current = await readRing({ id: input.ringId });
+    if (!current) return { error: "Ring not found." };
+    let recent = supabase
       .from("scoreboard_entries")
       .select("id")
       .eq("ring_id", input.ringId)
       .eq("judge_slot", 0)
       .eq("side", input.side)
-      .eq("voided", false)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .eq("voided", false);
+    recent = current.matchId ? recent.eq("match_id", current.matchId) : recent.is("match_id", null);
+    const { data: last } = await recent.order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (!last) return { error: "Nothing to take back." };
 
     await supabase.from("scoreboard_entries").update({ voided: true }).eq("id", last.id);
@@ -372,13 +381,25 @@ export async function refereeUndo(input: {
   }
 }
 
-/** Clear the bout and put a fresh round on the clock. */
+/**
+ * Clear the bout and put a fresh round on the clock.
+ *
+ * Only this bout's presses go, and only because the operator asked -- a bout
+ * being restarted after a mistake. Loading the next bout onto the ring doesn't
+ * come through here, so the record of everything already fought survives.
+ */
 export async function clearRing(input: { ringId: string }): Promise<{ ok: true; ring: RingDto } | { error: string }> {
   try {
     await requirePermission(PERMISSIONS.EVENT_EDIT);
     const supabase = supabaseAdmin();
-    await supabase.from("scoreboard_entries").delete().eq("ring_id", input.ringId);
     const current = await readRing({ id: input.ringId });
+    const wipe = supabase.from("scoreboard_entries").delete().eq("ring_id", input.ringId);
+    // Only this bout's presses. Everything the ring scored earlier belongs to
+    // other matches and stays where it is.
+    const { error: wipeError } = current?.matchId
+      ? await wipe.eq("match_id", current.matchId)
+      : await wipe.is("match_id", null);
+    if (wipeError) return { error: `The bout could not be cleared: ${wipeError.message}` };
     await supabase
       .from("scoreboard_rings")
       .update({
@@ -446,6 +467,29 @@ export async function confirmResult(input: { ringId: string }): Promise<{ ok: tr
       await supabase.from("event_matches").update({ [field]: loserId }).eq("id", match.loser_next_match_id);
     }
 
+    // Freeze what the bout was scored under, so it can be read back exactly as
+    // it was called even after the ring has been reset for the next one.
+    await supabase.from("scoreboard_results").upsert(
+      {
+        match_id: ring.matchId,
+        ring_id: ring.id,
+        mode: ring.mode,
+        judge_count: ring.judgeCount,
+        pattern_base: ring.patternBase,
+        rounds: ring.currentRound,
+        red_name: ring.redName,
+        blue_name: ring.blueName,
+        red_number: ring.redNumber,
+        blue_number: ring.blueNumber,
+        pattern_name: ring.patternName,
+        red_votes: result.red,
+        blue_votes: result.blue,
+        winner_registration_id: winnerId,
+        confirmed_at: new Date().toISOString(),
+      },
+      { onConflict: "match_id" },
+    );
+
     await supabase
       .from("scoreboard_rings")
       .update({ state: "finished", clock_started_at: null, updated_at: new Date().toISOString() })
@@ -471,4 +515,74 @@ export async function deleteRing(formData: FormData) {
   if (!ringId) return;
   await supabaseAdmin().from("scoreboard_rings").delete().eq("id", ringId);
   revalidatePath(`/events/${eventId}/scoreboard`);
+}
+
+export type MatchRecord = {
+  matchId: string;
+  mode: ScoreMode;
+  judgeCount: number;
+  patternBase: number;
+  rounds: number;
+  redName: string | null;
+  blueName: string | null;
+  redNumber: string | null;
+  blueNumber: string | null;
+  patternName: string | null;
+  redVotes: number;
+  blueVotes: number;
+  winnerRegistrationId: string | null;
+  confirmedAt: string;
+  entries: Entry[];
+};
+
+/**
+ * A finished bout, read back.
+ *
+ * Every press ever made is still in the table, so this is a lookup rather than
+ * a reconstruction: the presses come from scoreboard_entries by match, and the
+ * settings they were scored under from the row written when the result was
+ * confirmed. Nothing is inferred, so a bout questioned a week later shows the
+ * same numbers the hall saw.
+ */
+export async function loadMatchRecord(input: { matchId: string }): Promise<MatchRecord | null> {
+  await requireSession();
+  const supabase = supabaseAdmin();
+
+  const { data: saved } = await supabase
+    .from("scoreboard_results")
+    .select("*")
+    .eq("match_id", input.matchId)
+    .maybeSingle();
+  if (!saved) return null;
+
+  const { data: entries } = await supabase
+    .from("scoreboard_entries")
+    .select("judge_slot, side, kind, value, round, voided")
+    .eq("match_id", input.matchId)
+    .order("created_at");
+
+  return {
+    matchId: input.matchId,
+    mode: saved.mode as ScoreMode,
+    judgeCount: Number(saved.judge_count) || 5,
+    patternBase: Number(saved.pattern_base) || 10,
+    rounds: Number(saved.rounds) || 1,
+    redName: saved.red_name,
+    blueName: saved.blue_name,
+    redNumber: saved.red_number,
+    blueNumber: saved.blue_number,
+    patternName: saved.pattern_name,
+    redVotes: Number(saved.red_votes) || 0,
+    blueVotes: Number(saved.blue_votes) || 0,
+    winnerRegistrationId: saved.winner_registration_id,
+    confirmedAt: saved.confirmed_at,
+    entries: (entries ?? []).map((e: any) => ({
+      judge_slot: Number(e.judge_slot),
+      side: e.side as Side,
+      kind: e.kind,
+      value: Number(e.value),
+      round: Number(e.round) || 1,
+      voided: e.voided === true,
+    })),
+  };
 }

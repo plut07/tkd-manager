@@ -56,6 +56,16 @@ export default async function PublicBracketPage({ params }: { params: { id: stri
   const finalMatch = (matches ?? []).find((m) => m.round === "final") ?? null;
   const podium = placings((matches ?? []) as any);
 
+  // Everyone in this category, whether or not the draw has reached them.
+  // Coaches read the entry list to find their own people before they read the
+  // chart, so it is published alongside it rather than left on the admin side.
+  const { data: entries } = await supabase
+    .from("event_registrations")
+    .select("id, competition_number, students(full_name, gender), clubs(name)")
+    .eq("category_id", category.id)
+    .eq("status", "confirmed")
+    .order("competition_number");
+
   return (
     <div className="space-y-6">
       <div className="card p-6">
@@ -64,9 +74,10 @@ export default async function PublicBracketPage({ params }: { params: { id: stri
             <h1 className="text-2xl font-bold text-gray-900">{category.name}</h1>
             <p className="mt-1 text-sm text-gray-500">{event.name} — Bracket</p>
           </div>
-          <Link href={`/public/events/${event.id}`} className="btn-secondary">
-            Back to event
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <a href={`/api/public/draw?categoryId=${category.id}&download=1`} className="btn-secondary">Download PDF</a>
+            <Link href={`/public/events/${event.id}`} className="btn-secondary">Back to event</Link>
+          </div>
         </div>
       </div>
 
@@ -88,8 +99,9 @@ export default async function PublicBracketPage({ params }: { params: { id: stri
           {finalMatch && (
             <div className="flex min-w-[180px] flex-col justify-center gap-3">
               <h3 className="text-center text-xs font-semibold uppercase tracking-wide text-gray-500">Winner!</h3>
-              <div className="rounded-md border-2 border-yellow-400 bg-yellow-50 p-3 text-center text-sm font-semibold text-gray-900">
-                {finalMatch.winner_registration_id ? nameOf(finalMatch.winner_registration_id)?.name : "TBD"}
+              {/* Empty until it is decided, not "TBD" — see the admin chart. */}
+              <div className="min-h-[3rem] rounded-md border-2 border-yellow-400 bg-yellow-50 p-3 text-center text-sm font-semibold text-gray-900">
+                {finalMatch.winner_registration_id ? nameOf(finalMatch.winner_registration_id)?.name : ""}
               </div>
             </div>
           )}
@@ -125,6 +137,36 @@ export default async function PublicBracketPage({ params }: { params: { id: stri
             </ul>
           </div>
         </div>
+      </div>
+
+      <EntryList entries={(entries ?? []) as any[]} />
+    </div>
+  );
+}
+
+/** Everyone entered in this category, in competition-number order. */
+function EntryList({ entries }: { entries: any[] }) {
+  return (
+    <div className="card p-6">
+      <h2 className="text-lg font-semibold text-gray-900">Competitors ({entries.length})</h2>
+      <div className="mt-3 overflow-x-auto">
+        <table className="table-base">
+          <thead>
+            <tr><th>No.</th><th>Name</th><th>Club</th></tr>
+          </thead>
+          <tbody>
+            {entries.map((r: any) => (
+              <tr key={r.id}>
+                <td className="font-medium text-gray-900">{r.competition_number ?? "—"}</td>
+                <td>{r.students?.full_name ?? "—"}</td>
+                <td className="text-gray-600">{r.clubs?.name ?? "—"}</td>
+              </tr>
+            ))}
+            {entries.length === 0 && (
+              <tr><td colSpan={3} className="py-4 text-center text-gray-400">No competitors confirmed yet.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

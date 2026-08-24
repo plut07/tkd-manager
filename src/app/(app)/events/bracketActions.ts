@@ -255,7 +255,9 @@ export async function sendMatchToRing(formData: FormData) {
     return n != null ? String(n) : null;
   };
 
-  await supabase.from("scoreboard_entries").delete().eq("ring_id", ringId);
+  // Nothing is deleted here. Presses belong to the bout they were made in, so
+  // loading a new one onto the ring simply changes which presses count -- and
+  // the bout that just finished stays readable afterwards.
   const { error } = await supabase
     .from("scoreboard_rings")
     .update({

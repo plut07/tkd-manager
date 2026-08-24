@@ -11,8 +11,18 @@ import {
   marksSayPassed,
   type SheetComponent,
   type SheetMarks,
+  activeItems,
 } from "./gradingSheet";
 import { breakingLabel } from "./powerBreaking";
+
+/**
+ * What a ticked box prints.
+ *
+ * A word, not a glyph: the PDF is stamped with a standard font that has no
+ * check mark in it, and an unmapped character prints as nothing at all -- a
+ * blank box that looks exactly like an untried attempt.
+ */
+export const BREAKING_TICK = "YES";
 
 /**
  * The data a form template can place on a page.
@@ -93,15 +103,23 @@ export function examFieldsForSheet(sheet: SheetComponent[]): TemplateFieldDef[] 
     if (component.kind === "breaking") {
       const methods = component.methods ?? 3;
       for (let m = 1; m <= methods; m++) {
+        // One field per attempt rather than one field saying which attempt it
+        // was. A paper sheet has a column headed "1st", "2nd", "3rd" and "FTB"
+        // with a tick under one of them, and a form only prints properly when
+        // its fields match the boxes drawn on it.
         out.push({ key: `exam.breaking.${m}.technique`, label: `Breaking ${m} — technique`, group: "Exam: power breaking" });
-        out.push({ key: `exam.breaking.${m}.outcome`, label: `Breaking ${m} — outcome`, group: "Exam: power breaking" });
+        out.push({ key: `exam.breaking.${m}.attempt1`, label: `Breaking ${m} — 1st attempt`, group: "Exam: power breaking" });
+        out.push({ key: `exam.breaking.${m}.attempt2`, label: `Breaking ${m} — 2nd attempt`, group: "Exam: power breaking" });
+        out.push({ key: `exam.breaking.${m}.attempt3`, label: `Breaking ${m} — 3rd attempt`, group: "Exam: power breaking" });
+        out.push({ key: `exam.breaking.${m}.ftb`, label: `Breaking ${m} — FTB`, group: "Exam: power breaking" });
+        out.push({ key: `exam.breaking.${m}.outcome`, label: `Breaking ${m} — attempt (in words)`, group: "Exam: power breaking" });
       }
       continue;
     }
     if (component.kind === "select" || component.kind === "mixed") {
       // The columns everybody sits print by name; the chosen ones print as a
       // name-and-mark pair, since which pattern lands in row 2 varies.
-      for (const item of component.fixed ?? []) {
+      for (const item of activeItems(component.fixed)) {
         out.push({ key: `exam.item.${item.key}`, label: `${item.label} — mark`, group: `Exam: ${component.label}` });
       }
       const rows = component.minRows ?? 2;
@@ -111,7 +129,7 @@ export function examFieldsForSheet(sheet: SheetComponent[]): TemplateFieldDef[] 
       }
       continue;
     }
-    for (const item of component.items) {
+    for (const item of activeItems(component.items)) {
       out.push({ key: `exam.item.${item.key}`, label: `${item.label} — mark`, group: `Exam: ${component.label}` });
     }
   }
@@ -199,7 +217,18 @@ function resolveExamField(key: string, data: TemplateData): string {
     const m = Number(indexText);
     if (!Number.isFinite(m)) return "";
     if (part === "technique") return breakingLabel(String(x.marks?.[`pb_method_${m}`] ?? ""));
+
     const outcome = String(x.marks?.[`pb_outcome_${m}`] ?? "");
+
+    // A per-attempt box is ticked only for the attempt it broke on. Every
+    // other box stays empty -- including all three when it was never broken,
+    // because a row of "No" against a technique nobody managed reads as three
+    // separate failures rather than one.
+    if (part === "attempt1") return outcome === "1" ? BREAKING_TICK : "";
+    if (part === "attempt2") return outcome === "2" ? BREAKING_TICK : "";
+    if (part === "attempt3") return outcome === "3" ? BREAKING_TICK : "";
+    if (part === "ftb") return outcome === "ftb" ? BREAKING_TICK : "";
+
     if (!outcome) return "";
     return outcome === "ftb" ? "FTB" : `${outcome}${outcome === "1" ? "st" : outcome === "2" ? "nd" : "rd"} attempt`;
   }

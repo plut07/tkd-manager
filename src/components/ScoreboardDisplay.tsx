@@ -9,7 +9,6 @@ import {
   judgeVerdict,
   judgeScore,
   penaltyTally,
-  WARNINGS_PER_POINT,
   type Side,
 } from "@/lib/scoreboard";
 import { loadRing, type RingDto } from "@/app/(app)/events/scoreboardActions";
@@ -140,24 +139,28 @@ export default function ScoreboardDisplay({ initial }: { initial: RingDto }) {
                 })}
               </div>
 
-              <div className="mt-3 flex items-center justify-center gap-3 text-lg">
-                {ring.mode !== "flag" && (
-                  <span className="rounded-md bg-black/25 px-3 py-1 tabular-nums">
-                    <span className="mr-2 text-xs uppercase tracking-wider opacity-60">Score</span>
-                    {mark}
-                  </span>
-                )}
-                <span className={`rounded-md px-3 py-1 tabular-nums ${penalties.warnings > 0 ? "bg-amber-400 text-gray-900" : "bg-black/25"}`}>
-                  <span className="mr-2 text-xs uppercase tracking-wider opacity-60">Warn</span>
-                  {penalties.warnings}
-                </span>
-                <span className={`rounded-md px-3 py-1 tabular-nums ${penalties.deductions > 0 ? "bg-white text-gray-900" : "bg-black/25"}`}>
-                  <span className="mr-2 text-xs uppercase tracking-wider opacity-60">Ded</span>
-                  {penalties.deductions}
-                </span>
-                {penalties.points > 0 && (
-                  <span className="rounded-md bg-black/40 px-3 py-1 tabular-nums">−{penalties.points}</span>
-                )}
+              {/* A pattern is marked out of ten and the mark is the result, so
+                  it stays. Sparring is decided by the count of judges above,
+                  where an averaged points figure only competed with it. */}
+              {ring.mode === "pattern" && (
+                <p className="mt-3 rounded-md bg-black/25 py-1 text-2xl font-bold tabular-nums">
+                  <span className="mr-2 text-sm uppercase tracking-widest opacity-60">Score</span>
+                  {mark}
+                </p>
+              )}
+
+              {/* Warnings and deductions sit directly under the number they
+                  affect, as two counts side by side — the same two boxes the
+                  referee is pressing. */}
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className={`rounded-md py-2 ${penalties.warnings > 0 ? "bg-amber-400 text-gray-900" : "bg-black/25"}`}>
+                  <p className="text-sm uppercase tracking-widest opacity-70">Warning</p>
+                  <p className="text-4xl font-bold leading-none tabular-nums">{penalties.warnings}</p>
+                </div>
+                <div className={`rounded-md py-2 ${penalties.deductions > 0 ? "bg-white text-gray-900" : "bg-black/25"}`}>
+                  <p className="text-sm uppercase tracking-widest opacity-70">Deduction</p>
+                  <p className="text-4xl font-bold leading-none tabular-nums">{penalties.deductions}</p>
+                </div>
               </div>
             </div>
           );
@@ -185,7 +188,6 @@ export default function ScoreboardDisplay({ initial }: { initial: RingDto }) {
             "Ready"
           )}
         </p>
-        <p className="mt-1 text-sm text-gray-600">Every {WARNINGS_PER_POINT} warnings costs 1 point.</p>
       </div>
     </div>
   );

@@ -82,6 +82,9 @@ export default async function BracketView({
           <div className="flex flex-wrap items-center gap-2">
             <span className={`badge ${isPublished ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{isPublished ? "Published" : "Draft"}</span>
             <Link href={backHref} className="btn-secondary">{backLabel}</Link>
+            {hasMatches && (
+              <a href={`/api/public/draw?categoryId=${category.id}&download=1`} className="btn-secondary">Export PDF</a>
+            )}
             {canEdit && !isPublished && (
               <form action={generateBracket}>
                 <input type="hidden" name="eventId" value={event.id} />
@@ -142,8 +145,10 @@ export default async function BracketView({
               {finalMatch && (
                 <div className="flex min-w-[180px] flex-col justify-center gap-3">
                   <h3 className="text-center text-xs font-semibold uppercase tracking-wide text-gray-500">Winner!</h3>
-                  <div className="rounded-md border-2 border-yellow-400 bg-yellow-50 p-3 text-center text-sm font-semibold text-gray-900">
-                    {finalMatch.winner_registration_id ? nameOf(finalMatch.winner_registration_id)?.name : "TBD"}
+                  {/* Empty until it is decided. A chart that says TBD in the
+                      champion's box reads as a bout still to come. */}
+                  <div className="min-h-[3rem] rounded-md border-2 border-yellow-400 bg-yellow-50 p-3 text-center text-sm font-semibold text-gray-900">
+                    {finalMatch.winner_registration_id ? nameOf(finalMatch.winner_registration_id)?.name : ""}
                   </div>
                 </div>
               )}
@@ -292,6 +297,11 @@ function MatchBox({
                 )}
                 <button type="submit" className="text-xs font-medium text-brand-700 hover:underline">Score on ring</button>
               </form>
+            )}
+            {hasResult && (
+              <Link href={`/events/${eventId}/matches/${match.id}`} className="text-xs font-medium text-brand-700 hover:underline">
+                Match record
+              </Link>
             )}
             {hasResult && (
               <form action={clearMatchResult}>

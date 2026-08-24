@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { DEFAULT_SHEET, sheetMax, syllabusFor, type ComponentKind, type SheetComponent, type SyllabusSet } from "@/lib/gradingSheet";
+import { DEFAULT_SHEET, sheetMax, syllabusFor, type ComponentKind, type SheetComponent, type SheetItem, type SyllabusSet } from "@/lib/gradingSheet";
 import { GRADE_OPTIONS } from "@/lib/belts";
 import { LAUNCHES, HAND_TECHNIQUES, KICK_TECHNIQUES } from "@/lib/powerBreaking";
 import { saveSyllabus, resetSyllabus } from "@/app/(app)/events/examActions";
@@ -338,23 +338,23 @@ export default function SyllabusEditor({
               <span className="label text-xs">
                 {component.kind === "select" || component.kind === "mixed" ? "Choices the examiner can pick from" : "Columns"}
               </span>
+              {/* Ticked means in use. Switching one off keeps the name and its
+                  key, so turning it back on restores the column rather than
+                  creating a new one that any existing mark no longer matches.
+                  The × is still there for something typed in error. */}
               <div className="mt-1 flex flex-wrap gap-2">
                 {component.items.map((item, itemIndex) => (
-                  <span key={item.key} className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs">
-                    {item.label}
-                    {canEdit && (
-                      <button
-                        type="button"
-                        className="text-red-600"
-                        aria-label={`Remove ${item.label}`}
-                        onClick={() =>
-                          update(index, { items: component.items.filter((_, j) => j !== itemIndex) })
-                        }
-                      >
-                        ×
-                      </button>
-                    )}
-                  </span>
+                  <ItemChip
+                    key={item.key}
+                    item={item}
+                    canEdit={canEdit}
+                    onToggle={() =>
+                      update(index, {
+                        items: component.items.map((it, j) => (j === itemIndex ? { ...it, off: !it.off } : it)),
+                      })
+                    }
+                    onDelete={() => update(index, { items: component.items.filter((_, j) => j !== itemIndex) })}
+                  />
                 ))}
                 {component.items.length === 0 && <span className="text-xs text-gray-400">Nothing yet.</span>}
               </div>
@@ -366,19 +366,18 @@ export default function SyllabusEditor({
                   <span className="label text-xs">Columns everybody is marked on</span>
                   <div className="mt-1 flex flex-wrap gap-2">
                     {(component.fixed ?? []).map((item, itemIndex) => (
-                      <span key={item.key} className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50 px-2 py-1 text-xs">
-                        {item.label}
-                        {canEdit && (
-                          <button
-                            type="button"
-                            className="text-red-600"
-                            aria-label={`Remove ${item.label}`}
-                            onClick={() => update(index, { fixed: (component.fixed ?? []).filter((_, j) => j !== itemIndex) })}
-                          >
-                            ×
-                          </button>
-                        )}
-                      </span>
+                      <ItemChip
+                        key={item.key}
+                        item={item}
+                        canEdit={canEdit}
+                        accent
+                        onToggle={() =>
+                          update(index, {
+                            fixed: (component.fixed ?? []).map((it, j) => (j === itemIndex ? { ...it, off: !it.off } : it)),
+                          })
+                        }
+                        onDelete={() => update(index, { fixed: (component.fixed ?? []).filter((_, j) => j !== itemIndex) })}
+                      />
                     ))}
                     {(component.fixed ?? []).length === 0 && <span className="text-xs text-gray-400">None — everything is chosen.</span>}
                   </div>
@@ -419,6 +418,51 @@ export default function SyllabusEditor({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * One column, with a tick that says whether it counts.
+ *
+ * An unticked chip goes grey and struck through rather than disappearing --
+ * the point is that it is still there, and one click brings it back.
+ */
+function ItemChip({
+  item,
+  canEdit,
+  accent,
+  onToggle,
+  onDelete,
+}: {
+  item: SheetItem;
+  canEdit: boolean;
+  accent?: boolean;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  const on = !item.off;
+  const base = accent ? "border-brand-200 bg-brand-50" : "border-gray-200";
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
+        on ? base : "border-dashed border-gray-200 bg-gray-50 text-gray-400 line-through"
+      }`}
+    >
+      <input
+        type="checkbox"
+        className="h-3.5 w-3.5"
+        checked={on}
+        disabled={!canEdit}
+        aria-label={`Include ${item.label}`}
+        onChange={onToggle}
+      />
+      {item.label}
+      {canEdit && (
+        <button type="button" className="text-red-600" aria-label={`Delete ${item.label}`} onClick={onDelete}>
+          ×
+        </button>
+      )}
+    </span>
   );
 }
 

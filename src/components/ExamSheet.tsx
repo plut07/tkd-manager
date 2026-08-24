@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   BREAKING_OUTCOMES,
   componentTotal,
+  activeItems,
   componentsFor,
   itemLabel,
   markValue,
@@ -138,9 +139,9 @@ export default function ExamSheet({
                     ) : component.kind === "select" || component.kind === "mixed" ? (
                       <div className="space-y-2">
                         {/* Columns everybody sits, then the ones they chose. */}
-                        {(component.fixed ?? []).length > 0 && (
+                        {activeItems(component.fixed).length > 0 && (
                           <div className="flex flex-wrap gap-2">
-                            {(component.fixed ?? []).map((item) => (
+                            {activeItems(component.fixed).map((item) => (
                               <label key={item.key} className="text-xs text-gray-600">
                                 <span className="block whitespace-nowrap">{item.label}</span>
                                 <input
@@ -175,7 +176,7 @@ export default function ExamSheet({
                       />
                     ) : (
                       <div className="flex flex-wrap gap-2">
-                        {component.items.map((item) => (
+                        {activeItems(component.items).map((item) => (
                           <label key={item.key} className="text-xs text-gray-600">
                             <span className="block whitespace-nowrap">{item.label}</span>
                             <input
@@ -319,7 +320,7 @@ function SelectRows({
             onChange={(e) => update(i, { item: e.target.value })}
           >
             <option value="">{i < (component.minRows ?? 2) ? "Choose…" : "Add another…"}</option>
-            {component.items
+            {activeItems(component.items)
               .filter((item) => item.key === row.item || !taken.has(item.key))
               .map((item) => (
                 <option key={item.key} value={item.key}>{item.label}</option>

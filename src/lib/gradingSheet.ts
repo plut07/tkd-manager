@@ -22,7 +22,21 @@
 
 import { isCompleteBreakingValue } from "./powerBreaking";
 
-export type SheetItem = { key: string; label: string };
+/**
+ * One column or choice on the sheet.
+ *
+ * `off` takes it out of use without throwing the name away. Deleting a column
+ * meant retyping it — and its key — to bring it back, which silently orphaned
+ * any mark already recorded against the old key. A tick is reversible; a
+ * delete is not, so the tick is the everyday control and delete is the
+ * exception.
+ */
+export type SheetItem = { key: string; label: string; off?: boolean };
+
+/** The items in use. Anything unticked in the syllabus is skipped. */
+export function activeItems(items: SheetItem[] | null | undefined): SheetItem[] {
+  return (items ?? []).filter((i) => !i.off);
+}
 
 export type ComponentKind = "fixed" | "select" | "mixed" | "breaking";
 
@@ -196,6 +210,8 @@ export function cleanMark(value: unknown, max: number): number | null {
 
 /** The label for one of a component's choices. */
 export function itemLabel(component: SheetComponent, key: string): string {
+  // Looked up across every item, ticked or not: a mark already given against a
+  // column that has since been switched off still has to print with its name.
   return component.items.find((i) => i.key === key)?.label ?? key;
 }
 
@@ -204,7 +220,7 @@ export function componentTotal(component: SheetComponent, marks: SheetMarks): nu
   let sum = 0;
   if (component.kind === "select" || component.kind === "mixed") {
     sum = selectedRows(marks, component).reduce((t, r) => t + (r.item ? r.score ?? 0 : 0), 0);
-    for (const item of component.fixed ?? []) sum += markValue(marks, item.key) ?? 0;
+    for (const item of activeItems(component.fixed)) sum += markValue(marks, item.key) ?? 0;
   } else if (component.kind === "breaking") {
     const methods = component.methods ?? 3;
     // Only techniques that were actually chosen count towards the share, so a
@@ -224,7 +240,7 @@ export function componentTotal(component: SheetComponent, marks: SheetMarks): nu
     }
     if (allBroke) sum += BREAKING_BONUS;
   } else {
-    sum = component.items.reduce((t, item) => t + (markValue(marks, item.key) ?? 0), 0);
+    sum = activeItems(component.items).reduce((t, item) => t + (markValue(marks, item.key) ?? 0), 0);
   }
   // Rounded here rather than per row: the exact shares rarely divide evenly,
   // and rounding each one first would quietly cost a mark.
@@ -300,7 +316,13 @@ export function parseSheet(raw: unknown): SheetComponent[] {
     Array.isArray(raw)
       ? raw
           .filter((i: any) => i && typeof i.key === "string" && i.key.trim())
-          .map((i: any) => ({ key: String(i.key).trim(), label: String(i.label ?? i.key).trim() || String(i.key) }))
+          .map((i: any) => ({
+            key: String(i.key).trim(),
+            label: String(i.label ?? i.key).trim() || String(i.key),
+            // Absent means in use, so every sheet saved before the tick existed
+            // keeps all of its columns.
+            off: i.off === true,
+          }))
       : [];
   const stringList = (raw: unknown): string[] | undefined =>
     Array.isArray(raw) ? raw.filter((v: any) => typeof v === "string" && v.trim()).map((v: string) => v.trim()) : undefined;
