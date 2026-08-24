@@ -101,13 +101,13 @@ async function readRing(where: { id?: string; joinCode?: string }): Promise<Ring
   // has ever taken is still in the table -- so the current score is the presses
   // belonging to the bout now loaded. That is also what makes a finished bout
   // readable again afterwards: nothing was ever thrown away to make room.
-  const query = supabase
+  const pressed = supabase
     .from("scoreboard_entries")
     .select("judge_slot, side, kind, value, round, voided")
     .eq("ring_id", ring.id);
   const { data: entries } = (ring as any).match_id
-    ? await query.eq("match_id", (ring as any).match_id).order("created_at")
-    : await query.is("match_id", null).order("created_at");
+    ? await pressed.eq("match_id", (ring as any).match_id).order("created_at")
+    : await pressed.is("match_id", null).order("created_at");
 
   return toDto(ring, entries ?? []);
 }
