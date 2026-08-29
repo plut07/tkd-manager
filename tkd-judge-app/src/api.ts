@@ -8,6 +8,62 @@ import type { Entry, ScoreMode, RingState, Side } from "./scoring";
  * to create an account.
  */
 
+/**
+ * How the event wants its screens to look.
+ *
+ * Sent with the ring, so a change made on the web designer reaches this phone
+ * on its next refresh. Every field is optional here and defaulted below — an
+ * older server that doesn't send a theme must not leave a judge with a blank
+ * screen mid-bout.
+ */
+export type Theme = {
+  redColor: string;
+  blueColor: string;
+  background: string;
+  textColor: string;
+  accentColor: string;
+  padDarkBackground: boolean;
+};
+
+export const DEFAULT_THEME: Theme = {
+  redColor: "#b91c1c",
+  blueColor: "#1d4ed8",
+  background: "#0b0b12",
+  textColor: "#ffffff",
+  accentColor: "#facc15",
+  padDarkBackground: false,
+};
+
+/** Only a plain hex value is used; anything else falls back. */
+function colour(value: unknown, fallback: string): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  return /^#[0-9a-f]{3}$|^#[0-9a-f]{6}$/i.test(text) ? text : fallback;
+}
+
+export function readTheme(raw: unknown): Theme {
+  const t = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    redColor: colour(t.redColor, DEFAULT_THEME.redColor),
+    blueColor: colour(t.blueColor, DEFAULT_THEME.blueColor),
+    background: colour(t.background, DEFAULT_THEME.background),
+    textColor: colour(t.textColor, DEFAULT_THEME.textColor),
+    accentColor: colour(t.accentColor, DEFAULT_THEME.accentColor),
+    padDarkBackground: t.padDarkBackground === true,
+  };
+}
+
+/** Readable text on a given background — white on dark, near-black on light. */
+export function contrastText(hex: string): string {
+  const value = hex.replace("#", "");
+  const full = value.length === 3 ? value.split("").map((c) => c + c).join("") : value;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  if ([r, g, b].some((n) => Number.isNaN(n))) return "#ffffff";
+  const luma = (r * 299 + g * 587 + b * 114) / 1000;
+  return luma > 150 ? "#111111" : "#ffffff";
+}
+
 export type Ring = {
   id: string;
   name: string;
@@ -29,6 +85,7 @@ export type Ring = {
   clockStartedAt: string | null;
   clockRemaining: number;
   entries: Entry[];
+  theme?: unknown;
 };
 
 export type Press = {

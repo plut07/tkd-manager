@@ -1,4 +1,8 @@
-node_modules/
-.expo/
-dist/
+node_modules
+.next
+.env
+.env.local
 *.log
+.DS_Store
+.vercel
+deploy_payload.json

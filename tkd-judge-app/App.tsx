@@ -12,7 +12,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 import { useKeepAwake } from "expo-keep-awake";
 
-import { fetchRing, pressId, sendUndo, Offline, type Press, type Ring } from "./src/api";
+import { fetchRing, pressId, sendUndo, readTheme, contrastText, Offline, type Press, type Ring } from "./src/api";
 import { emptyQueue, flush, undoLocally, withPending, type QueueState } from "./src/queue";
 import {
   formatClock,
@@ -294,13 +294,16 @@ export default function App() {
   const mine = judgeHistory(entries, judgeSlot);
   const buttons = ring.mode === "sparring" ? SPARRING_BUTTONS : PATTERN_BUTTONS;
 
+  // The event's own colours, so a judge glancing up at the display sees the
+  // same red as the button under their thumb.
+  const theme = readTheme(ring.theme);
   const sides: { side: Side; label: string; name: string | null; number: string | null; colour: string }[] = [
-    { side: "red", label: "RED", name: ring.redName, number: ring.redNumber, colour: "#c02626" },
-    { side: "blue", label: "BLUE", name: ring.blueName, number: ring.blueNumber, colour: "#1d4ed8" },
+    { side: "red", label: "RED", name: ring.redName, number: ring.redNumber, colour: theme.redColor },
+    { side: "blue", label: "BLUE", name: ring.blueName, number: ring.blueNumber, colour: theme.blueColor },
   ];
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: theme.background }]}>
       <StatusBar style="light" />
 
       <View style={styles.bar}>
@@ -329,12 +332,12 @@ export default function App() {
         {sides.map((s) => (
           <View key={s.side} style={styles.column}>
             <View style={[styles.head, { backgroundColor: s.colour }]}>
-              <Text style={styles.headLabel}>{s.label}</Text>
-              <Text style={styles.headName} numberOfLines={1}>
+              <Text style={[styles.headLabel, { color: contrastText(s.colour), opacity: 0.75 }]}>{s.label}</Text>
+              <Text style={[styles.headName, { color: contrastText(s.colour) }]} numberOfLines={1}>
                 {s.number ? `#${s.number} ` : ""}
                 {s.name ?? "—"}
               </Text>
-              <Text style={styles.headScore}>
+              <Text style={[styles.headScore, { color: contrastText(s.colour) }]}>
                 {ring.mode === "flag"
                   ? myVerdict === s.side
                     ? "✓"
@@ -342,7 +345,9 @@ export default function App() {
                   : judgeScore(entries, judgeSlot, s.side, ring.mode, ring.patternBase)}
               </Text>
               {penaltyTally(entries, s.side).points > 0 && (
-                <Text style={styles.headNote}>includes −{penaltyTally(entries, s.side).points} from the referee</Text>
+                <Text style={[styles.headNote, { color: contrastText(s.colour), opacity: 0.75 }]}>
+                  includes −{penaltyTally(entries, s.side).points} from the referee
+                </Text>
               )}
             </View>
 
@@ -352,7 +357,7 @@ export default function App() {
                 disabled={finished}
                 onPress={() => press(s.side, 1, "flag")}
               >
-                <Text style={styles.flagText}>{s.label} WINS</Text>
+                <Text style={[styles.flagText, { color: contrastText(s.colour) }]}>{s.label} WINS</Text>
               </Pressable>
             ) : (
               <View style={styles.buttons}>
@@ -367,7 +372,9 @@ export default function App() {
                     disabled={finished}
                     onPress={() => press(s.side, v, ring.mode === "sparring" ? "point" : "deduction")}
                   >
-                    <Text style={styles.buttonText}>{v > 0 ? `+${v}` : v}</Text>
+                    <Text style={[styles.buttonText, { color: contrastText(v < 0 ? "#3f3f46" : s.colour) }]}>
+                      {v > 0 ? `+${v}` : v}
+                    </Text>
                   </Pressable>
                 ))}
               </View>
