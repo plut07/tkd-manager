@@ -42,13 +42,25 @@ export default async function AppReleasesPage() {
           <Link href="/public/app" target="_blank" className="btn-secondary">Open the download page</Link>
         </div>
 
-        <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Send judges here</p>
-          <p className="mt-1 break-all font-mono text-base font-bold text-gray-900">{downloadPage}</p>
-          <p className="mt-1 text-xs text-gray-500">
-            Works on any phone. Nobody needs an account to reach it — the page only offers the file, and the app still
-            needs a join code before it can score.
-          </p>
+        <div className="mt-4 flex flex-wrap items-center gap-4 rounded-md border border-gray-200 bg-gray-50 p-3">
+          <img
+            src={`/api/public/qr?url=${encodeURIComponent(downloadPage)}&size=160`}
+            alt={`QR code for ${downloadPage}`}
+            width={160}
+            height={160}
+            className="rounded-md border border-gray-200 bg-white p-2"
+          />
+          <div className="min-w-[16rem] flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Send judges here</p>
+            <p className="mt-1 break-all font-mono text-base font-bold text-gray-900">{downloadPage}</p>
+            <p className="mt-1 text-xs text-gray-500">
+              Works on any phone. Nobody needs an account to reach it — the page only offers the file, and the app still
+              needs a join code before it can score.
+            </p>
+            <Link href="/app-releases/poster" target="_blank" className="btn-secondary mt-2 inline-block !px-3 !py-1.5 text-xs">
+              Printable sheet for the ring table
+            </Link>
+          </div>
         </div>
 
         {current ? (

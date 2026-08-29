@@ -5,6 +5,7 @@ import { requirePermission, requireSession } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { makeJoinCode, tally, sideTotal, secondsLeft, type Entry, type ScoreMode, type Side } from "@/lib/scoreboard";
+import { parseTheme, DEFAULT_THEME, type ScoreboardTheme } from "@/lib/scoreboardTheme";
 
 /**
  * Running a ring.
@@ -43,12 +44,21 @@ export type RingDto = {
   clockStartedAt: string | null;
   clockRemaining: number;
   entries: Entry[];
+  /**
+   * How this event's screens should look.
+   *
+   * Sent with the ring rather than fetched separately, so the display, the
+   * judge's pad and the Android app all get it from the one call they already
+   * make — a change on the designer then reaches every screen in the hall on
+   * their next refresh, without anybody reloading anything.
+   */
+  theme: ScoreboardTheme;
 };
 
 const RING_SELECT =
   "id, name, join_code, event_id, category_id, match_id, red_name, blue_name, red_number, blue_number, pattern_name, mode, judge_count, pattern_base, round_seconds, rounds, current_round, state, clock_started_at, clock_remaining, event_categories(name)";
 
-function toDto(ring: any, entries: any[]): RingDto {
+function toDto(ring: any, entries: any[], theme: ScoreboardTheme = DEFAULT_THEME): RingDto {
   return {
     id: ring.id,
     name: ring.name,
@@ -81,7 +91,25 @@ function toDto(ring: any, entries: any[]): RingDto {
       round: Number(e.round) || 1,
       voided: e.voided === true,
     })),
+    theme,
   };
+}
+
+/** This event's look, or the house style, or the built-in one. */
+async function themeFor(supabase: any, eventId: string): Promise<ScoreboardTheme> {
+  const { data: own } = await supabase
+    .from("scoreboard_themes")
+    .select("settings")
+    .eq("event_id", eventId)
+    .maybeSingle();
+  if (own) return parseTheme(own.settings);
+
+  const { data: house } = await supabase
+    .from("scoreboard_themes")
+    .select("settings")
+    .is("event_id", null)
+    .maybeSingle();
+  return house ? parseTheme(house.settings) : DEFAULT_THEME;
 }
 
 async function readRing(where: { id?: string; joinCode?: string }): Promise<RingDto | null> {
@@ -109,7 +137,7 @@ async function readRing(where: { id?: string; joinCode?: string }): Promise<Ring
     ? await pressed.eq("match_id", (ring as any).match_id).order("created_at")
     : await pressed.is("match_id", null).order("created_at");
 
-  return toDto(ring, entries ?? []);
+  return toDto(ring, entries ?? [], await themeFor(supabase, (ring as any).event_id));
 }
 
 /**

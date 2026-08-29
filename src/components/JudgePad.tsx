@@ -13,6 +13,7 @@ import {
   type Side,
 } from "@/lib/scoreboard";
 import { judgePress, judgeUndo, loadRing, type RingDto } from "@/app/(app)/events/scoreboardActions";
+import { contrastText } from "@/lib/scoreboardTheme";
 import { realtimeClient } from "@/lib/liveChannel";
 
 /**
@@ -90,13 +91,20 @@ export default function JudgePad({ initial, joinCode, judgeSlot }: { initial: Ri
   const myVerdict = judgeVerdict(ring.entries, judgeSlot, ring.mode, ring.patternBase);
   const finished = ring.state === "finished";
 
-  const sides: { side: Side; label: string; name: string | null; number: string | null; classes: string }[] = [
-    { side: "red", label: "RED", name: ring.redName, number: ring.redNumber, classes: "bg-red-600 hover:bg-red-700" },
-    { side: "blue", label: "BLUE", name: ring.blueName, number: ring.blueNumber, classes: "bg-blue-600 hover:bg-blue-700" },
+  // Colours come from the event's theme so a judge glancing up at the display
+  // sees the same red as the button under their thumb.
+  const theme = ring.theme;
+  const sides: { side: Side; label: string; name: string | null; number: string | null; colour: string }[] = [
+    { side: "red", label: "RED", name: ring.redName, number: ring.redNumber, colour: theme.redColor },
+    { side: "blue", label: "BLUE", name: ring.blueName, number: ring.blueNumber, colour: theme.blueColor },
   ];
+  const dark = theme.padDarkBackground;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-3 p-2">
+    <div
+      className="mx-auto max-w-3xl space-y-3 p-2"
+      style={dark ? { backgroundColor: theme.background, color: theme.textColor, minHeight: "100vh" } : undefined}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-gray-900 px-3 py-2 text-white">
         <span className="text-sm font-semibold">{ring.name} · Judge {judgeSlot}</span>
         <span className="text-sm">
@@ -116,19 +124,22 @@ export default function JudgePad({ initial, joinCode, judgeSlot }: { initial: Ri
       <div className="grid grid-cols-2 gap-3">
         {sides.map((s) => (
           <div key={s.side} className="space-y-2">
-            <div className={`rounded-md ${s.side === "red" ? "bg-red-50" : "bg-blue-50"} p-3 text-center`}>
-              <p className={`text-xs font-bold ${s.side === "red" ? "text-red-700" : "text-blue-700"}`}>{s.label}</p>
-              <p className="truncate text-sm text-gray-700">
+            <div
+              className="rounded-md p-3 text-center"
+              style={{ backgroundColor: s.colour, color: contrastText(s.colour) }}
+            >
+              <p className="text-xs font-bold tracking-widest opacity-80">{s.label}</p>
+              <p className="truncate text-sm">
                 {s.number ? `#${s.number} ` : ""}
                 {s.name ?? "—"}
               </p>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="text-3xl font-bold">
                 {ring.mode === "flag" ? (myVerdict === s.side ? "✓" : "—") : scoreFor(s.side)}
               </p>
               {/* The referee's calls already come off this mark; showing them
                   stops a judge wondering why their number moved on its own. */}
               {penaltyTally(ring.entries, s.side).points > 0 && (
-                <p className="text-xs text-gray-500">
+                <p className="text-xs opacity-80">
                   includes −{penaltyTally(ring.entries, s.side).points} from the referee
                 </p>
               )}
@@ -139,7 +150,8 @@ export default function JudgePad({ initial, joinCode, judgeSlot }: { initial: Ri
                 type="button"
                 disabled={busy || finished}
                 onClick={() => { void press(s.side, 1, "flag"); }}
-                className={`h-28 w-full rounded-md text-xl font-bold text-white disabled:opacity-40 ${s.classes}`}
+                className="h-28 w-full rounded-md text-xl font-bold disabled:opacity-40"
+                style={{ backgroundColor: s.colour, color: contrastText(s.colour) }}
               >
                 {s.label} WINS
               </button>
@@ -151,9 +163,11 @@ export default function JudgePad({ initial, joinCode, judgeSlot }: { initial: Ri
                     type="button"
                     disabled={busy || finished}
                     onClick={() => { void press(s.side, v, ring.mode === "sparring" ? "point" : "deduction"); }}
-                    className={`h-16 rounded-md text-lg font-bold text-white disabled:opacity-40 ${
-                      v < 0 ? "bg-gray-700 hover:bg-gray-800" : s.classes
-                    }`}
+                    className="h-16 rounded-md text-lg font-bold disabled:opacity-40"
+                    style={{
+                      backgroundColor: v < 0 ? "#3f3f46" : s.colour,
+                      color: contrastText(v < 0 ? "#3f3f46" : s.colour),
+                    }}
                   >
                     {v > 0 ? `+${v}` : v}
                   </button>

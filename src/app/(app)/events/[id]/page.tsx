@@ -14,6 +14,7 @@ import { PHOTO_BUCKET } from "@/lib/eventPhotos";
 import CategoryForm from "../CategoryForm";
 import BracketView from "../BracketView";
 import ScoreboardTab from "../ScoreboardTab";
+import AppearanceTab from "../AppearanceTab";
 import ExamTab from "../ExamTab";
 import ResultTab from "../ResultTab";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
@@ -46,8 +47,9 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const requestedSub = legacy[rawTab] ?? searchParams.sub ?? "students";
   const sub = subOptions.includes(requestedSub) ? requestedSub : "students";
 
-  // The draw and the scoreboard share one tab; "view" says which half is open.
-  const view = searchParams.view === "scoreboard" ? "scoreboard" : "draw";
+  // The draw and the scoreboard share one tab; "view" says which part is open.
+  const view =
+    searchParams.view === "scoreboard" || searchParams.view === "appearance" ? searchParams.view : "draw";
 
   // Categories are listed a page at a time so a long list never buries the
   // form that creates them.
@@ -316,9 +318,12 @@ export default async function EventDetailPage({ params, searchParams }: { params
           <div className="flex flex-wrap gap-1 rounded-md bg-gray-100 p-1">
             <Link href={`/events/${event.id}?tab=draws`} className={`rounded px-3 py-1.5 text-sm font-medium ${view === "draw" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Draw</Link>
             {canEdit && (<Link href={`/events/${event.id}?tab=draws&view=scoreboard`} className={`rounded px-3 py-1.5 text-sm font-medium ${view === "scoreboard" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Scoreboard</Link>)}
+            {canEdit && (<Link href={`/events/${event.id}?tab=draws&view=appearance`} className={`rounded px-3 py-1.5 text-sm font-medium ${view === "appearance" ? "bg-white text-brand-700 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}>Screen design</Link>)}
           </div>
 
-          {view === "scoreboard" ? (
+          {view === "appearance" ? (
+            <AppearanceTab eventId={event.id} />
+          ) : view === "scoreboard" ? (
             <ScoreboardTab
               eventId={event.id}
               ringId={searchParams.ring}

@@ -27,6 +27,7 @@ export default async function AppDownloadPage() {
     .maybeSingle();
 
   const judgeWeb = `${baseUrl()}/public/judge`;
+  const thisPage = `${baseUrl()}/public/app`;
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
@@ -47,6 +48,20 @@ export default async function AppDownloadPage() {
             >
               Download for Android
             </a>
+
+            {/* For the judge standing next to somebody who already has the
+                page open — scanning is quicker than typing an address into a
+                phone keyboard, and it can't be mistyped. */}
+            <div className="mt-6 flex flex-col items-center">
+              <img
+                src={`/api/public/qr?url=${encodeURIComponent(thisPage)}&size=200`}
+                alt={`QR code for ${thisPage}`}
+                width={200}
+                height={200}
+                className="rounded-md border border-gray-200 bg-white p-2"
+              />
+              <p className="mt-2 text-xs text-gray-500">Scan to open this page on another phone</p>
+            </div>
             <p className="mt-2 text-xs text-gray-500">
               Version {release.version} · {formatBytes(Number(release.file_size))} ·{" "}
               {new Date(release.uploaded_at).toLocaleDateString()}
