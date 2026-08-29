@@ -1,0 +1,4 @@
+# The judge app is a separate program that happens to sit in this repository.
+# It is built with Expo, not Vercel, and nothing on the website imports it, so
+# there is no reason to ship it to the server.
+tkd-judge-app

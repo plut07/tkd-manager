@@ -1,0 +1,58 @@
+LETTING BOTH PROJECTS SHARE ONE REPOSITORY
+==========================================
+
+The website's package.json is fixed — Vercel found Next.js and the code
+compiled. The build then failed on this:
+
+    ./tkd-judge-app/tkd-judge-app/App.tsx
+    Type error: Cannot find module 'react-native'
+
+Nothing is broken. The website's tsconfig.json says "type-check every .ts and
+.tsx file in this repository", so it walked into the judge app's folder and
+tried to check a React Native file against a project that has no React Native
+installed.
+
+Rather than making you delete the folder again, these two files tell the
+website to leave it alone.
+
+
+WHAT TO DO
+----------
+Upload both files to the ROOT of the tkd-manager repository:
+
+    tsconfig.json     (replaces the existing one — adds the judge app to
+                       the list of folders it skips)
+    .vercelignore     (new file — keeps the judge app out of what gets
+                       uploaded to the server)
+
+That is all. Vercel rebuilds on its own.
+
+
+AFTER THIS
+----------
+The judge app can stay where it is, in tkd-judge-app/, and the website will
+ignore it completely.
+
+To work on the judge app you go into that folder first:
+
+    cd tkd-judge-app/tkd-judge-app
+    npm install
+    eas build --platform android --profile apk
+
+It has its own package.json and its own dependencies, which is exactly why it
+must never sit at the root of the repository.
+
+(Your folder is nested twice — tkd-judge-app/tkd-judge-app — because the zip's
+folder was uploaded inside a folder of the same name. It works fine as it is.
+If you would rather tidy it, move the inner folder's contents up one level and
+delete the empty inner folder.)
+
+
+ONE LAST THING
+--------------
+If these three files are still sitting in the website's src/ folder from the
+earlier mix-up, delete them. They are the judge app's and do nothing here:
+
+    src/api.ts
+    src/queue.ts
+    src/scoring.ts
