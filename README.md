@@ -1,185 +1,114 @@
-# TKD Manager
+# TKD Judge
 
-A web-based event & student management system for organizing Taekwon-Do
-events and keeping club/student data up to date year-round.
+The judge's pad, as an Android app. One judge, one ring, one screen.
 
-Built with Next.js 14 (App Router), TypeScript, Tailwind CSS, and Supabase
-(Postgres) — deployable to Vercel.
+Everything else about the scoreboard — setting the bout up, the clock, warnings
+and deductions, confirming the result — stays with the operator on the web,
+where there is a keyboard and a monitor.
 
-## What's included
+## What it does
 
-- **Login** with a seeded Super Admin account (User ID `Admin`, password
-  `SuperAdmin@225588` — change this after your first login).
-- **Role-based access control** with three roles out of the box (Super
-  Admin, Event Manager, Club User) and a visual **access-rights matrix**
-  (Users & Access → Access rights matrix) where a Super Admin can toggle,
-  per role: create/edit/delete/view for Users, Events, and Students.
-- **Clubs** management (Super Admin only) — the base data students and
-  Club User accounts attach to.
-- **Students** page with Club, First/Last name, Email, Birthday, Weight
-  (KG), Height (cm), Gup (1–10), Dan (1–9), Gender, Nationality, ID number,
-  Passport ID, and Active/Inactive. Club User accounts only ever see and
-  edit their own club's students.
-- **Events** page inspired by sportdata.org's event-info layout: header
-  (dates, venue, organizer, registration deadline, status), categories /
-  divisions, registered clubs & athletes, and a documents/downloads list.
-- **Registration & approval** — entries land in a pending list until an
-  organizer confirms them; confirmed competitors are auto-assigned a
-  competition number, and each club can export its confirmed list as CSV.
-- **Draws** (competition events) — a Draws tab listing every category with
-  its confirmed-competitor count and bracket status, plus a full bracket
-  view with score entry (0–5 per side), manual first-round swaps, and
-  draft/publish control. See "Draw seeding" below.
-- **Grading registration** (grading events) — generates a Tally.so form per
-  event; submissions arrive by webhook, auto-match existing students by
-  national ID / passport, and stage unknown registrants for Super Admin
-  approval, which creates the student profile. See "Grading setup" below.
-- **Public pages** — a signed-out event list and published brackets.
+1. The judge types the scoreboard address and the 5-character join code.
+2. They pick their seat number.
+3. They score.
 
-## Draw seeding
+**Presses are never lost.** A press is recorded on the phone first and sent
+afterwards. If the wifi drops, the button still works, the header says
+`Offline · 3 waiting`, and everything goes out the moment the connection
+returns. Closing the app doesn't lose them either — the queue is saved on the
+device.
 
-First-round pairings are chosen greedily to keep clubmates and compatriots
-apart for as long as possible. Each candidate pairing is scored:
+**Presses are never counted twice.** Each one is given a name by the phone, and
+the server refuses a second press with the same name. That is what makes it
+safe for a phone to resend something it isn't sure arrived.
 
-| Severity | Meaning                                  |
-| -------- | ---------------------------------------- |
-| 0        | different club **and** different country |
-| 1        | same country, different club             |
-| 2        | same club                                |
+**A press can't land on the wrong bout.** Each press remembers which bout it
+was made in. If the ring has moved on by the time it is sent, it is dropped and
+the judge is told, rather than quietly scoring the next pair.
 
-The algorithm always takes the lowest available severity, so competitors
-only meet a compatriot when there is no other option, and only meet a
-clubmate as a last resort. Pairs are then distributed across the bracket so
-that large clubs are spread over different quarters rather than stacked.
+---
 
-Byes are assigned automatically when the entry count isn't a power of two,
-and a third-place match is created whenever there are two semi-finals.
+## Building the APK
 
-## Grading setup
+You need a free [Expo account](https://expo.dev). Everything below is typed
+into a terminal in this folder.
 
-Grading events use a Tally.so form instead of manual entry.
-
-1. Create an API key at <https://tally.so/settings/api>.
-2. Set `TALLY_API_KEY` and `APP_BASE_URL` in your environment (see below).
-3. Open a grading event → **Grading registration** → **Create Tally form**.
-   This creates a published form and registers a webhook back to
-   `/api/grading-webhook`.
-4. Share the form link. Submissions appear automatically:
-   - a registrant matching an existing student (by national ID or passport)
-     is registered for the event straight away;
-   - anyone else is staged under **New registrants awaiting approval**,
-     where a Super Admin assigns a club and approves, creating the student.
-
-"Sync now" is only needed to backfill responses submitted before the
-webhook existed — normal traffic arrives on its own. Webhook payloads are
-verified with an HMAC-SHA256 signature, so only genuine Tally deliveries
-are accepted.
-
-## Tech notes
-
-- Auth is custom (not Supabase Auth) so that logins use a plain "User ID"
-  rather than an email address, per the spec. Passwords are hashed with
-  bcrypt; sessions are signed JWTs in an httpOnly cookie.
-- All database access happens server-side using the Supabase
-  **service_role** key (via Server Components and Server Actions). That
-  key is never sent to the browser. Row Level Security is enabled on every
-  table with no public policies, so the anon/publishable key can't read or
-  write anything even by mistake.
-- Authorization is enforced in code (`src/lib/authz.ts`) on every page and
-  server action, not just in the UI — links are hidden for users without a
-  permission, but the server also refuses the action if attempted directly.
-- `/api/grading-webhook` is the one route exempt from the auth middleware,
-  since Tally calls it unauthenticated; it is protected by signature
-  verification instead.
-
-## 1. Create the Supabase project
-
-1. In Supabase, create a new project (in your **TKD** organization).
-2. Open the SQL editor and run every file in `supabase/migrations/`
-   **in filename order**, `0001_schema.sql` through `0009_grading_tally.sql`.
-   (`0002_seed.sql` creates the roles, the 12 permissions, and the `Admin`
-   super admin login.)
-3. Go to Project Settings → API and copy the **Project URL** and the
-   **service_role** key (not the anon key — keep this secret).
-
-## 2. Configure the app
-
-```bash
-cp .env.example .env.local
-```
-
-Fill in:
+### One time only
 
 ```
-NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-SESSION_SECRET=<generate with: openssl rand -base64 48>
-
-# Only needed for grading events:
-TALLY_API_KEY=your-tally-api-key
-APP_BASE_URL=https://your-app.vercel.app
-```
-
-`APP_BASE_URL` must be the publicly reachable URL of the deployment, since
-Tally calls it to deliver submissions. Locally you can leave the Tally
-variables unset — everything except the grading tab works without them.
-
-## 3. Run it locally
-
-```bash
 npm install
-npm run dev
+npm install -g eas-cli
+eas login
+eas build:configure
 ```
 
-Visit http://localhost:3000, sign in as `Admin` / `SuperAdmin@225588`, then:
+`eas build:configure` fills in the project id in `app.json` — the placeholder
+that currently says `REPLACE-AFTER-FIRST-EAS-BUILD`. Let it.
 
-1. Go to **Clubs** and add your clubs.
-2. Go to **Users & Access** and create a Club User account per club (or an
-   Event Manager account), assigning the right club.
-3. Optionally adjust who can do what in **Access rights matrix**.
-4. Start adding students and events.
+### Every time you want a new APK
 
-If you ever get locked out of the Admin account, you can reset its
-password from the command line:
-
-```bash
-npm run seed -- --password "NewPassword123!"
+```
+eas build --platform android --profile apk
 ```
 
-## 4. Deploy to Vercel
+The build runs on Expo's servers, takes roughly 10–15 minutes, and ends with a
+download link. That `.apk` file is what you send to the judges.
 
-Connect this repo to Vercel rather than uploading files — Vercel then
-builds each push incrementally, which is both faster and much safer than
-re-uploading the whole tree.
+### Installing it on a phone
 
-1. Push this project to a Git repo (GitHub/GitLab/Bitbucket).
-2. In Vercel: **Add New → Project → Import** that repo. Framework detection
-   picks up Next.js automatically; no build settings need changing.
-3. Add the environment variables from `.env.local` under **Settings →
-   Environment Variables**: `NEXT_PUBLIC_SUPABASE_URL`,
-   `SUPABASE_SERVICE_ROLE_KEY`, `SESSION_SECRET`, and — if you use grading
-   events — `TALLY_API_KEY` and `APP_BASE_URL`.
-4. Deploy. Every later `git push` to the default branch ships to
-   production; pushes to other branches get preview URLs.
+Android will warn about installing an app from outside the Play Store. That
+warning is expected — the app isn't published, which is what you asked for.
+The judge taps **Install anyway** (the exact wording varies by phone).
 
-After the first deploy, set `APP_BASE_URL` to the real production URL and
-redeploy, so Tally webhooks point at the right place.
+### Trying it before you build
 
-### Connecting to the existing `tkd-manager` Vercel project
+```
+npm install
+npx expo start
+```
 
-If you want to keep the current production URLs rather than create a new
-project, open the existing **tkd-manager** project in Vercel → **Settings →
-Git → Connect Git Repository** and point it at the new repo. The aliases
-(`tkd-manager-tkdtta.vercel.app` and friends) and existing environment
-variables carry over; only the deploy mechanism changes.
+Scan the QR code with the **Expo Go** app from the Play Store. This runs the
+real app on a real phone without building anything, which is the fastest way to
+check it against a live ring.
 
-## Known limitations / good next steps
+---
 
-- Event "documents" are stored as links (title + URL) rather than file
-  uploads. Wiring up Supabase Storage for direct PDF/image uploads is a
-  natural next step.
-- No password-reset-by-email flow (admin resets passwords manually from
-  the Users page, or via `npm run seed`).
-- No automated tests yet.
-- Results/medal tables and officials management from the sportdata.org
-  reference aren't built yet — draws and grading registration are.
+## What to type as the scoreboard address
+
+Whatever you use to reach the web app, without the `https://`:
+
+```
+tkd-manager.vercel.app
+```
+
+The app remembers it, so a judge only types it the first time.
+
+## Getting the join code
+
+The operator's Scoreboard tab shows it next to the ring name. It is the same
+code the web judge page uses — the app and the browser can be mixed at the same
+table, and both go through the same server code.
+
+---
+
+## Files
+
+| File | What it is |
+| --- | --- |
+| `App.tsx` | The three screens: join, pick a seat, score |
+| `src/api.ts` | Talking to the scoreboard, and telling "offline" apart from "refused" |
+| `src/queue.ts` | Presses waiting to be sent. Pure, and tested — this is the part that matters |
+| `src/scoring.ts` | Scoring arithmetic, copied from the web app's `src/lib/scoreboard.ts` |
+
+`src/scoring.ts` is a **copy**, not a shared package. If the scoring rules ever
+change, the web file is the source of truth and this one should be replaced
+from it wholesale rather than edited. The app never decides a result — the
+server tallies the bout — so a drift here would only affect what one judge sees
+on their own pad, but it would still be wrong.
+
+## iOS
+
+`eas build --platform ios` works from the same code, but Apple requires a paid
+developer account ($99/year) and there is no equivalent of sideloading an APK.
+That is the only reason this is Android-first, and nothing in the code is
+Android-specific.
