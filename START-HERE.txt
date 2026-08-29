@@ -1,0 +1,21 @@
+THIS IS A SEPARATE PROGRAM. IT NEEDS ITS OWN REPOSITORY.
+========================================================
+
+Do not put these files in the tkd-manager repository.
+
+Both projects have a file called package.json, and only one of them can win.
+If the judge app's package.json ends up in the website's repository, Vercel
+installs React Native instead of Next.js and the website stops deploying with
+"No Next.js version detected".
+
+The same is true of tsconfig.json, README.md and .gitignore.
+
+
+WHAT TO DO
+----------
+1. Create a second, empty repository on GitHub — call it "tkd-judge".
+2. Upload the CONTENTS of this folder to it (App.tsx, package.json, src/, and
+   the rest), so they sit at the root of that repository.
+3. Do not connect it to Vercel. It is built with Expo, not Vercel.
+
+Then follow README.md in this folder to build the APK.
