@@ -1,0 +1,54 @@
+RESTORING THE WEBSITE BUILD
+===========================
+
+The judge app's files were copied into the tkd-manager repository and
+overwrote four of the website's own files. Vercel then read the judge app's
+package.json, installed React Native instead of Next.js, and stopped with
+"No Next.js version detected".
+
+Two steps fix it.
+
+
+STEP 1 — put these four files back
+----------------------------------
+Upload the four files in this folder to the ROOT of the tkd-manager repo,
+replacing what is there now:
+
+    package.json     <-- this is the one that broke the build
+    tsconfig.json
+    README.md
+    .gitignore
+
+
+STEP 2 — delete the seven judge-app files that were added
+---------------------------------------------------------
+Uploading cannot remove a file, so these have to be deleted by hand. On
+GitHub: open the file, click the bin icon, then Commit changes.
+
+    App.tsx            <-- this one WILL break the build on its own
+    app.json
+    babel.config.js
+    eas.json
+    src/api.ts
+    src/queue.ts
+    src/scoring.ts
+
+App.tsx matters as much as package.json: the website type-checks every .tsx
+file in the repo, and that one imports React Native, which is no longer
+installed.
+
+
+THEN
+----
+Vercel rebuilds on its own once the last change is committed.
+
+
+THE JUDGE APP
+-------------
+It is a separate program and needs its own repository — it cannot live inside
+tkd-manager, because both projects want a file called package.json and only one
+of them can have it.
+
+Make a second repo (for example "tkd-judge") and upload the judge app there,
+keeping the tkd-judge-app folder intact. Do not connect that repo to Vercel;
+it is built with Expo, not Vercel.

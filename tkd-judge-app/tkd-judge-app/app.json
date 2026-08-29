@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "TKD Judge",
+    "slug": "tkd-judge",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0b0b12",
+    "assetBundlePatterns": ["**/*"],
+    "android": {
+      "package": "org.tkdmanager.judge",
+      "versionCode": 1
+    },
+    "ios": {
+      "bundleIdentifier": "org.tkdmanager.judge",
+      "supportsTablet": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE-AFTER-FIRST-EAS-BUILD"
+      }
+    }
+  }
+}
