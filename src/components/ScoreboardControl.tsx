@@ -236,6 +236,12 @@ export default function ScoreboardControl({
               Judges join at <strong>{baseUrl}/public/judge</strong> with code{" "}
               <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-base font-bold tracking-widest">{ring.joinCode}</span>
             </p>
+            <p className="mt-1 text-xs text-gray-400">
+              Judges who want the phone app — which keeps scoring when the wifi drops — can get it at{" "}
+              <a href="/public/app" target="_blank" rel="noopener noreferrer" className="font-medium text-brand-700 hover:underline">
+                {baseUrl}/public/app
+              </a>
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <a href={displayLink} target="_blank" rel="noopener noreferrer" className="btn-secondary">Open display screen</a>

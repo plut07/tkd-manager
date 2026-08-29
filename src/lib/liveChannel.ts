@@ -15,6 +15,19 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 let client: SupabaseClient | null = null;
 
+/**
+ * The same browser client, under a name that says what else it is used for.
+ *
+ * An APK is tens of megabytes and Vercel refuses any request body over 4.5 MB,
+ * so a build cannot be uploaded through the server at all. The browser is
+ * given a one-time signed link and sends the file straight to storage instead,
+ * which needs a client on this side. It carries only the public key and can
+ * still read nothing — the link is what grants the single upload.
+ */
+export function browserClient(): SupabaseClient | null {
+  return realtimeClient();
+}
+
 export function realtimeClient(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

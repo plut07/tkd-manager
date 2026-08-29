@@ -17,6 +17,7 @@ export default function Nav({ session }: { session: SessionPayload }) {
     { href: "/events", label: "Events", show: hasPermission(session, PERMISSIONS.EVENT_VIEW) },
     { href: "/users", label: "Users & Access", show: hasPermission(session, PERMISSIONS.USER_VIEW) },
     { href: "/clubs", label: "Clubs", show: session.role === "super_admin" },
+    { href: "/app-releases", label: "Judge app", show: session.role === "super_admin" },
   ].filter((l) => l.show);
 
   return (
