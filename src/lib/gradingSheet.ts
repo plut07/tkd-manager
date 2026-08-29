@@ -362,3 +362,72 @@ export type SyllabusSet = {
 export function syllabusFor(set: SyllabusSet, gradeValue: string | null | undefined): SheetComponent[] {
   return (gradeValue && set.byGrade[gradeValue]) || set.fallback;
 }
+
+/**
+ * One component list covering every rank's sheet.
+ *
+ * A result form is drawn once and printed for candidates sitting different
+ * syllabuses, so the designer has to be offered every field any rank could
+ * produce. Collapsing the sheets with a Map keyed on the component key kept
+ * whichever happened to come last -- so a rank breaking three techniques lost
+ * its third field to a rank that breaks two, and there was no way to place it.
+ *
+ * Merged generously instead: the most techniques anyone breaks, the union of
+ * every choice offered, the largest row count. A field that a particular
+ * candidate has nothing for simply prints blank, which is what an unused box on
+ * a paper form looks like anyway.
+ */
+export function mergeComponents(components: SheetComponent[]): SheetComponent[] {
+  const order: string[] = [];
+  const merged = new Map<string, SheetComponent>();
+
+  const unionItems = (a: SheetItem[] | undefined, b: SheetItem[] | undefined): SheetItem[] => {
+    const out: SheetItem[] = [];
+    const seen = new Set<string>();
+    for (const item of [...(a ?? []), ...(b ?? [])]) {
+      if (seen.has(item.key)) continue;
+      seen.add(item.key);
+      out.push(item);
+    }
+    return out;
+  };
+
+  // An empty restriction list means "anything", so it swallows any narrower
+  // one rather than being intersected with it.
+  const unionLimits = (a: string[] | undefined, b: string[] | undefined): string[] | undefined => {
+    if (!a?.length || !b?.length) return undefined;
+    return Array.from(new Set([...a, ...b]));
+  };
+
+  const richerKind = (a: ComponentKind, b: ComponentKind): ComponentKind => {
+    if (a === b) return a;
+    if (a === "mixed" || b === "mixed") return "mixed";
+    if (a === "select" || b === "select") return "select";
+    return a;
+  };
+
+  for (const c of components) {
+    const existing = merged.get(c.key);
+    if (!existing) {
+      order.push(c.key);
+      merged.set(c.key, { ...c });
+      continue;
+    }
+    merged.set(c.key, {
+      ...existing,
+      label: existing.label || c.label,
+      max: Math.max(existing.max, c.max),
+      itemMax: Math.max(existing.itemMax, c.itemMax),
+      kind: richerKind(existing.kind, c.kind),
+      items: unionItems(existing.items, c.items),
+      fixed: unionItems(existing.fixed, c.fixed),
+      minRows: Math.max(existing.minRows ?? 0, c.minRows ?? 0) || undefined,
+      methods: Math.max(existing.methods ?? 0, c.methods ?? 0) || undefined,
+      attempts: Math.max(existing.attempts ?? 0, c.attempts ?? 0) || undefined,
+      launches: unionLimits(existing.launches, c.launches),
+      techniques: unionLimits(existing.techniques, c.techniques),
+    });
+  }
+
+  return order.map((key) => merged.get(key) as SheetComponent);
+}

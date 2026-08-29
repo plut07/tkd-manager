@@ -101,7 +101,11 @@ export function examFieldsForSheet(sheet: SheetComponent[]): TemplateFieldDef[] 
       group: "Exam: components",
     });
     if (component.kind === "breaking") {
-      const methods = component.methods ?? 3;
+      // At least three, whatever the syllabus says. The printed form has three
+      // rows on it; a rank that only breaks two leaves the third blank, which
+      // is what an unused box on a paper sheet looks like. Offering fewer
+      // fields than the form has boxes leaves a row that can never be filled.
+      const methods = Math.max(3, component.methods ?? 3);
       for (let m = 1; m <= methods; m++) {
         // One field per attempt rather than one field saying which attempt it
         // was. A paper sheet has a column headed "1st", "2nd", "3rd" and "FTB"

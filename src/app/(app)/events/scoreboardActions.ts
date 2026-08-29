@@ -255,12 +255,28 @@ export async function judgePress(input: {
   side: Side;
   value: number;
   kind: "point" | "deduction" | "flag";
-}): Promise<{ ok: true; ring: RingDto } | { error: string }> {
+  /**
+   * A name the device gave this press, so a retry after a dropped connection is
+   * recognised as the same press rather than counted again. Web judges don't
+   * send one — their press either went or visibly didn't.
+   */
+  clientId?: string;
+  /**
+   * The bout the judge believed they were scoring. A press queued on a phone
+   * during one bout must not land on the next one, so it is checked against
+   * what the ring is showing now and refused if the ring has moved on.
+   */
+  expectedMatchId?: string | null;
+}): Promise<{ ok: true; ring: RingDto } | { error: string; stale?: boolean }> {
   try {
     const ring = await readRing({ joinCode: input.joinCode });
     if (!ring) return { error: "That code doesn't match a ring." };
     if (input.judgeSlot < 1 || input.judgeSlot > ring.judgeCount) return { error: "That judge number isn't on this ring." };
-    if (ring.state === "finished") return { error: "This bout is finished." };
+    if (ring.state === "finished") return { error: "This bout is finished.", stale: true };
+
+    if (input.expectedMatchId !== undefined && (input.expectedMatchId ?? null) !== ring.matchId) {
+      return { error: "The ring has moved on to another bout, so that press was dropped.", stale: true };
+    }
 
     const supabase = supabaseAdmin();
     const { error } = await supabase.from("scoreboard_entries").insert({
@@ -271,7 +287,15 @@ export async function judgePress(input: {
       kind: input.kind,
       value: input.value,
       round: ring.currentRound,
+      client_id: input.clientId ?? null,
     });
+
+    // A repeat of a press that already arrived is success, not failure: the
+    // phone is asking "did this land?" and the answer is yes.
+    if (error && (error as any).code === "23505") {
+      const already = await readRing({ id: ring.id });
+      return already ? { ok: true, ring: already } : { error: "Ring not found." };
+    }
     if (error) return { error: `That score didn't register: ${error.message}` };
 
     const updated = await readRing({ id: ring.id });

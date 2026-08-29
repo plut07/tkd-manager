@@ -5,6 +5,7 @@ import { requireSession } from "@/lib/authz";
 import SyllabusEditor from "@/components/SyllabusEditor";
 import TemplateTab from "@/components/TemplateTab";
 import { catalogueFor } from "@/lib/templateFields";
+import { mergeComponents } from "@/lib/gradingSheet";
 import { loadExamRows, loadSyllabusSet, syncAllGradingCategories, addAllGradingCategories } from "./examActions";
 
 /**
@@ -54,16 +55,12 @@ export default async function ExamTab({
     { key: "form", label: "Result Form" },
   ];
 
-  // The result form can place anything on this event's syllabus, so its field
-  // list is built from the same sheet the marking screen uses.
   // The result form can place anything from any of this event's syllabuses, so
   // a form drawn once still works when different grades sit different sheets.
+  // Merged rather than deduplicated: keeping one version per key meant the
+  // richest sheet lost its extra fields to whichever rank happened to be last.
   const catalogue = catalogueFor(
-    Array.from(
-      new Map(
-        [syllabus.fallback, ...Object.values(syllabus.byGrade)].flat().map((c) => [c.key, c]),
-      ).values(),
-    ),
+    mergeComponents([syllabus.fallback, ...Object.values(syllabus.byGrade)].flat()),
   );
 
   const { data: templateRows } = sub === "form"
