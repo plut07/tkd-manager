@@ -243,6 +243,32 @@ export default function ScoreboardControl({
               </a>
             </p>
           </div>
+          {/* One code, two uses: a judge with the app scans it here and is
+              taken straight into their ring; a judge without it points an
+              ordinary phone camera at the same code and lands on the web pad.
+              Either way nobody types the address or the five characters. */}
+          <div className="flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 p-2">
+            <img
+              src={`/api/public/qr?url=${encodeURIComponent(judgeLink)}&size=132`}
+              alt={`QR code to join ${ring.name}`}
+              width={132}
+              height={132}
+              className="rounded bg-white p-1"
+            />
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Judges scan this</p>
+              <p className="text-xs text-gray-500">Opens their ring directly — no address, no code to type.</p>
+              <a
+                href={`/events/${ring.eventId}/scoreboard/ring-sheet?ring=${ring.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-secondary mt-2 inline-block !px-3 !py-1.5 text-xs"
+              >
+                Printable sheet for this ring
+              </a>
+            </div>
+          </div>
+
           <div className="flex flex-wrap gap-2">
             <a href={displayLink} target="_blank" rel="noopener noreferrer" className="btn-secondary">Open display screen</a>
             <a href={judgeLink} target="_blank" rel="noopener noreferrer" className="btn-secondary">Open a judge screen</a>
