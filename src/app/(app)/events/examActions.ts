@@ -11,7 +11,7 @@ import {
   DEFAULT_SHEET,
   componentsFor,
   parseSheet,
-  cleanMark,
+  cleanMarks,
   sheetTotal,
   marksSayPassed,
   selectedRows,
@@ -120,43 +120,6 @@ export async function loadSyllabusForRegistration(eventId: string, registrationI
   const label = String((reg as any)?.event_categories?.name ?? "");
   const grade = parseGradeText(label);
   return syllabusFor(set, gradeValue(grade.gup, grade.dan) || null);
-}
-
-/**
- * Keep only marks the sheet knows about, each inside its row's range.
- *
- * The browser sends whatever it likes, so nothing here trusts the shape: a
- * chosen pattern that isn't on the syllabus, or a mark above its ceiling, is
- * dropped rather than stored.
- */
-function cleanMarks(input: SheetMarks, sheet: SheetComponent[]): SheetMarks {
-  const out: SheetMarks = {};
-  for (const component of sheet) {
-    if (component.kind === "select") {
-      const allowed = new Set(component.items.map((i) => i.key));
-      const rows = selectedRows(input, component)
-        .filter((r) => allowed.has(r.item))
-        .map((r) => ({ item: r.item, score: cleanMark(r.score, component.itemMax) }));
-      if (rows.length > 0) out[`${component.key}__rows`] = rows;
-      continue;
-    }
-    if (component.kind === "breaking") {
-      for (let m = 1; m <= (component.methods ?? 3); m++) {
-        const chosen = String(input?.[`pb_method_${m}`] ?? "").trim();
-        if (chosen) out[`pb_method_${m}`] = chosen.slice(0, 80);
-        for (let a = 1; a <= (component.attempts ?? 3); a++) {
-          const value = cleanMark(input?.[`pb_m${m}_a${a}`], component.itemMax);
-          if (value != null) out[`pb_m${m}_a${a}`] = value;
-        }
-      }
-      continue;
-    }
-    for (const item of component.items) {
-      const value = cleanMark(input?.[item.key], component.itemMax);
-      if (value != null) out[item.key] = value;
-    }
-  }
-  return out;
 }
 
 function toDto(reg: any, score: any, examinerName: string | null): ExamRowDto {

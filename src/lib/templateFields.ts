@@ -25,6 +25,28 @@ import { breakingLabel } from "./powerBreaking";
 export const BREAKING_TICK = "YES";
 
 /**
+ * One technique's attempts, as a row of boxes in a single field.
+ *
+ * The four separate fields below print one box each, which is right when the
+ * form already has four columns ruled on it. This is for the other case: a
+ * form with one open space per technique, where placing twelve small boxes by
+ * hand and keeping them square is more work than the printing is worth.
+ */
+export function attemptsRow(outcome: string): string {
+  const box = (key: string) => (outcome === key ? "[X]" : "[  ]");
+  return `1st ${box("1")}   2nd ${box("2")}   3rd ${box("3")}   FTB ${box("ftb")}`;
+}
+
+/** What one technique came to, in the short form a results line uses. */
+export function outcomeShort(outcome: string): string {
+  if (outcome === "1") return "1st";
+  if (outcome === "2") return "2nd";
+  if (outcome === "3") return "3rd";
+  if (outcome === "ftb") return "FTB";
+  return "";
+}
+
+/**
  * The data a form template can place on a page.
  *
  * Keys are stored in the database against each box the user draws, so renaming
@@ -117,7 +139,26 @@ export function examFieldsForSheet(sheet: SheetComponent[]): TemplateFieldDef[] 
         out.push({ key: `exam.breaking.${m}.attempt3`, label: `Breaking ${m} — 3rd attempt`, group: "Exam: power breaking" });
         out.push({ key: `exam.breaking.${m}.ftb`, label: `Breaking ${m} — FTB`, group: "Exam: power breaking" });
         out.push({ key: `exam.breaking.${m}.outcome`, label: `Breaking ${m} — attempt (in words)`, group: "Exam: power breaking" });
+        // One wide box instead of four small ones, for a form that doesn't
+        // have the four columns already ruled on it.
+        out.push({
+          key: `exam.breaking.${m}.attempts`,
+          label: `Breaking ${m} — all four boxes in one`,
+          group: "Exam: power breaking",
+        });
       }
+      // The whole section on one line each, for a form with a single space for
+      // power breaking rather than a row per technique.
+      out.push({
+        key: "exam.breaking.techniques",
+        label: "Breaking — all techniques, one line",
+        group: "Exam: power breaking",
+      });
+      out.push({
+        key: "exam.breaking.results",
+        label: "Breaking — all attempts, one line",
+        group: "Exam: power breaking",
+      });
       continue;
     }
     if (component.kind === "select" || component.kind === "mixed") {
@@ -216,6 +257,20 @@ function resolveExamField(key: string, data: TemplateData): string {
     return row.score == null ? "" : String(row.score);
   }
 
+  if (key === "exam.breaking.techniques" || key === "exam.breaking.results") {
+    const parts: string[] = [];
+    for (let m = 1; m <= 3; m++) {
+      const technique = breakingLabel(String(x.marks?.[`pb_method_${m}`] ?? ""));
+      if (!technique) continue;
+      parts.push(
+        key === "exam.breaking.techniques"
+          ? technique
+          : `${technique} — ${outcomeShort(String(x.marks?.[`pb_outcome_${m}`] ?? "")) || "—"}`,
+      );
+    }
+    return parts.join("   ·   ");
+  }
+
   if (key.startsWith("exam.breaking.")) {
     const [, , indexText, part] = key.split(".");
     const m = Number(indexText);
@@ -232,6 +287,13 @@ function resolveExamField(key: string, data: TemplateData): string {
     if (part === "attempt2") return outcome === "2" ? BREAKING_TICK : "";
     if (part === "attempt3") return outcome === "3" ? BREAKING_TICK : "";
     if (part === "ftb") return outcome === "ftb" ? BREAKING_TICK : "";
+
+    // The whole row in one box. Printed even when nothing was recorded, so an
+    // unmarked technique shows four empty boxes rather than a gap that reads
+    // as a missing section.
+    if (part === "attempts") {
+      return breakingLabel(String(x.marks?.[`pb_method_${m}`] ?? "")) ? attemptsRow(outcome) : "";
+    }
 
     if (!outcome) return "";
     return outcome === "ftb" ? "FTB" : `${outcome}${outcome === "1" ? "st" : outcome === "2" ? "nd" : "rd"} attempt`;

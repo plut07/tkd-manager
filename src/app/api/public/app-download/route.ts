@@ -19,7 +19,7 @@ export async function GET() {
 
   const { data: release } = await supabase
     .from("app_releases")
-    .select("storage_path, file_name, version")
+    .select("storage_path, download_url, file_name, version")
     .eq("platform", "android")
     .eq("is_current", true)
     .order("uploaded_at", { ascending: false })
@@ -28,6 +28,20 @@ export async function GET() {
 
   if (!release) {
     return NextResponse.json({ error: "No build has been published yet." }, { status: 404 });
+  }
+
+  // A build hosted elsewhere — a GitHub Release, usually. The judge is sent
+  // straight there, so this address stays the one printed on the QR code
+  // whichever way the build was published.
+  if (release.download_url) {
+    return NextResponse.redirect(release.download_url, {
+      status: 302,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+
+  if (!release.storage_path) {
+    return NextResponse.json({ error: "That build has nothing behind it." }, { status: 500 });
   }
 
   const { data, error } = await supabase.storage

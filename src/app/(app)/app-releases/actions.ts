@@ -3,7 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { requireSuperAdmin } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { RELEASE_BUCKET, MAX_RELEASE_BYTES, type Platform } from "@/lib/appReleases";
+import {
+  RELEASE_BUCKET,
+  MAX_RELEASE_BYTES,
+  safeDownloadUrl,
+  fileNameFromUrl,
+  type Platform,
+} from "@/lib/appReleases";
 
 /**
  * Publishing a build of the judge app.
@@ -109,6 +115,73 @@ export async function recordRelease(input: {
   }
 }
 
+/**
+ * Publish a build that lives somewhere else.
+ *
+ * The other route needs two things this deployment may not have: the public
+ * Supabase keys, without which the browser cannot upload at all, and room in
+ * storage, which on the free plan stops at 50 MB per file — smaller than the
+ * APK. A GitHub Release has neither problem and a permanent address, so this
+ * records the link and nothing is copied anywhere.
+ *
+ * Nothing is fetched here to check the link. A build page behind a redirect or
+ * a slow host would make publishing fail for a reason that has nothing to do
+ * with whether the link is right, and the address is shown on the page for the
+ * admin to try themselves.
+ */
+export async function recordLinkedRelease(input: {
+  url: string;
+  version: string;
+  notes?: string;
+  platform?: Platform;
+}): Promise<{ ok: true; message: string } | { error: string }> {
+  try {
+    const session = await requireSuperAdmin();
+    const platform: Platform = input.platform ?? "android";
+
+    const version = input.version.trim();
+    if (!version) return { error: "Give this build a version, so judges can tell one from another." };
+
+    const url = safeDownloadUrl(input.url);
+    if (!url) {
+      return {
+        error:
+          "That doesn't look like a download address. It has to start with https:// — an http link could be swapped " +
+          "for a different file on the way to somebody's phone.",
+      };
+    }
+    if (platform === "android" && !url.toLowerCase().includes(".apk")) {
+      return {
+        error:
+          "That address doesn't end in .apk. Use the link to the file itself, not the page it sits on — on GitHub, " +
+          "right-click the .apk under a release's Assets and copy the link address.",
+      };
+    }
+
+    const supabase = supabaseAdmin();
+    await supabase.from("app_releases").update({ is_current: false }).eq("platform", platform);
+
+    const { error } = await supabase.from("app_releases").insert({
+      platform,
+      version,
+      notes: input.notes?.trim() || null,
+      download_url: url,
+      storage_path: null,
+      file_name: fileNameFromUrl(url),
+      file_size: 0,
+      is_current: true,
+      uploaded_by: session.sub,
+    });
+    if (error) return { error: `The release could not be saved: ${error.message}` };
+
+    revalidatePath("/app-releases");
+    revalidatePath("/public/app");
+    return { ok: true, message: `Version ${version} is now the download judges are offered.` };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "That release couldn't be saved." };
+  }
+}
+
 /** Put an earlier build back in front of people. */
 export async function makeCurrent(formData: FormData) {
   await requireSuperAdmin();
@@ -133,6 +206,8 @@ export async function deleteRelease(formData: FormData) {
   const supabase = supabaseAdmin();
   const { data: release } = await supabase.from("app_releases").select("storage_path").eq("id", id).maybeSingle();
   await supabase.from("app_releases").delete().eq("id", id);
+  // A linked release has no file of ours to remove, and the file it points at
+  // is somebody else's to delete.
   if (release?.storage_path) await supabase.storage.from(RELEASE_BUCKET).remove([release.storage_path]);
 
   revalidatePath("/app-releases");

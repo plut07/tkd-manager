@@ -208,6 +208,87 @@ export function cleanMark(value: unknown, max: number): number | null {
   return Math.min(Math.max(Math.round(n * 10) / 10, 0), max);
 }
 
+/**
+ * Keep only marks the sheet knows about, each inside its row's range.
+ *
+ * The browser sends whatever it likes, so nothing here trusts the shape: a
+ * chosen pattern that isn't on the syllabus, or a mark above its ceiling, is
+ * dropped rather than stored.
+ *
+ * This lives here, beside the marking itself, so it can be tested against the
+ * keys the form actually writes. It was in the server action, out of reach of
+ * any test, on the day it quietly stopped saving power breaking outcomes.
+ */
+export function cleanMarks(input: SheetMarks, sheet: SheetComponent[]): SheetMarks {
+  const out: SheetMarks = {};
+  for (const component of sheet) {
+    if (component.kind === "select") {
+      const allowed = new Set(component.items.map((i) => i.key));
+      const rows = selectedRows(input, component)
+        .filter((r) => allowed.has(r.item))
+        .map((r) => ({ item: r.item, score: cleanMark(r.score, component.itemMax) }));
+      if (rows.length > 0) out[`${component.key}__rows`] = rows;
+      continue;
+    }
+    if (component.kind === "breaking") {
+      // Two things per technique, and both have to survive: what was attempted
+      // and how it ended. The outcome used to be dropped here — the examiner
+      // ticked "1st attempt", pressed save, and the whole section came back
+      // empty, with nothing on the form saying why.
+      const outcomes = new Set(BREAKING_OUTCOMES.map((o) => String(o.key)));
+      for (let m = 1; m <= (component.methods ?? 3); m++) {
+        const chosen = String(input?.[`pb_method_${m}`] ?? "").trim();
+        if (chosen) out[`pb_method_${m}`] = chosen.slice(0, 80);
+
+        const outcome = String(input?.[`pb_outcome_${m}`] ?? "").trim();
+        if (outcomes.has(outcome)) out[`pb_outcome_${m}`] = outcome;
+      }
+      continue;
+    }
+    if (component.kind === "mixed") {
+      // A mixed row has both: the chosen performances, and the fixed items
+      // marked alongside them.
+      const allowed = new Set(component.items.map((i) => i.key));
+      const rows = selectedRows(input, component)
+        .filter((r) => allowed.has(r.item))
+        .map((r) => ({ item: r.item, score: cleanMark(r.score, component.itemMax) }));
+      if (rows.length > 0) out[`${component.key}__rows`] = rows;
+      for (const item of component.fixed ?? []) {
+        const value = cleanMark(input?.[item.key], component.itemMax);
+        if (value != null) out[item.key] = value;
+      }
+      continue;
+    }
+    for (const item of component.items) {
+      const value = cleanMark(input?.[item.key], component.itemMax);
+      if (value != null) out[item.key] = value;
+    }
+  }
+  return out;
+}
+
+/**
+ * Every key this component's form can write.
+ *
+ * The point of stating it once is that the cleaner and the form can be checked
+ * against each other. A key the form writes and the cleaner drops is invisible
+ * on screen — the examiner's work is simply gone after a save.
+ */
+export function markKeysFor(component: SheetComponent): string[] {
+  if (component.kind === "select") return [`${component.key}__rows`];
+  if (component.kind === "mixed") {
+    return [`${component.key}__rows`, ...(component.fixed ?? []).map((i) => i.key)];
+  }
+  if (component.kind === "breaking") {
+    const keys: string[] = [];
+    for (let m = 1; m <= (component.methods ?? 3); m++) {
+      keys.push(`pb_method_${m}`, `pb_outcome_${m}`);
+    }
+    return keys;
+  }
+  return component.items.map((i) => i.key);
+}
+
 /** The label for one of a component's choices. */
 export function itemLabel(component: SheetComponent, key: string): string {
   // Looked up across every item, ticked or not: a mark already given against a

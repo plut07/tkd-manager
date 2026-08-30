@@ -30,10 +30,29 @@ export const MODE_LABELS: Record<ScoreMode, string> = {
 
 // ------------------------------------------------------------------ layout
 
+/**
+ * The naming fields, each placed on its own.
+ *
+ * These used to be one strip: ring on the left, category in the middle, mode on
+ * the right, all moving together. Halls differ — some want the category huge
+ * across the top and the ring number tucked in a corner, some want nothing but
+ * the round. So each is placed and sized separately, and "hidden" is a place
+ * like any other.
+ */
+export type InfoField = "ring" | "category" | "round" | "pattern" | "mode";
+
+export type InfoPlace =
+  | "topLeft" | "topCenter" | "topRight"
+  | "bottomLeft" | "bottomCenter" | "bottomRight"
+  | "hidden";
+
+/** Where one naming field sits, and how big it is. 1 is the normal size. */
+export type InfoSpot = { place: InfoPlace; scale: number };
+
+export type InfoLayout = Record<InfoField, InfoSpot>;
+
 /** Where each part of the big display goes. */
 export type DisplayLayout = {
-  /** The ring / category / mode strip. */
-  header: "top" | "bottom";
   /** The competitor's name, relative to the big number. */
   name: "aboveScore" | "belowScore";
   /** The competition number. */
@@ -62,8 +81,33 @@ export type PadLayout = {
   undo: "bottom" | "top";
 };
 
+export const DEFAULT_INFO: InfoLayout = {
+  ring: { place: "topLeft", scale: 1 },
+  category: { place: "topCenter", scale: 1 },
+  round: { place: "topCenter", scale: 1 },
+  pattern: { place: "topCenter", scale: 1 },
+  mode: { place: "topRight", scale: 1 },
+};
+
+export const INFO_FIELDS: { key: InfoField; label: string; note: string }[] = [
+  { key: "ring", label: "Ring name", note: "Ring 1, Mat B." },
+  { key: "category", label: "Category", note: "Boys 14-16 -50kg." },
+  { key: "round", label: "Round", note: "Round 2 of 2." },
+  { key: "pattern", label: "Pattern", note: "Only shown while a pattern is being marked." },
+  { key: "mode", label: "What is being scored", note: "Sparring, Pattern, Flag." },
+];
+
+export const INFO_PLACES: SlotOption[] = [
+  { value: "topLeft", label: "Top left" },
+  { value: "topCenter", label: "Top centre" },
+  { value: "topRight", label: "Top right" },
+  { value: "bottomLeft", label: "Bottom left" },
+  { value: "bottomCenter", label: "Bottom centre" },
+  { value: "bottomRight", label: "Bottom right" },
+  { value: "hidden", label: "Don't show it" },
+];
+
 export const DEFAULT_DISPLAY_LAYOUT: DisplayLayout = {
-  header: "top",
   name: "aboveScore",
   number: "withName",
   judgeMarks: "insidePanel",
@@ -95,15 +139,6 @@ export const DISPLAY_SLOTS: SlotSpec<keyof DisplayLayout>[] = [
     key: "branding",
     label: "Logo and headline",
     note: "Your federation or event name.",
-    options: [
-      { value: "top", label: "Top of screen" },
-      { value: "bottom", label: "Bottom of screen" },
-    ],
-  },
-  {
-    key: "header",
-    label: "Ring, category and mode",
-    note: "The strip naming the ring and what is being scored.",
     options: [
       { value: "top", label: "Top of screen" },
       { value: "bottom", label: "Bottom of screen" },
@@ -220,7 +255,6 @@ export type ThemeLook = {
   showJudgeMarks: boolean;
   showPenalties: boolean;
   showClock: boolean;
-  showCategory: boolean;
   showCompetitorNumbers: boolean;
   showVoteCount: boolean;
 
@@ -229,6 +263,8 @@ export type ThemeLook = {
 
   padDarkBackground: boolean;
 
+  /** Ring, category, round, pattern and mode — each placed and sized on its own. */
+  info: InfoLayout;
   display: DisplayLayout;
   pad: PadLayout;
 };
@@ -243,9 +279,11 @@ export type ThemeLook = {
  * event would slowly drift into three unrelated designs without anyone
  * touching them.
  */
-export type LookOverride = Omit<Partial<ThemeLook>, "display" | "pad"> & {
+export type LookOverride = Omit<Partial<ThemeLook>, "display" | "pad" | "info"> & {
   display?: Partial<DisplayLayout>;
   pad?: Partial<PadLayout>;
+  /** Per field, and per part of a field: a mode may move it without resizing it. */
+  info?: Partial<Record<InfoField, Partial<InfoSpot>>>;
 };
 
 export type ScoreboardTheme = ThemeLook & {
@@ -268,7 +306,6 @@ export const DEFAULT_THEME: ScoreboardTheme = {
   showJudgeMarks: true,
   showPenalties: true,
   showClock: true,
-  showCategory: true,
   showCompetitorNumbers: true,
   showVoteCount: true,
 
@@ -277,6 +314,7 @@ export const DEFAULT_THEME: ScoreboardTheme = {
 
   padDarkBackground: false,
 
+  info: DEFAULT_INFO,
   display: DEFAULT_DISPLAY_LAYOUT,
   pad: DEFAULT_PAD_LAYOUT,
 
@@ -329,7 +367,6 @@ function slot<T extends string>(value: unknown, allowed: readonly T[], fallback:
 function parseDisplayLayout(raw: unknown, base: DisplayLayout): DisplayLayout {
   const l = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   return {
-    header: slot(l.header, ["top", "bottom"] as const, base.header),
     name: slot(l.name, ["aboveScore", "belowScore"] as const, base.name),
     number: slot(l.number, ["withName", "ownLine", "cornerBadge"] as const, base.number),
     judgeMarks: slot(l.judgeMarks, ["insidePanel", "belowPanels"] as const, base.judgeMarks),
@@ -350,6 +387,63 @@ function parsePadLayout(raw: unknown, base: PadLayout): PadLayout {
   };
 }
 
+const PLACES = INFO_PLACES.map((p) => p.value);
+
+/** How big one naming field is drawn. Bounded so nothing can push the rest off. */
+function infoScale(value: unknown, fallback: number): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0.5 && n <= 3 ? Math.round(n * 100) / 100 : fallback;
+}
+
+/**
+ * The naming fields, every one present.
+ *
+ * `legacy` carries what a theme saved before these existed said instead: one
+ * strip, top or bottom, shown or hidden. Somebody who had put that strip at
+ * the bottom of the screen should not find it back at the top because the
+ * setting was replaced by five finer ones.
+ */
+function parseInfo(raw: unknown, base: InfoLayout, legacy: { atBottom: boolean; hidden: boolean }): InfoLayout {
+  const l = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const moved = (spot: InfoSpot): InfoSpot => {
+    if (legacy.hidden) return { ...spot, place: "hidden" };
+    if (legacy.atBottom) {
+      const lower = spot.place.replace("top", "bottom") as InfoPlace;
+      return { ...spot, place: lower };
+    }
+    return spot;
+  };
+
+  const out = {} as InfoLayout;
+  for (const field of INFO_FIELDS) {
+    const from = moved(base[field.key]);
+    const own = (l[field.key] && typeof l[field.key] === "object" ? l[field.key] : {}) as Record<string, unknown>;
+    out[field.key] = {
+      place: (typeof own.place === "string" && PLACES.includes(own.place) ? own.place : from.place) as InfoPlace,
+      scale: infoScale(own.scale, from.scale),
+    };
+  }
+  return out;
+}
+
+/** Only the fields, and the parts of them, that were actually set. */
+function sparseInfo(raw: unknown): Partial<Record<InfoField, Partial<InfoSpot>>> {
+  const l = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const out: Partial<Record<InfoField, Partial<InfoSpot>>> = {};
+  for (const field of INFO_FIELDS) {
+    const own = (l[field.key] && typeof l[field.key] === "object" ? l[field.key] : null) as Record<string, unknown> | null;
+    if (!own) continue;
+    const spot: Partial<InfoSpot> = {};
+    if (typeof own.place === "string" && PLACES.includes(own.place)) spot.place = own.place as InfoPlace;
+    if (own.scale !== undefined) {
+      const n = infoScale(own.scale, NaN);
+      if (Number.isFinite(n)) spot.scale = n;
+    }
+    if (Object.keys(spot).length > 0) out[field.key] = spot;
+  }
+  return out;
+}
+
 /** The full look, with every field present. */
 function parseLook(raw: unknown, base: ThemeLook): ThemeLook {
   const t = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -363,7 +457,6 @@ function parseLook(raw: unknown, base: ThemeLook): ThemeLook {
     showJudgeMarks: bool(t.showJudgeMarks, base.showJudgeMarks),
     showPenalties: bool(t.showPenalties, base.showPenalties),
     showClock: bool(t.showClock, base.showClock),
-    showCategory: bool(t.showCategory, base.showCategory),
     showCompetitorNumbers: bool(t.showCompetitorNumbers, base.showCompetitorNumbers),
     showVoteCount: bool(t.showVoteCount, base.showVoteCount),
 
@@ -372,6 +465,12 @@ function parseLook(raw: unknown, base: ThemeLook): ThemeLook {
 
     padDarkBackground: bool(t.padDarkBackground, base.padDarkBackground),
 
+    info: parseInfo(t.info, base.info, {
+      // Both of these were one setting for the whole strip, before the strip
+      // became five fields.
+      atBottom: (t.display as any)?.header === "bottom",
+      hidden: t.showCategory === false,
+    }),
     display: parseDisplayLayout(t.display, base.display),
     pad: parsePadLayout(t.pad, base.pad),
   };
@@ -410,7 +509,7 @@ function parseOverride(raw: unknown): LookOverride {
 
   const flags = [
     "showJudgeMarks", "showPenalties", "showClock",
-    "showCategory", "showCompetitorNumbers", "showVoteCount", "padDarkBackground",
+    "showCompetitorNumbers", "showVoteCount", "padDarkBackground",
   ] as const;
   for (const key of flags) if (typeof t[key] === "boolean") out[key] = t[key] as boolean;
 
@@ -426,6 +525,9 @@ function parseOverride(raw: unknown): LookOverride {
 
   const pad = sparseLayout(t.pad, PAD_SLOTS);
   if (Object.keys(pad).length > 0) out.pad = pad as Partial<PadLayout>;
+
+  const info = sparseInfo(t.info);
+  if (Object.keys(info).length > 0) out.info = info;
 
   return out;
 }
@@ -469,9 +571,22 @@ export function resolveTheme(theme: ScoreboardTheme, mode: ScoreMode): ThemeLook
     ...override,
     display: { ...theme.display, ...(override.display ?? {}) },
     pad: { ...theme.pad, ...(override.pad ?? {}) },
+    // Merged a field at a time and a part at a time: a mode that only moved
+    // the category still follows the base for its size, and for every other
+    // field.
+    info: mergeInfo(theme.info, override.info),
     logoUrl: theme.logoUrl,
     headline: theme.headline,
   };
+}
+
+function mergeInfo(base: InfoLayout, override: Partial<Record<InfoField, Partial<InfoSpot>>> | undefined): InfoLayout {
+  if (!override) return base;
+  const out = {} as InfoLayout;
+  for (const field of INFO_FIELDS) {
+    out[field.key] = { ...base[field.key], ...(override[field.key] ?? {}) };
+  }
+  return out;
 }
 
 /** Whether a mode changes anything at all, for showing "3 changes" in the UI. */
@@ -507,7 +622,18 @@ export const THEME_PRESETS: { name: string; note: string; theme: Partial<Scorebo
   {
     name: "Big numbers",
     note: "Score and clock as large as they go, everything else trimmed.",
-    theme: { scoreScale: 1.4, clockScale: 1.3, showJudgeMarks: false, showCategory: false },
+    theme: {
+      scoreScale: 1.4,
+      clockScale: 1.3,
+      showJudgeMarks: false,
+      info: {
+        ring: { place: "hidden", scale: 1 },
+        category: { place: "topCenter", scale: 1 },
+        round: { place: "topRight", scale: 0.9 },
+        pattern: { place: "topCenter", scale: 1 },
+        mode: { place: "hidden", scale: 1 },
+      },
+    },
   },
   {
     name: "Clock in the middle",

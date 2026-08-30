@@ -7,6 +7,8 @@ import {
   THEME_PRESETS,
   DISPLAY_SLOTS,
   PAD_SLOTS,
+  INFO_FIELDS,
+  INFO_PLACES,
   MODE_LABELS,
   contrastText,
   resolveTheme,
@@ -16,6 +18,8 @@ import {
   type ScoreMode,
   type DisplayLayout,
   type PadLayout,
+  type InfoField,
+  type InfoSpot,
 } from "@/lib/scoreboardTheme";
 import DisplayBoard, { type BoardData, type BoardLook } from "@/components/DisplayBoard";
 import { saveTheme, resetTheme } from "@/app/(app)/events/themeActions";
@@ -151,6 +155,50 @@ export default function ScoreboardDesigner({
     });
   }
 
+  /** Move or resize one of the naming fields. */
+  function setInfo(field: InfoField, part: keyof InfoSpot, value: string | number) {
+    setError("");
+    setNote("");
+    setTheme((t) => {
+      if (scope === "base") {
+        const info = { ...t.info } as Record<string, InfoSpot>;
+        info[field] = { ...info[field], [part]: value } as InfoSpot;
+        return { ...t, info: info as ScoreboardTheme["info"] };
+      }
+      const own = { ...(t.modes[scope] ?? {}) } as Record<string, unknown>;
+      // Only the part that was changed: a mode that moves the category still
+      // follows the base for how big it is.
+      const info = { ...((own.info as Record<string, unknown>) ?? {}) };
+      info[field] = { ...((info[field] as Record<string, unknown>) ?? {}), [part]: value };
+      own.info = info;
+      return { ...t, modes: withMode(t.modes, scope, own) };
+    });
+  }
+
+  function clearInfo(field: InfoField, part: keyof InfoSpot) {
+    if (scope === "base") return;
+    setError("");
+    setNote("");
+    setTheme((t) => {
+      const own = { ...(t.modes[scope] ?? {}) } as Record<string, unknown>;
+      const info = { ...((own.info as Record<string, unknown>) ?? {}) };
+      const spot = { ...((info[field] as Record<string, unknown>) ?? {}) };
+      delete spot[part];
+      if (Object.keys(spot).length === 0) delete info[field];
+      else info[field] = spot;
+      if (Object.keys(info).length === 0) delete own.info;
+      else own.info = info;
+      return { ...t, modes: withMode(t.modes, scope, own) };
+    });
+  }
+
+  const ownsInfo = (field: InfoField, part: keyof InfoSpot) => {
+    if (scope === "base") return false;
+    const info = (override as unknown as Record<string, unknown>).info as Record<string, unknown> | undefined;
+    const spot = info?.[field] as Record<string, unknown> | undefined;
+    return !!spot && Object.prototype.hasOwnProperty.call(spot, part);
+  };
+
   function clearMode() {
     if (scope === "base") return;
     if (!window.confirm(`Make ${MODE_LABELS[scope]} follow the design for all modes again?`)) return;
@@ -172,6 +220,9 @@ export default function ScoreboardDesigner({
     for (const key of Object.keys(own)) {
       if (key === "display" || key === "pad") {
         n += Object.keys((own as unknown as Record<string, Record<string, unknown>>)[key] ?? {}).length;
+      } else if (key === "info") {
+        const info = (own as unknown as Record<string, Record<string, unknown>>).info ?? {};
+        for (const field of Object.keys(info)) n += Object.keys((info[field] as object) ?? {}).length;
       } else {
         n += 1;
       }
@@ -284,6 +335,62 @@ export default function ScoreboardDesigner({
             ))}
           </div>
 
+          {screen === "display" && (
+            <>
+              <h3 className="mt-6 text-sm font-semibold text-gray-900">Ring, category and the rest</h3>
+              <p className="mt-1 text-xs text-gray-500">
+                Each one is placed and sized on its own. Two in the same corner sit side by side. A field with nothing
+                to say — a pattern during a sparring bout — takes up no room.
+              </p>
+              <div className="mt-3 space-y-3">
+                {INFO_FIELDS.map((field) => {
+                  const spot = look.info[field.key];
+                  return (
+                    <div key={field.key} className="rounded-md border border-gray-200 p-3">
+                      <p className="text-xs font-semibold text-gray-700">{field.label}</p>
+                      <p className="mt-0.5 text-xs text-gray-400">{field.note}</p>
+                      <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <FieldFrame
+                          label="Where"
+                          overridden={ownsInfo(field.key, "place")}
+                          onClear={() => clearInfo(field.key, "place")}
+                        >
+                          <select
+                            className="input"
+                            value={spot.place}
+                            onChange={(e) => setInfo(field.key, "place", e.target.value)}
+                            aria-label={`${field.label} position`}
+                          >
+                            {INFO_PLACES.map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </select>
+                        </FieldFrame>
+                        <FieldFrame
+                          label={`Size — ${Math.round(spot.scale * 100)}%`}
+                          overridden={ownsInfo(field.key, "scale")}
+                          onClear={() => clearInfo(field.key, "scale")}
+                        >
+                          <input
+                            type="range"
+                            min={0.5}
+                            max={3}
+                            step={0.05}
+                            value={spot.scale}
+                            className="w-full"
+                            disabled={spot.place === "hidden"}
+                            onChange={(e) => setInfo(field.key, "scale", Number(e.target.value))}
+                            aria-label={`${field.label} size`}
+                          />
+                        </FieldFrame>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
           <h3 className="mt-6 text-sm font-semibold text-gray-900">Colours</h3>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
             <Colour label="Red corner" value={look.redColor} overridden={owns("redColor")} onChange={(v) => setLook("redColor", v)} onClear={() => clearField("redColor")} />
@@ -298,7 +405,6 @@ export default function ScoreboardDesigner({
             <Toggle label="Each judge's mark" value={look.showJudgeMarks} overridden={owns("showJudgeMarks")} onChange={(v) => setLook("showJudgeMarks", v)} onClear={() => clearField("showJudgeMarks")} />
             <Toggle label="Warnings and deductions" value={look.showPenalties} overridden={owns("showPenalties")} onChange={(v) => setLook("showPenalties", v)} onClear={() => clearField("showPenalties")} />
             <Toggle label="Clock" value={look.showClock} overridden={owns("showClock")} onChange={(v) => setLook("showClock", v)} onClear={() => clearField("showClock")} />
-            <Toggle label="Category and round" value={look.showCategory} overridden={owns("showCategory")} onChange={(v) => setLook("showCategory", v)} onClear={() => clearField("showCategory")} />
             <Toggle label="Competitor numbers" value={look.showCompetitorNumbers} overridden={owns("showCompetitorNumbers")} onChange={(v) => setLook("showCompetitorNumbers", v)} onClear={() => clearField("showCompetitorNumbers")} />
             <Toggle label={'"3 judges of 5" under the score'} value={look.showVoteCount} overridden={owns("showVoteCount")} onChange={(v) => setLook("showVoteCount", v)} onClear={() => clearField("showVoteCount")} />
           </div>
@@ -434,11 +540,9 @@ function sampleBoard(mode: ScoreMode, showVotes: boolean): BoardData {
 
   return {
     ringName: "Ring 1",
-    heading: [
-      "Boys 14-16 -50kg",
-      mode === "pattern" ? "Won-Hyo" : null,
-      "Round 2 of 2",
-    ].filter(Boolean).join("  ·  "),
+    categoryName: "Boys 14-16 -50kg",
+    roundLabel: "Round 2 of 2",
+    patternName: "Won-Hyo",
     modeLabel: MODE_LABELS[mode],
     mode,
     clock: "1:24",

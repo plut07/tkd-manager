@@ -1,20 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   judgeScore,
   judgeVerdict,
   judgeHistory,
   penaltyTally,
-  secondsLeft,
   formatClock,
   SPARRING_BUTTONS,
   PATTERN_BUTTONS,
   type Side,
 } from "@/lib/scoreboard";
-import { judgePress, judgeUndo, loadRing, type RingDto } from "@/app/(app)/events/scoreboardActions";
+import { judgePress, judgeUndo, type RingDto } from "@/app/(app)/events/scoreboardActions";
 import { contrastText, resolveTheme } from "@/lib/scoreboardTheme";
-import { realtimeClient } from "@/lib/liveChannel";
+import { useRingLive } from "@/components/useRingLive";
 
 /**
  * A judge's own screen.
@@ -24,45 +23,9 @@ import { realtimeClient } from "@/lib/liveChannel";
  * check themselves, and the last press can always be taken back.
  */
 export default function JudgePad({ initial, joinCode, judgeSlot }: { initial: RingDto; joinCode: string; judgeSlot: number }) {
-  const [ring, setRing] = useState<RingDto>(initial);
+  const { ring, left, put, announce } = useRingLive(initial, { joinCode });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [left, setLeft] = useState(() => secondsLeft({ state: initial.state, startedAt: initial.clockStartedAt, remaining: initial.clockRemaining }));
-  const channelRef = useRef<any>(null);
-
-  const refresh = useCallback(async () => {
-    const fresh = await loadRing({ joinCode });
-    if (fresh) setRing(fresh);
-  }, [joinCode]);
-
-  useEffect(() => {
-    const client = realtimeClient();
-    let channel: any = null;
-    if (client) {
-      channel = client.channel(`ring:${initial.id}`, { config: { broadcast: { self: false } } });
-      channel.on("broadcast", { event: "changed" }, () => { void refresh(); });
-      channel.subscribe();
-      channelRef.current = channel;
-    }
-    const poll = setInterval(() => { void refresh(); }, client ? 15000 : 4000);
-    return () => {
-      clearInterval(poll);
-      if (channel && client) client.removeChannel(channel);
-    };
-  }, [initial.id, refresh]);
-
-  // The clock is worked out locally from when it started, so it stays smooth
-  // without a message every second.
-  useEffect(() => {
-    const tick = setInterval(() => {
-      setLeft(secondsLeft({ state: ring.state, startedAt: ring.clockStartedAt, remaining: ring.clockRemaining }));
-    }, 250);
-    return () => clearInterval(tick);
-  }, [ring.state, ring.clockStartedAt, ring.clockRemaining]);
-
-  function announce() {
-    channelRef.current?.send({ type: "broadcast", event: "changed", payload: {} });
-  }
 
   async function press(side: Side, value: number, kind: "point" | "deduction" | "flag") {
     setBusy(true);
@@ -70,7 +33,7 @@ export default function JudgePad({ initial, joinCode, judgeSlot }: { initial: Ri
     const result = await judgePress({ joinCode, judgeSlot, side, value, kind });
     setBusy(false);
     if ("error" in result) { setError(result.error); return; }
-    setRing(result.ring);
+    put(result.ring);
     announce();
   }
 
@@ -80,7 +43,7 @@ export default function JudgePad({ initial, joinCode, judgeSlot }: { initial: Ri
     const result = await judgeUndo({ joinCode, judgeSlot });
     setBusy(false);
     if ("error" in result) { setError(result.error); return; }
-    setRing(result.ring);
+    put(result.ring);
     announce();
   }
 

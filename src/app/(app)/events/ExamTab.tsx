@@ -119,7 +119,7 @@ export default async function ExamTab({
             purpose="exam"
             catalogue={catalogue}
             title="Result form"
-            intro="The forms results are printed on. Place the syllabus fields — a component's alloted mark, a pattern and what it scored, the total, PASSED or FAILED, the examiner's signature. Upload one form per group of ranks and set which grades each covers; a candidate prints on the form naming their grade, or the default if none does."
+            intro="The forms results are printed on. Place the syllabus fields — a component's alloted mark, a pattern and what it scored, the total, PASSED or FAILED, the examiner's signature. Power breaking prints as the attempts rather than a mark: use the four separate boxes under 'Exam: power breaking' if your form has 1st / 2nd / 3rd / FTB columns ruled on it, or the single 'all four boxes in one' field if it doesn't. Upload one form per group of ranks and set which grades each covers; a candidate prints on the form naming their grade, or the default if none does."
             linkPrefix="?tab=exam&sub=form"
           />
           {templates.length > 0 && rows.length > 0 && (

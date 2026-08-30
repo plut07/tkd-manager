@@ -165,17 +165,67 @@ export type Clock = { state: RingState; startedAt: string | null; remaining: num
  * Every screen calculates this itself from one instant, rather than the server
  * broadcasting a tick each second -- that would be constant traffic and would
  * still drift between devices.
+ *
+ * `now` must be the *server's* idea of the time. The moment the clock was
+ * started is written by the server, so measuring it against a laptop's own
+ * clock measures the gap between the two machines as well as the elapsed time.
+ * A hall laptop five seconds slow made a 120-second round start at 2:05 and
+ * count down from there; see clockOffset.
  */
 export function secondsLeft(clock: Clock, now: number = Date.now()): number {
-  if (clock.state !== "running" || !clock.startedAt) return Math.max(0, clock.remaining);
-  const elapsed = (now - new Date(clock.startedAt).getTime()) / 1000;
-  return Math.max(0, Math.round(clock.remaining - elapsed));
+  return Math.round(secondsLeftExact(clock, now));
 }
 
-export function formatClock(seconds: number): string {
-  const safe = Math.max(0, Math.floor(seconds));
-  const minutes = Math.floor(safe / 60);
-  return `${minutes}:${String(safe % 60).padStart(2, "0")}`;
+/**
+ * The same, unrounded.
+ *
+ * The rounded value is what gets stored and compared; this one is for the last
+ * few seconds on a display, where a tenth is shown.
+ */
+export function secondsLeftExact(clock: Clock, now: number = Date.now()): number {
+  if (clock.state !== "running" || !clock.startedAt) return Math.max(0, clock.remaining);
+  const elapsed = (now - new Date(clock.startedAt).getTime()) / 1000;
+  // Never above what was on the clock when it started: a device whose clock is
+  // behind the server's would otherwise show more time than the round has.
+  return Math.max(0, Math.min(clock.remaining, clock.remaining - elapsed));
+}
+
+/**
+ * How far this device's clock is from the server's, in milliseconds.
+ *
+ * Taken from a timestamp the server put in the same reply, so it costs no
+ * extra request. Only ever an estimate — it also contains however long the
+ * reply took to arrive — but that is tens of milliseconds against the seconds
+ * or minutes a mis-set laptop is out by.
+ */
+export function clockOffset(serverNow: string | null | undefined, deviceNow: number = Date.now()): number {
+  if (!serverNow) return 0;
+  const server = new Date(serverNow).getTime();
+  if (!Number.isFinite(server)) return 0;
+  return server - deviceNow;
+}
+
+/** The server's time, as this device should count it. */
+export function serverTime(offsetMs: number, deviceNow: number = Date.now()): number {
+  return deviceNow + offsetMs;
+}
+
+/**
+ * mm:ss, and under ten seconds mm:ss.t.
+ *
+ * The tenth only appears at the end, where a round is decided and people are
+ * watching the number rather than the bout. Showing it the whole way through
+ * makes a scoreboard restless to look at, and the digit changes too fast to
+ * read anyway.
+ */
+export function formatClock(seconds: number, tenths: boolean = false): string {
+  const safe = Math.max(0, seconds);
+  if (tenths && safe < 10) {
+    return `0:${safe.toFixed(1).padStart(4, "0")}`;
+  }
+  const whole = Math.floor(safe);
+  const minutes = Math.floor(whole / 60);
+  return `${minutes}:${String(whole % 60).padStart(2, "0")}`;
 }
 
 /** A short, unambiguous code judges can type in: no O/0 or I/1 to mistake. */

@@ -2,7 +2,11 @@
 
 import {
   contrastText,
+  INFO_FIELDS,
   type DisplayLayout,
+  type InfoField,
+  type InfoLayout,
+  type InfoPlace,
   type ScoreMode,
 } from "@/lib/scoreboardTheme";
 
@@ -31,7 +35,9 @@ export type BoardSide = {
 
 export type BoardData = {
   ringName: string;
-  heading: string;
+  categoryName: string;
+  roundLabel: string;
+  patternName: string;
   modeLabel: string;
   mode: ScoreMode;
   clock: string;
@@ -52,11 +58,11 @@ export type BoardLook = {
   showJudgeMarks: boolean;
   showPenalties: boolean;
   showClock: boolean;
-  showCategory: boolean;
   showCompetitorNumbers: boolean;
   showVoteCount: boolean;
   scoreScale: number;
   clockScale: number;
+  info: InfoLayout;
   display: DisplayLayout;
 };
 
@@ -84,17 +90,58 @@ export default function DisplayBoard({
       </div>
     ) : null;
 
-  const header = look.showCategory ? (
-    <div
-      className="flex items-center justify-between px-4 py-2 font-semibold opacity-70"
-      style={{ fontSize: rem(1.25) }}
-      key="header"
-    >
-      <span>{data.ringName}</span>
-      <span className="truncate px-3 text-center">{data.heading}</span>
-      <span className="opacity-70">{data.modeLabel}</span>
-    </div>
-  ) : null;
+  // The naming fields, each in whichever of the six corners it was put in.
+  // A field with nothing to say — a pattern in a sparring bout — takes up no
+  // room, so a cell holding only that one disappears rather than leaving a gap.
+  const text: Record<InfoField, string> = {
+    ring: data.ringName,
+    category: data.categoryName,
+    round: data.roundLabel,
+    pattern: data.mode === "pattern" ? data.patternName : "",
+    mode: data.modeLabel,
+  };
+
+  const cell = (place: InfoPlace, align: "start" | "center" | "end") => {
+    const here = INFO_FIELDS.filter((f) => look.info[f.key].place === place && text[f.key]);
+    if (here.length === 0) return <span key={place} />;
+    return (
+      <div
+        key={place}
+        className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 ${
+          align === "start" ? "justify-start" : align === "end" ? "justify-end" : "justify-center"
+        }`}
+      >
+        {here.map((f, i) => (
+          <span key={f.key} className="flex items-baseline gap-3">
+            {i > 0 && <span className="opacity-40" style={{ fontSize: rem(1) }}>·</span>}
+            <span className="font-semibold" style={{ fontSize: rem(1.25 * look.info[f.key].scale) }}>
+              {text[f.key]}
+            </span>
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  const bar = (which: "top" | "bottom") => {
+    const places: InfoPlace[] =
+      which === "top"
+        ? ["topLeft", "topCenter", "topRight"]
+        : ["bottomLeft", "bottomCenter", "bottomRight"];
+    const anything = INFO_FIELDS.some((f) => places.includes(look.info[f.key].place) && text[f.key]);
+    if (!anything) return null;
+    return (
+      <div
+        className="grid items-center gap-2 px-4 py-2 opacity-80"
+        style={{ gridTemplateColumns: "1fr auto 1fr" }}
+        key={`${which}Bar`}
+      >
+        {cell(places[0], "start")}
+        {cell(places[1], "center")}
+        {cell(places[2], "end")}
+      </div>
+    );
+  };
 
   const clock = look.showClock ? (
     <p
@@ -159,7 +206,7 @@ export default function DisplayBoard({
   // The page, assembled in the order the layout asks for.
   const blocks: React.ReactNode[] = [];
   if (L.branding === "top") blocks.push(branding);
-  if (L.header === "top") blocks.push(header);
+  blocks.push(bar("top"));
   if (L.status === "topOfScreen") blocks.push(status);
   if (L.clock === "abovePanels") blocks.push(clock);
   blocks.push(panels);
@@ -171,7 +218,7 @@ export default function DisplayBoard({
   } else if (L.clock === "abovePanels" && L.status === "underClock") {
     blocks.push(status);
   }
-  if (L.header === "bottom") blocks.push(header);
+  blocks.push(bar("bottom"));
   if (L.branding === "bottom") blocks.push(branding);
 
   return (

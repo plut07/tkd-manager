@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useRef } from "react";
 import {
   sideTotal,
   tally,
-  secondsLeft,
   formatClock,
   judgeVerdict,
   judgeScore,
@@ -13,8 +12,9 @@ import {
 } from "@/lib/scoreboard";
 import { resolveTheme, MODE_LABELS } from "@/lib/scoreboardTheme";
 import DisplayBoard, { type BoardData, type BoardSide } from "@/components/DisplayBoard";
-import { loadRing, type RingDto } from "@/app/(app)/events/scoreboardActions";
-import { realtimeClient } from "@/lib/liveChannel";
+import FullScreenButton, { useFullScreen } from "@/components/FullScreenButton";
+import { useRingLive } from "@/components/useRingLive";
+import { type RingDto } from "@/app/(app)/events/scoreboardActions";
 
 /**
  * The screen the hall sees.
@@ -28,37 +28,9 @@ import { realtimeClient } from "@/lib/liveChannel";
  * to change a bout.
  */
 export default function ScoreboardDisplay({ initial }: { initial: RingDto }) {
-  const [ring, setRing] = useState<RingDto>(initial);
-  const [left, setLeft] = useState(() =>
-    secondsLeft({ state: initial.state, startedAt: initial.clockStartedAt, remaining: initial.clockRemaining }),
-  );
-
-  const refresh = useCallback(async () => {
-    const fresh = await loadRing({ ringId: initial.id });
-    if (fresh) setRing(fresh);
-  }, [initial.id]);
-
-  useEffect(() => {
-    const client = realtimeClient();
-    let channel: any = null;
-    if (client) {
-      channel = client.channel(`ring:${initial.id}`, { config: { broadcast: { self: false } } });
-      channel.on("broadcast", { event: "changed" }, () => { void refresh(); });
-      channel.subscribe();
-    }
-    const poll = setInterval(() => { void refresh(); }, client ? 10000 : 3000);
-    return () => {
-      clearInterval(poll);
-      if (channel && client) client.removeChannel(channel);
-    };
-  }, [initial.id, refresh]);
-
-  useEffect(() => {
-    const tick = setInterval(() => {
-      setLeft(secondsLeft({ state: ring.state, startedAt: ring.clockStartedAt, remaining: ring.clockRemaining }));
-    }, 250);
-    return () => clearInterval(tick);
-  }, [ring.state, ring.clockStartedAt, ring.clockRemaining]);
+  const { ring, left } = useRingLive(initial, { ringId: initial.id });
+  const board = useRef<HTMLDivElement>(null);
+  const screen = useFullScreen(board);
 
   // The design for this mode: the event's base, with whatever the mode changes.
   const look = resolveTheme(ring.theme, ring.mode);
@@ -99,16 +71,14 @@ export default function ScoreboardDisplay({ initial }: { initial: RingDto }) {
   const winnerName = result.winner === "red" ? ring.redName : ring.blueName;
   const data: BoardData = {
     ringName: ring.name,
-    heading: [
-      ring.categoryName,
-      ring.mode === "pattern" && ring.patternName ? ring.patternName : null,
-      `Round ${ring.currentRound} of ${ring.rounds}`,
-    ]
-      .filter(Boolean)
-      .join("  ·  "),
+    categoryName: ring.categoryName ?? "",
+    roundLabel: `Round ${ring.currentRound} of ${ring.rounds}`,
+    patternName: ring.patternName ?? "",
     modeLabel: MODE_LABELS[ring.mode],
     mode: ring.mode,
-    clock: formatClock(left),
+    // The last ten seconds show a tenth. That is where a round is decided and
+    // where everybody is watching the number rather than the bout.
+    clock: formatClock(left, true),
     timeUp,
     statusIsResult: over,
     status: over
@@ -124,7 +94,12 @@ export default function ScoreboardDisplay({ initial }: { initial: RingDto }) {
   };
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: look.background }}>
+    <div
+      ref={board}
+      className={screen.big ? "fixed inset-0 z-50 overflow-auto" : "relative min-h-screen"}
+      style={{ backgroundColor: look.background }}
+    >
+      <FullScreenButton big={screen.big} showControls={screen.showControls} onToggle={screen.toggle} />
       <DisplayBoard data={data} look={look} />
     </div>
   );

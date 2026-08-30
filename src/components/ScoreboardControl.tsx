@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   MODES,
@@ -8,7 +8,6 @@ import {
   WARNINGS_PER_POINT,
   tally,
   sideTotal,
-  secondsLeft,
   formatClock,
   judgeVerdict,
   judgeScore,
@@ -23,10 +22,9 @@ import {
   confirmResult,
   refereePress,
   refereeUndo,
-  loadRing,
   type RingDto,
 } from "@/app/(app)/events/scoreboardActions";
-import { realtimeClient } from "@/lib/liveChannel";
+import { useRingLive } from "@/components/useRingLive";
 
 type Category = { id: string; name: string };
 type Match = {
@@ -59,14 +57,10 @@ export default function ScoreboardControl({
   baseUrl: string;
 }) {
   const router = useRouter();
-  const [ring, setRing] = useState<RingDto>(initial);
+  const { ring, left, live, put, setLocal: setRing, announce, refresh } = useRingLive(initial, { ringId: initial.id });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [left, setLeft] = useState(() =>
-    secondsLeft({ state: initial.state, startedAt: initial.clockStartedAt, remaining: initial.clockRemaining }),
-  );
-  const channelRef = useRef<any>(null);
   const [showSetup, setShowSetup] = useState(false);
 
   /**
@@ -86,45 +80,13 @@ export default function ScoreboardControl({
   const [draft, setDraft] = useState(() => settingsOf(initial));
   const [savedNote, setSavedNote] = useState("");
 
-  const refresh = useCallback(async () => {
-    const fresh = await loadRing({ ringId: initial.id });
-    if (fresh) setRing(fresh);
-  }, [initial.id]);
-
-  useEffect(() => {
-    const client = realtimeClient();
-    let channel: any = null;
-    if (client) {
-      channel = client.channel(`ring:${initial.id}`, { config: { broadcast: { self: false } } });
-      channel.on("broadcast", { event: "changed" }, () => { void refresh(); });
-      channel.subscribe();
-      channelRef.current = channel;
-    }
-    const poll = setInterval(() => { void refresh(); }, client ? 10000 : 3000);
-    return () => {
-      clearInterval(poll);
-      if (channel && client) client.removeChannel(channel);
-    };
-  }, [initial.id, refresh]);
-
-  useEffect(() => {
-    const tick = setInterval(() => {
-      setLeft(secondsLeft({ state: ring.state, startedAt: ring.clockStartedAt, remaining: ring.clockRemaining }));
-    }, 250);
-    return () => clearInterval(tick);
-  }, [ring.state, ring.clockStartedAt, ring.clockRemaining]);
-
-  function announce() {
-    channelRef.current?.send({ type: "broadcast", event: "changed", payload: {} });
-  }
-
   async function patch(p: Parameters<typeof updateRing>[0]["patch"]) {
     setBusy(true);
     setError("");
     const result = await updateRing({ ringId: ring.id, patch: p });
     setBusy(false);
     if ("error" in result) { setError(result.error); return; }
-    setRing(result.ring);
+    put(result.ring);
     announce();
   }
 
@@ -156,7 +118,7 @@ export default function ScoreboardControl({
     const result = await setClock({ ringId: ring.id, action });
     setBusy(false);
     if ("error" in result) { setError(result.error); return; }
-    setRing(result.ring);
+    put(result.ring);
     announce();
   }
 
@@ -166,7 +128,7 @@ export default function ScoreboardControl({
     const result = await refereePress({ ringId: ring.id, side, kind });
     setBusy(false);
     if ("error" in result) { setError(result.error); return; }
-    setRing(result.ring);
+    put(result.ring);
     announce();
   }
 
@@ -176,7 +138,7 @@ export default function ScoreboardControl({
     const result = await refereeUndo({ ringId: ring.id, side });
     setBusy(false);
     if ("error" in result) { setError(result.error); return; }
-    setRing(result.ring);
+    put(result.ring);
     announce();
   }
 
@@ -200,7 +162,7 @@ export default function ScoreboardControl({
     const result = await clearRing({ ringId: ring.id });
     setBusy(false);
     if ("error" in result) { setError(result.error); return; }
-    setRing(result.ring);
+    put(result.ring);
     announce();
   }
 
@@ -396,11 +358,21 @@ export default function ScoreboardControl({
       <div className="card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-baseline gap-4">
-            <span className="font-mono text-4xl font-bold tabular-nums text-gray-900">{formatClock(left)}</span>
+            <span className="font-mono text-4xl font-bold tabular-nums text-gray-900">{formatClock(left, true)}</span>
             <span className="text-sm text-gray-500">
               Round {ring.currentRound} of {ring.rounds} ·{" "}
               {ring.state === "running" ? "Running" : ring.state === "paused" ? "Paused" : ring.state === "finished" ? "Finished" : "Ready"}
             </span>
+            {/* A hall on the slow path should be told, rather than left
+                wondering why the display trails the judges' pads. */}
+            {!live && (
+              <span
+                className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                title="Presses are fetched on a timer instead of arriving the instant they are made. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY on the deployment to make it instant."
+              >
+                Not live — up to a second behind
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             {!running ? (

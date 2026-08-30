@@ -43,6 +43,16 @@ export type RingDto = {
   state: "idle" | "running" | "paused" | "finished";
   clockStartedAt: string | null;
   clockRemaining: number;
+  /**
+   * The server's own time, as of this reply.
+   *
+   * The clock is stored as "started at this instant, with this much left", and
+   * the instant is the server's. A screen that measured it against its own
+   * clock measured the gap between the two machines as well: a hall laptop a
+   * few seconds slow started a 120-second round at 2:05. Every screen corrects
+   * for the difference using this.
+   */
+  serverNow: string;
   entries: Entry[];
   /**
    * How this event's screens should look.
@@ -80,6 +90,7 @@ function toDto(ring: any, entries: any[], theme: ScoreboardTheme = DEFAULT_THEME
     currentRound: Number(ring.current_round) || 1,
     state: ring.state,
     clockStartedAt: ring.clock_started_at,
+    serverNow: new Date().toISOString(),
     // A ring nobody has started yet has no clock stored; it shows a full round
     // rather than 0:00, which would read as "time up" before anyone began.
     clockRemaining: ring.clock_remaining == null ? Number(ring.round_seconds) || 120 : Number(ring.clock_remaining),
@@ -206,6 +217,18 @@ export async function updateRing(input: {
     if (p.rounds !== undefined) row.rounds = Math.max(1, p.rounds);
 
     const supabase = supabaseAdmin();
+
+    // Setting the round length puts it on the clock straight away, unless a
+    // bout is actually running — nobody means "make rounds two minutes" and
+    // expects the board to keep showing 0:00 from the last bout until they
+    // find the Reset button.
+    if (row.round_seconds !== undefined) {
+      const before = await readRing({ id: input.ringId });
+      if (before && before.state !== "running") {
+        row.clock_started_at = null;
+        row.clock_remaining = row.round_seconds;
+      }
+    }
     const { error } = await supabase.from("scoreboard_rings").update(row).eq("id", input.ringId);
     if (error) return { error: `That change could not be saved: ${error.message}` };
 

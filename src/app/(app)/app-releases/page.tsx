@@ -35,8 +35,8 @@ export default async function AppReleasesPage() {
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Judge app</h1>
             <p className="mt-1 text-sm text-gray-500">
-              The Android app referees install to score on their own phones. Upload a build here and it becomes the
-              download on the public page.
+              The Android app referees install to score on their own phones. Publish a build here — by link or by
+              upload — and it becomes the download on the public page.
             </p>
           </div>
           <Link href="/public/app" target="_blank" className="btn-secondary">Open the download page</Link>
@@ -65,24 +65,26 @@ export default async function AppReleasesPage() {
 
         {current ? (
           <p className="mt-3 text-sm text-gray-600">
-            Judges are currently offered <strong>version {current.version}</strong> ({formatBytes(Number(current.file_size))}
-            ), uploaded {new Date(current.uploaded_at).toLocaleDateString()}.
+            Judges are currently offered <strong>version {current.version}</strong>
+            {Number(current.file_size) > 0 ? ` (${formatBytes(Number(current.file_size))})` : ""}, published{" "}
+            {new Date(current.uploaded_at).toLocaleDateString()}
+            {current.download_url ? " — hosted outside this site" : ""}.
           </p>
         ) : (
           <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Nothing has been uploaded yet, so the download page tells visitors the app isn&apos;t ready. Build the APK
+            Nothing has been published yet, so the download page tells visitors the app isn&apos;t ready. Build the APK
             with <span className="font-mono">eas build --platform android --profile apk</span>, download it from Expo,
-            then upload it below.
+            then either paste its address below or upload the file.
           </p>
         )}
 
         <ReleaseUploadForm />
 
         <p className="mt-3 text-xs text-gray-400">
-          The file goes from your browser straight to storage rather than through this server — Vercel refuses any
-          upload over 4.5 MB, and an APK is far bigger. If it ever fails here, the file can be put into the
-          <span className="font-mono"> app-releases </span> bucket from the Supabase dashboard instead, and this page
-          will offer it once a row is added.
+          A linked build stays where it is and nothing is copied, which is why there is no size limit on it. An
+          uploaded one goes from your browser straight to storage rather than through this server — Vercel refuses any
+          request body over 4.5 MB and an APK is far bigger — and is capped by whatever your Supabase plan allows per
+          file, 50 MB on the free one. Either way the download page and its QR code keep the same address.
         </p>
       </div>
 
@@ -96,7 +98,7 @@ export default async function AppReleasesPage() {
         <div className="mt-4 overflow-x-auto">
           <table className="table-base">
             <thead>
-              <tr><th>Version</th><th>Uploaded</th><th>Size</th><th>Notes</th><th></th><th></th></tr>
+              <tr><th>Version</th><th>Published</th><th>Where</th><th>Notes</th><th></th><th></th></tr>
             </thead>
             <tbody>
               {(releases ?? []).map((r: any) => (
@@ -106,7 +108,21 @@ export default async function AppReleasesPage() {
                     {r.is_current && <span className="ml-2 badge bg-green-100 text-green-700">Offered now</span>}
                   </td>
                   <td>{new Date(r.uploaded_at).toLocaleString()}</td>
-                  <td>{formatBytes(Number(r.file_size))}</td>
+                  <td className="text-gray-600">
+                    {r.download_url ? (
+                      <a
+                        href={r.download_url}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="break-all text-brand-700 hover:underline"
+                        title={r.download_url}
+                      >
+                        Linked
+                      </a>
+                    ) : (
+                      `Uploaded · ${formatBytes(Number(r.file_size))}`
+                    )}
+                  </td>
                   <td className="text-gray-600">{r.notes ?? "—"}</td>
                   <td className="text-right">
                     {!r.is_current && (
@@ -122,14 +138,14 @@ export default async function AppReleasesPage() {
                       action={deleteRelease}
                       fieldName="releaseId"
                       fieldValue={r.id}
-                      confirmLabel={`Delete version ${r.version}? Anyone who already installed it keeps it, but it can't be downloaded again.`}
+                      confirmLabel={`Delete version ${r.version}? Anyone who already installed it keeps it, but this site won't offer it again.`}
                       label="Delete"
                     />
                   </td>
                 </tr>
               ))}
               {(releases ?? []).length === 0 && (
-                <tr><td colSpan={6} className="py-4 text-center text-gray-400">No builds uploaded yet.</td></tr>
+                <tr><td colSpan={6} className="py-4 text-center text-gray-400">No builds published yet.</td></tr>
               )}
             </tbody>
           </table>
