@@ -13,7 +13,7 @@ import {
   type Side,
 } from "@/lib/scoreboard";
 import { judgePress, judgeUndo, loadRing, type RingDto } from "@/app/(app)/events/scoreboardActions";
-import { contrastText } from "@/lib/scoreboardTheme";
+import { contrastText, resolveTheme } from "@/lib/scoreboardTheme";
 import { realtimeClient } from "@/lib/liveChannel";
 
 /**
@@ -93,33 +93,63 @@ export default function JudgePad({ initial, joinCode, judgeSlot }: { initial: Ri
 
   // Colours come from the event's theme so a judge glancing up at the display
   // sees the same red as the button under their thumb.
-  const theme = ring.theme;
+  // The design for this mode: the event's base, with whatever the mode changes.
+  const theme = resolveTheme(ring.theme, ring.mode);
+  const L = theme.pad;
   const sides: { side: Side; label: string; name: string | null; number: string | null; colour: string }[] = [
     { side: "red", label: "RED", name: ring.redName, number: ring.redNumber, colour: theme.redColor },
     { side: "blue", label: "BLUE", name: ring.blueName, number: ring.blueNumber, colour: theme.blueColor },
   ];
   const dark = theme.padDarkBackground;
 
+  const header = (
+    <div
+      className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-gray-900 px-3 py-2 text-white"
+      key="header"
+    >
+      <span className="text-sm font-semibold">{ring.name} · Judge {judgeSlot}</span>
+      <span className="text-sm">
+        {[ring.categoryName, ring.mode === "pattern" ? ring.patternName : null, `R${ring.currentRound}/${ring.rounds}`]
+          .filter(Boolean)
+          .join(" · ")}
+      </span>
+      {L.clock === "inHeader" && <span className="font-mono text-lg">{formatClock(left)}</span>}
+    </div>
+  );
+
+  const bigClock =
+    L.clock === "aboveButtons" ? (
+      <p className="text-center font-mono text-4xl font-bold tabular-nums" key="clock">{formatClock(left)}</p>
+    ) : null;
+
+  const undoRow = (
+    <div className="flex flex-wrap items-center gap-3" key="undo">
+      <button type="button" className="btn-secondary" disabled={busy || mine.length === 0} onClick={() => { void undo(); }}>
+        Undo my last
+      </button>
+      <span className="text-xs opacity-70">
+        {mine.length === 0
+          ? "Nothing recorded yet."
+          : `Last: ${mine[0].side.toUpperCase()} ${mine[0].kind === "flag" ? "flag" : mine[0].value > 0 ? `+${mine[0].value}` : mine[0].value}`}
+      </span>
+    </div>
+  );
+
   return (
     <div
       className="mx-auto max-w-3xl space-y-3 p-2"
       style={dark ? { backgroundColor: theme.background, color: theme.textColor, minHeight: "100vh" } : undefined}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-gray-900 px-3 py-2 text-white">
-        <span className="text-sm font-semibold">{ring.name} · Judge {judgeSlot}</span>
-        <span className="text-sm">
-          {[ring.categoryName, ring.mode === "pattern" ? ring.patternName : null, `R${ring.currentRound}/${ring.rounds}`]
-            .filter(Boolean)
-            .join(" · ")}
-        </span>
-        <span className="font-mono text-lg">{formatClock(left)}</span>
-      </div>
+      {L.header === "top" && header}
 
       {finished && (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           This bout is finished. Wait for the next one to be set up.
         </p>
       )}
+
+      {bigClock}
+      {L.undo === "top" && undoRow}
 
       <div className="grid grid-cols-2 gap-3">
         {sides.map((s) => (
@@ -129,13 +159,20 @@ export default function JudgePad({ initial, joinCode, judgeSlot }: { initial: Ri
               style={{ backgroundColor: s.colour, color: contrastText(s.colour) }}
             >
               <p className="text-xs font-bold tracking-widest opacity-80">{s.label}</p>
-              <p className="truncate text-sm">
-                {s.number ? `#${s.number} ` : ""}
-                {s.name ?? "—"}
-              </p>
-              <p className="text-3xl font-bold">
-                {ring.mode === "flag" ? (myVerdict === s.side ? "✓" : "—") : scoreFor(s.side)}
-              </p>
+              {(() => {
+                const nameLine = (
+                  <p className="truncate text-sm" key="name">
+                    {theme.showCompetitorNumbers && s.number ? `#${s.number} ` : ""}
+                    {s.name ?? "—"}
+                  </p>
+                );
+                const markLine = (
+                  <p className="text-3xl font-bold" key="mark">
+                    {ring.mode === "flag" ? (myVerdict === s.side ? "✓" : "—") : scoreFor(s.side)}
+                  </p>
+                );
+                return L.name === "aboveScore" ? [nameLine, markLine] : [markLine, nameLine];
+              })()}
               {/* The referee's calls already come off this mark; showing them
                   stops a judge wondering why their number moved on its own. */}
               {penaltyTally(ring.entries, s.side).points > 0 && (
@@ -180,16 +217,8 @@ export default function JudgePad({ initial, joinCode, judgeSlot }: { initial: Ri
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="button" className="btn-secondary" disabled={busy || mine.length === 0} onClick={() => { void undo(); }}>
-          Undo my last
-        </button>
-        <span className="text-xs text-gray-500">
-          {mine.length === 0
-            ? "Nothing recorded yet."
-            : `Last: ${mine[0].side.toUpperCase()} ${mine[0].kind === "flag" ? "flag" : mine[0].value > 0 ? `+${mine[0].value}` : mine[0].value}`}
-        </span>
-      </div>
+      {L.undo === "bottom" && undoRow}
+      {L.header === "bottom" && header}
     </div>
   );
 }

@@ -19,8 +19,12 @@ export default async function AppearanceTab({ eventId }: { eventId: string }) {
       <div className="card p-4">
         <h2 className="text-lg font-semibold text-gray-900">Screen design</h2>
         <p className="mt-1 text-sm text-gray-500">
-          The colours and layout of the big display and the judges&apos; pads for this event. Saving reaches every
-          screen in the hall within a few seconds — nobody has to reload anything.
+          Where things sit, and what colour they are, on the big display and the judges&apos; pads for this event.
+          Saving reaches every screen in the hall within a few seconds — nobody has to reload anything.
+        </p>
+        <p className="mt-2 text-sm text-gray-500">
+          There is one design, and sparring, pattern and flag may each differ from it where you say so. Anything a
+          mode is left alone on keeps following the main design, so a change made once still reaches all three.
         </p>
       </div>
 
