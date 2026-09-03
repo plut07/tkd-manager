@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { loadRing } from "@/app/(app)/events/scoreboardActions";
 import JudgePad from "@/components/JudgePad";
+import JudgeAppSetup from "@/components/JudgeAppSetup";
 import { callerIp, checkJoinCodeAttempts, recordJoinCodeMiss, clearJoinCodeMisses } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
@@ -65,6 +66,11 @@ export default async function JudgePage({
           {code && <p className="text-sm text-red-600">No ring is using that code.</p>}
           <button type="submit" className="btn-primary w-full">Continue</button>
         </form>
+        {/* Offered here rather than once they are scoring: this is the one
+            moment a judge is not in the middle of a bout. */}
+        <div className="mt-6">
+          <JudgeAppSetup />
+        </div>
       </div>
     );
   }
@@ -83,9 +89,19 @@ export default async function JudgePage({
             </a>
           ))}
         </div>
+        <div className="mt-6">
+          <JudgeAppSetup />
+        </div>
       </div>
     );
   }
 
-  return <JudgePad initial={ring} joinCode={ring.joinCode} judgeSlot={judgeSlot} />;
+  return (
+    <>
+      {/* Registers the worker that lets this pad open without a signal. It
+          draws nothing once a judge is scoring. */}
+      <JudgeAppSetup />
+      <JudgePad initial={ring} joinCode={ring.joinCode} judgeSlot={judgeSlot} />
+    </>
+  );
 }

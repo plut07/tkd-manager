@@ -101,6 +101,7 @@ function toDto(ring: any, entries: any[], theme: ScoreboardTheme = DEFAULT_THEME
       value: Number(e.value),
       round: Number(e.round) || 1,
       voided: e.voided === true,
+      clientId: e.client_id ?? null,
     })),
     theme,
   };
@@ -221,7 +222,7 @@ async function readRing(where: { id?: string; joinCode?: string }): Promise<Ring
   // readable again afterwards: nothing was ever thrown away to make room.
   const pressed = supabase
     .from("scoreboard_entries")
-    .select("judge_slot, side, kind, value, round, voided")
+    .select("judge_slot, side, kind, value, round, voided, client_id")
     .eq("ring_id", ring.id);
   const { data: entries } = (ring as any).match_id
     ? await pressed.eq("match_id", (ring as any).match_id).order("created_at")
@@ -796,7 +797,7 @@ export async function loadMatchRecord(input: { matchId: string }): Promise<Match
 
   const { data: entries } = await supabase
     .from("scoreboard_entries")
-    .select("judge_slot, side, kind, value, round, voided")
+    .select("judge_slot, side, kind, value, round, voided, client_id")
     .eq("match_id", input.matchId)
     .order("created_at");
 
@@ -822,6 +823,7 @@ export async function loadMatchRecord(input: { matchId: string }): Promise<Match
       value: Number(e.value),
       round: Number(e.round) || 1,
       voided: e.voided === true,
+      clientId: e.client_id ?? null,
     })),
   };
 }

@@ -80,8 +80,16 @@ export function useRingLive(initial: RingDto, by: { ringId?: string; joinCode?: 
   }, []);
 
   const refresh = useCallback(async () => {
-    const fresh = await loadRing(by.ringId ? { ringId: by.ringId } : { joinCode: by.joinCode ?? "" });
-    if (fresh) put(fresh);
+    try {
+      const fresh = await loadRing(by.ringId ? { ringId: by.ringId } : { joinCode: by.joinCode ?? "" });
+      if (fresh) put(fresh);
+    } catch {
+      // No signal, or the server is briefly unreachable. A judge's pad polls
+      // this every second in a hall with bad wifi, so a failure is ordinary
+      // rather than exceptional: keep the copy on screen, keep the clock
+      // running from arithmetic, and try again on the next tick. Throwing here
+      // would take the pad down mid-bout over a dropped packet.
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, put]);
 

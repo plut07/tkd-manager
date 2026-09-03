@@ -34,7 +34,60 @@ Built with Next.js 14 (App Router), TypeScript, Tailwind CSS, and Supabase
   event; submissions arrive by webhook, auto-match existing students by
   national ID / passport, and stage unknown registrants for Super Admin
   approval, which creates the student profile. See "Grading setup" below.
+- **Live scoreboard** — rings with a five-character join code, a judge's pad
+  per phone, a hall display, and a per-event design for both. See "Scoring a
+  bout" below.
 - **Public pages** — a signed-out event list and published brackets.
+
+## Scoring a bout
+
+Three modes, one shape: judges each reach their own verdict and the majority
+decides the bout, which is how ITF scores it.
+
+| Mode     | The judge does                                              |
+| -------- | ----------------------------------------------------------- |
+| Sparring | awards 1, 2 or 3                                            |
+| Pattern  | starts at the event's mark and deducts for faults           |
+| Flag     | picks a side                                                |
+
+The sparring values are the ITF ones — 1 for a hand attack to mid or high
+section and a foot attack to mid; 2 for a hand attack in the air to high, a
+jumping or flying kick to mid, and a foot attack to high; 3 for a jumping or
+flying kick to high. Each button says what it is for. The minus buttons beneath
+them are corrections, for a judge who spots a mistake after Undo can no longer
+reach it; they are not deductions. A **deduction** is the referee's call and is
+pressed on the ring screen, where three warnings also cost a point.
+
+Nothing stores a running total. Every press is a row, so an undo is one row
+marked void and a disputed bout can be recounted press by press, weeks later.
+
+**Time up on the final round ends the bout**, whether or not anybody has
+pressed End — the pads stop taking presses at the bell.
+
+**A level bout** is settled the ITF way: fight an extra round, and if the
+judges are still level after it the referee gives it to whoever showed
+superiority. Both are on the ring screen when — and only when — the judges are
+actually level. A result won that way is recorded as won on a decision, so a
+result sheet never shows "2–2" beside a winner's name.
+
+### The judge app
+
+Judges score on their own phones at `/public/judge` with the code the ring
+official gives them. There is no account: the code grants exactly one thing,
+pressing a scoring button on that ring, so it is safe to say out loud in a hall.
+Ten wrong codes in fifteen minutes and that phone waits a while.
+
+The pad is installable. On the sign-in screen, **Add to home screen** puts it
+on the phone properly, where it opens full-screen with no address bar to
+fat-finger mid-bout — and where the phone treats its storage as worth keeping.
+
+**It keeps working when the wifi drops.** Every press is written to the phone
+before it is sent, and leaves the phone only once the ring has confirmed it. A
+judge who loses signal for half a round keeps pressing; a line at the top says
+how many presses are still waiting, and they go by themselves when the signal
+comes back. Two things make that safe, and both are enforced by the server: a
+press that arrives twice is counted once, and a press made during one bout is
+refused if the ring has moved on to the next.
 
 ## Draw seeding
 
@@ -180,6 +233,9 @@ variables carry over; only the deploy mechanism changes.
   natural next step.
 - No password-reset-by-email flow (admin resets passwords manually from
   the Users page, or via `npm run seed`).
-- No automated tests yet.
-- Results/medal tables and officials management from the sportdata.org
-  reference aren't built yet — draws and grading registration are.
+- `npm test` covers the scoring arithmetic — the clock, the verdict, the
+  penalties, the tie-break — which is the part where being quietly wrong
+  matters more than being broken. Nothing else has tests yet.
+- Power test, special technique and team events aren't built. Neither are
+  results/medal tables or officials management from the sportdata.org
+  reference; draws, scoreboard and grading registration are.
