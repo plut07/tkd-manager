@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { baseUrl } from "@/lib/urls";
 import ScoreboardControl from "@/components/ScoreboardControl";
 import { loadRing, createRing, deleteRing } from "./scoreboardActions";
+import { competitorName } from "@/lib/competitors";
 
 /**
  * Running the rings for one event.
@@ -61,12 +62,12 @@ export default async function ScoreboardTab({
   if (regIds.length > 0) {
     const { data: regs } = await supabase
       .from("event_registrations")
-      .select("id, competition_number, students(full_name)")
+      .select("id, competition_number, is_team, team_name, students(full_name)")
       .in("id", regIds);
     byReg = new Map<string, Competitor>(
       (regs ?? []).map((r: any) => [
         r.id,
-        { name: r.students?.full_name ?? "", number: r.competition_number != null ? String(r.competition_number) : null },
+        { name: competitorName(r), number: r.competition_number != null ? String(r.competition_number) : null },
       ] as [string, Competitor]),
     );
   }

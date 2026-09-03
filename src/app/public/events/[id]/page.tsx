@@ -8,6 +8,7 @@ import { describeCriteria, type CategoryCriteria } from "@/lib/eligibility";
 import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange, formatEventDateTime } from "@/lib/eventStatus";
 import CountryFlag from "@/components/CountryFlag";
 import VenueMap from "@/components/VenueMap";
+import { competitorName } from "@/lib/competitors";
 
 // These pages read live data but never touch cookies, so Next would otherwise
 // prerender them at build time and keep serving that snapshot — edits and
@@ -82,7 +83,7 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
   if (resultsPublished) {
     const { data: regs } = await supabase
       .from("event_registrations")
-      .select("id, competition_number, clubs(name), event_categories(name), students(full_name)")
+      .select("id, competition_number, clubs(name), event_categories(name), is_team, team_name, students(full_name)")
       .eq("event_id", event.id)
       .order("competition_number", { nullsFirst: false });
     const ids = (regs ?? []).map((r: any) => r.id);
@@ -95,7 +96,7 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
       results = (regs ?? [])
         .map((r: any) => ({ reg: r, score: byReg.get(r.id) }))
         .filter((x: any) => x.score)
-        .sort((a: any, b: any) => (a.reg.students?.full_name ?? "").localeCompare(b.reg.students?.full_name ?? ""));
+        .sort((a: any, b: any) => (competitorName(a.reg)).localeCompare(competitorName(b.reg)));
     }
   }
 
@@ -204,7 +205,7 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
                 {results.map(({ reg, score }: any) => (
                   <tr key={reg.id}>
                     <td>{reg.competition_number ?? "—"}</td>
-                    <td className="font-medium text-gray-900">{reg.students?.full_name}</td>
+                    <td className="font-medium text-gray-900">{competitorName(reg)}</td>
                     <td className="hidden sm:table-cell">{reg.clubs?.name ?? "—"}</td>
                     <td>
                       {score.passed ? (

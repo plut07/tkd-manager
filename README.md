@@ -39,6 +39,51 @@ Built with Next.js 14 (App Router), TypeScript, Tailwind CSS, and Supabase
   bout" below.
 - **Public pages** — a signed-out event list and published brackets.
 
+## The five disciplines
+
+Open a category under **Draw & Scoreboard** and it gives you the tool that
+discipline actually needs, because ITF runs three different shapes of
+competition:
+
+| Category type | What you get |
+| ------------- | ------------ |
+| Pattern, Sparring, Pre-arrange | a draw, a bracket and the live scoreboard |
+| Team Pattern, Team Sparring | the same, plus a team sheet to build the teams first |
+| Power Breaking, Special Event | a score sheet and a standings table — no draw |
+
+### Teams
+
+A team is entered as a competitor in its own right: name it, pick the club it
+competes for, and put people on the sheet in the order they compete. Reserves
+are marked as such and carried, since ITF allows substitutes and a reserve
+still has to be registered like everyone else.
+
+Everything after that treats a team exactly like any other entrant — the draw
+seeds it (keeping clubmates apart the same way), it gets a competition number,
+and the scoreboard names it. There is no separate team bracket because none is
+needed.
+
+### Power test and special technique
+
+Nobody faces anybody, so there is no draw. Each competitor takes a set number
+of attempts at each of a set list of techniques, and the category is ranked on
+the totals.
+
+- **Power test** records boards broken; **special technique** records the
+  height reached, in centimetres.
+- A competitor's mark at a technique is their **best** attempt at it, and their
+  total is the sum of those bests.
+- Type a number for each attempt. Leave a box **empty** for an attempt not
+  taken, or **x** for one that missed — the two are different, and the
+  difference decides ties.
+- A tie on the total is broken by who needed **fewer attempts** to get there.
+  Anything still level is shown as level (`1=`) rather than separated by
+  whichever row the database happened to return first; ITF orders a re-try,
+  which you record as a further attempt.
+
+Each category picks its own techniques and attempt count, under **Techniques &
+attempts** — a junior power test is not the senior one.
+
 ## Scoring a bout
 
 Three modes, one shape: judges each reach their own verdict and the majority
@@ -246,8 +291,12 @@ variables carry over; only the deploy mechanism changes.
 - No password-reset-by-email flow (admin resets passwords manually from
   the Users page, or via `npm run seed`).
 - `npm test` covers the scoring arithmetic — the clock, the verdict, the
-  penalties, the tie-break — which is the part where being quietly wrong
-  matters more than being broken. Nothing else has tests yet.
-- Power test, special technique and team events aren't built. Neither are
-  results/medal tables or officials management from the sportdata.org
-  reference; draws, scoreboard and grading registration are.
+  penalties, the tie-break, and the measured-discipline standings — which is
+  the part where being quietly wrong matters more than being broken. Nothing
+  else has tests yet.
+- Results/medal tables and officials management from the sportdata.org
+  reference aren't built yet. Everything else on that reference is: draws,
+  the scoreboard, all five disciplines, and grading registration.
+- Waivers are per-person, so a team registration has no waiver of its own. Team
+  members should be registered individually as well if you need their signed
+  forms.

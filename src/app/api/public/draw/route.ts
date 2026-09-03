@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSession } from "@/lib/session";
 import { buildDrawPdf, type DrawCompetitor, type DrawMatch } from "@/lib/drawPdf";
 import { formatEventRange } from "@/lib/eventStatus";
+import { competitorName } from "@/lib/competitors";
 
 export const dynamic = "force-dynamic";
 
@@ -70,11 +71,11 @@ export async function GET(request: NextRequest) {
   if (regIds.length > 0) {
     const { data: regs } = await supabase
       .from("event_registrations")
-      .select("id, competition_number, students(full_name), clubs(name)")
+      .select("id, competition_number, is_team, team_name, students(full_name), clubs(name)")
       .in("id", regIds);
     for (const r of (regs ?? []) as any[]) {
       byReg.set(r.id, {
-        name: r.students?.full_name ?? "",
+        name: competitorName(r),
         club: r.clubs?.name ?? null,
         number: r.competition_number != null ? String(r.competition_number) : null,
       });

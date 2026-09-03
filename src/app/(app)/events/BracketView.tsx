@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { ROUND_ORDER, ROUND_LABELS, placings } from "@/lib/bracket";
+import { competitorName } from "@/lib/competitors";
 import {
   generateBracket,
   submitMatchResult,
@@ -45,11 +46,11 @@ export default async function BracketView({
   if (regIds.size > 0) {
     const { data: regs } = await supabase
       .from("event_registrations")
-      .select("id, competition_number, students(full_name), clubs(name)")
+      .select("id, competition_number, is_team, team_name, students(full_name), clubs(name)")
       .in("id", Array.from(regIds));
     (regs ?? []).forEach((r: any) => {
       regMap.set(r.id, {
-        name: r.students?.full_name ?? "",
+        name: competitorName(r),
         club: r.clubs?.name ?? null,
         number: r.competition_number != null ? String(r.competition_number) : null,
       });

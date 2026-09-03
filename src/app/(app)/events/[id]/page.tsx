@@ -12,12 +12,13 @@ import EventPhotos from "@/components/EventPhotos";
 import { PHOTO_BUCKET } from "@/lib/eventPhotos";
 
 import CategoryForm from "../CategoryForm";
-import BracketView from "../BracketView";
+import CategoryWorkspace from "../CategoryWorkspace";
 import ScoreboardTab from "../ScoreboardTab";
 import AppearanceTab from "../AppearanceTab";
 import ExamTab from "../ExamTab";
 import ResultTab from "../ResultTab";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
+import { measuredKindOf } from "@/lib/measured";
 import { describeCriteria, type CategoryCriteria } from "@/lib/eligibility";
 import { effectiveEventStatus, canOverrideLocks, STATUS_STYLES, STATUS_LABELS, formatEventRange, formatEventDateTime } from "@/lib/eventStatus";
 import { deleteEvent, addCategory, deleteCategory, addDocument, deleteDocument } from "../actions";
@@ -344,7 +345,14 @@ export default async function EventDetailPage({ params, searchParams }: { params
                     <div className="font-medium text-gray-900">{c.name}</div>
                     <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
                       <span>{count} confirmed</span>
-                      <span className={`badge ${status === "published" ? "bg-green-100 text-green-700" : status ? "bg-gray-100 text-gray-500" : "bg-gray-50 text-gray-400"}`}>{status === "published" ? "Published" : status ? "Draft" : "Not generated"}</span>
+                      {/* A power test or special technique has no draw to
+                          generate, so "Not generated" would read as something
+                          undone rather than something that does not apply. */}
+                      {measuredKindOf(c.type) ? (
+                        <span className="badge bg-indigo-100 text-indigo-700">Score sheet</span>
+                      ) : (
+                        <span className={`badge ${status === "published" ? "bg-green-100 text-green-700" : status ? "bg-gray-100 text-gray-500" : "bg-gray-50 text-gray-400"}`}>{status === "published" ? "Published" : status ? "Draft" : "Not generated"}</span>
+                      )}
                     </div>
                   </Link>
                 );
@@ -352,7 +360,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
               {(categories ?? []).length === 0 && <p className="col-span-full py-4 text-center text-gray-400">No categories added yet.</p>}
             </div>
           </div>
-          {searchParams.category && (<BracketView eventId={event.id} categoryId={searchParams.category} canEdit={canEditNow} backHref={`/events/${event.id}?tab=draws`} backLabel="Back to draws list" />)}
+          {searchParams.category && (<CategoryWorkspace eventId={event.id} categoryId={searchParams.category} canEdit={canEditNow} backHref={`/events/${event.id}?tab=draws`} />)}
           </>
           )}
         </div>

@@ -7,6 +7,7 @@ import DeleteButton from "@/components/DeleteButton";
 import { gradeValue, gradeLabel, GRADE_OPTIONS } from "@/lib/belts";
 import { waiverAge, formatDob, computeAge } from "@/lib/eligibility";
 import { unregisterStudent } from "./actions";
+import { competitorName, competitorNameOr } from "@/lib/competitors";
 
 /**
  * Everyone entered for an event, with a breakdown of who they are.
@@ -69,7 +70,7 @@ export default async function RegisteredStudentsPanel({
   const { data: entries } = await supabase
     .from("event_registrations")
     .select(
-      "id, status, competition_number, registered_at, waiver_token, clubs(id, name), students(full_name, birthday, gender, gup, dan, national_id, club_number), event_categories(name), waiver_signatures(signed_name, signed_at)"
+      "id, status, competition_number, registered_at, waiver_token, is_team, team_name, clubs(id, name), students(full_name, birthday, gender, gup, dan, national_id, club_number), event_categories(name), waiver_signatures(signed_name, signed_at)"
     )
     .eq("event_id", eventId)
     .order("registered_at");
@@ -174,7 +175,7 @@ export default async function RegisteredStudentsPanel({
               {matching.map((r: any) => (
                 <tr key={r.id}>
                   <td>{r.competition_number ?? "—"}</td>
-                  <td className="font-medium text-gray-900">{r.students?.full_name}</td>
+                  <td className="font-medium text-gray-900">{competitorNameOr(r, "—")}</td>
                   <td>{r.clubs?.name ?? "—"}</td>
                   <td><BeltBadge gup={r.students?.gup ?? null} dan={r.students?.dan ?? null} /></td>
                   <td className="hidden lg:table-cell">{formatDob(r.students?.birthday ?? null)}</td>
@@ -213,7 +214,7 @@ export default async function RegisteredStudentsPanel({
                         action={unregisterStudent}
                         fieldName="registrationId"
                         fieldValue={r.id}
-                        confirmLabel={`Remove ${r.students?.full_name} from this event?`}
+                        confirmLabel={`Remove ${competitorNameOr(r, "—")} from this event?`}
                         label="Remove"
                         extraFields={{ eventId }}
                       />

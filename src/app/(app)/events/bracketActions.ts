@@ -6,6 +6,7 @@ import { requirePermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { buildBracket, type BracketCompetitor } from "@/lib/bracket";
+import { competitorName } from "@/lib/competitors";
 
 export async function generateBracket(formData: FormData) {
   await requirePermission(PERMISSIONS.EVENT_EDIT);
@@ -243,13 +244,13 @@ export async function sendMatchToRing(formData: FormData) {
   const ids = [match.competitor1_registration_id, match.competitor2_registration_id].filter(Boolean) as string[];
   let regs: any[] = [];
   if (ids.length > 0) {
-    const { data } = await supabase.from("event_registrations").select("id, competition_number, students(full_name)").in("id", ids);
+    const { data } = await supabase.from("event_registrations").select("id, competition_number, is_team, team_name, students(full_name)").in("id", ids);
     regs = data ?? [];
   }
   // Typed on the way in rather than inferred: a Map built from a query result
   // has bitten this codebase before, coming out as Map<string, {}>.
   const byId = new Map<string, any>(regs.map((r: any) => [r.id, r] as [string, any]));
-  const nameOf = (id: string | null) => (id ? byId.get(id)?.students?.full_name ?? null : null);
+  const nameOf = (id: string | null) => (id ? competitorName(byId.get(id) as any) || null : null);
   const numberOf = (id: string | null) => {
     const n = id ? byId.get(id)?.competition_number : null;
     return n != null ? String(n) : null;

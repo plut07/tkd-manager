@@ -6,6 +6,7 @@ import { computeAge } from "@/lib/eligibility";
 import { unregisterStudent } from "./actions";
 import { isRegistrationOpen, canOverrideLocks } from "@/lib/eventStatus";
 import PendingCandidates from "./PendingCandidates";
+import { competitorName, competitorNameOr } from "@/lib/competitors";
 
 /**
  * Approving people, and the list of everyone who is in.
@@ -24,7 +25,7 @@ export default async function RegistrationPanel({ eventId }: { eventId: string }
   const { data: registrations } = await supabase
     .from("event_registrations")
     .select(
-      "id, status, registered_at, competition_number, clubs(id, name), students(id, full_name, gender, weight_kg, height_cm, birthday, nationality), event_categories(id, name)"
+      "id, status, registered_at, competition_number, is_team, team_name, clubs(id, name), students(id, full_name, gender, weight_kg, height_cm, birthday, nationality), event_categories(id, name)"
     )
     .eq("event_id", event.id)
     .order("registered_at");
@@ -67,7 +68,7 @@ export default async function RegistrationPanel({ eventId }: { eventId: string }
                   clubName={group.clubName}
                   rows={group.rows.map((r: any) => ({
                     competitionNumber: r.competition_number,
-                    name: r.students?.full_name ?? "",
+                    name: competitorName(r),
                     gender: r.students?.gender ?? null,
                     age: computeAge(r.students?.birthday ?? null),
                     weightKg: r.students?.weight_kg ?? null,
@@ -86,7 +87,7 @@ export default async function RegistrationPanel({ eventId }: { eventId: string }
                     {group.rows.map((r: any) => (
                       <tr key={r.id}>
                         <td className="font-medium text-gray-900">{r.competition_number ?? "—"}</td>
-                        <td>{r.students?.full_name}</td>
+                        <td>{competitorNameOr(r, "—")}</td>
                         <td>{r.event_categories?.name ?? "Unassigned category"}</td>
                         <td>{computeAge(r.students?.birthday ?? null) ?? "—"}</td>
                         <td>{fmtWeight(r.students?.weight_kg ?? null)}</td>
