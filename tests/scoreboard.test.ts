@@ -63,6 +63,13 @@ test("the final round running out ends the bout", () => {
   );
 });
 
+test("a ring whose stored clock reads zero but has not started is not over", () => {
+  // The live clock_remaining column is `not null default 0`, so a freshly
+  // created ring carries a zero rather than the null the migration file
+  // implies. Nothing may read that as time up: the state says it never began.
+  assert.equal(boutOver({ state: "idle", startedAt: null, remaining: 0, currentRound: 1, rounds: 1 }, NOW), false);
+});
+
 test("between rounds the clock reads zero but the bout continues", () => {
   // Next round resets to idle with a full clock; a stopped clock on its own
   // must never be read as the end.

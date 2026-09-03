@@ -68,6 +68,28 @@ export type RingDto = {
 const RING_SELECT =
   "id, name, join_code, event_id, category_id, match_id, red_name, blue_name, red_number, blue_number, pattern_name, mode, judge_count, pattern_base, round_seconds, rounds, current_round, state, clock_started_at, clock_remaining, event_categories(name)";
 
+/**
+ * What is on a ring's clock.
+ *
+ * An idle ring has not started, so it shows a full round. This used to be
+ * written as "no clock stored yet means a full round", which was right about
+ * the intent and wrong about the database: the live `clock_remaining` column is
+ * `not null default 0`, not the nullable column the migration file declares, so
+ * the fallback never once fired and every freshly created ring showed 0:00 --
+ * reading as "time up" before anybody had begun, which is the exact thing that
+ * comment was there to prevent.
+ *
+ * Asking the state instead of the value is both correct and independent of
+ * which of the two schemas an installation happens to have. Nothing else can
+ * be idle with time part-spent anyway: reset and next-round both put a full
+ * round back on.
+ */
+function clockLeftOn(ring: any): number {
+  const full = Number(ring.round_seconds) || 120;
+  if (ring.state === "idle") return full;
+  return ring.clock_remaining == null ? full : Number(ring.clock_remaining);
+}
+
 function toDto(ring: any, entries: any[], theme: ScoreboardTheme = DEFAULT_THEME): RingDto {
   return {
     id: ring.id,
@@ -91,9 +113,7 @@ function toDto(ring: any, entries: any[], theme: ScoreboardTheme = DEFAULT_THEME
     state: ring.state,
     clockStartedAt: ring.clock_started_at,
     serverNow: new Date().toISOString(),
-    // A ring nobody has started yet has no clock stored; it shows a full round
-    // rather than 0:00, which would read as "time up" before anyone began.
-    clockRemaining: ring.clock_remaining == null ? Number(ring.round_seconds) || 120 : Number(ring.clock_remaining),
+    clockRemaining: clockLeftOn(ring),
     entries: (entries ?? []).map((e: any) => ({
       judge_slot: Number(e.judge_slot),
       side: e.side as Side,
@@ -180,11 +200,10 @@ async function settleIfOver(supabase: any, ring: any): Promise<boolean> {
   const over = boutOver({
     state: ring.state,
     startedAt: ring.clock_started_at,
-    // A ring nobody has put a clock on yet reads as a full round, exactly as it
-    // does on every screen. Reading it as zero here would end a bout that had
-    // not started, which is the one mistake this function must not make.
-    remaining:
-      ring.clock_remaining == null ? Number(ring.round_seconds) || 120 : Number(ring.clock_remaining),
+    // The same reading of the clock every screen gets. Anything that made a
+    // not-yet-started ring look spent would end a bout nobody had begun, which
+    // is the one mistake this function must not make.
+    remaining: clockLeftOn(ring),
     currentRound: Number(ring.current_round) || 1,
     rounds: Number(ring.rounds) || 1,
   });
