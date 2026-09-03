@@ -1,7 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 import { SESSION_COOKIE_NAME } from "@/lib/constants";
-const PUBLIC_PREFIXES = ["/login", "/public", "/_next", "/favicon.ico", "/api/health", "/api/grading-webhook", "/api/public"];
+// `/.well-known` is fetched by Android to check that this site vouches for the
+// judge app, and `/sw.js` and `/manifest.webmanifest` are what make that app
+// installable in the first place. All three are requested by a phone with no
+// session, so a redirect to the login page would simply read as "not
+// installable" with nothing to say why.
+const PUBLIC_PREFIXES = [
+  "/login", "/public", "/_next", "/favicon.ico", "/icons",
+  "/api/health", "/api/grading-webhook", "/api/public",
+  "/.well-known", "/sw.js", "/manifest.webmanifest",
+];
 async function isValidToken(token: string | undefined) {
   if (!token) return false;
   const secret = process.env.SESSION_SECRET;

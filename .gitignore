@@ -7,3 +7,15 @@ node_modules
 .vercel
 deploy_payload.json
 tsconfig.tsbuildinfo
+
+# The Android signing key, and everything bubblewrap generates around it. An
+# app signed with a different key is a different app to Android, so this file
+# is the one thing here that cannot be regenerated -- keep it, back it up, and
+# never commit it.
+android/*.keystore
+android/*.jks
+android/app/
+android/build/
+android/*.apk
+android/*.aab
+android/android.keystore.*

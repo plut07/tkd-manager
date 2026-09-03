@@ -89,6 +89,18 @@ comes back. Two things make that safe, and both are enforced by the server: a
 press that arrives twice is counted once, and a press made during one bout is
 refused if the ring has moved on to the next.
 
+### The Android app
+
+There is also an APK, for referees who would rather install an app than add a
+web page to their home screen. It is a wrapper around the same pad — a Trusted
+Web Activity — so there is no second codebase and no second set of scoring
+rules, and **the app updates when the site deploys**. Nobody reinstalls
+anything for a rule change.
+
+Building and signing it is documented in [`android/README.md`](android/README.md).
+The signing key is yours to generate and hold; it is the one file here that
+cannot be regenerated.
+
 ## Draw seeding
 
 First-round pairings are chosen greedily to keep clubmates and compatriots
