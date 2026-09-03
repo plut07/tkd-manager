@@ -131,7 +131,7 @@ async function themeFor(supabase: any, eventId: string): Promise<ScoreboardTheme
  * to answer with, which on a busy mat was five queries a button.
  */
 const RING_GUARD_SELECT =
-  "id, event_id, match_id, judge_count, current_round, rounds, state, clock_started_at, clock_remaining";
+  "id, event_id, match_id, judge_count, current_round, rounds, state, clock_started_at, clock_remaining, round_seconds";
 
 type RingGuard = {
   id: string;
@@ -179,7 +179,11 @@ async function settleIfOver(supabase: any, ring: any): Promise<boolean> {
   const over = boutOver({
     state: ring.state,
     startedAt: ring.clock_started_at,
-    remaining: ring.clock_remaining == null ? 0 : Number(ring.clock_remaining),
+    // A ring nobody has put a clock on yet reads as a full round, exactly as it
+    // does on every screen. Reading it as zero here would end a bout that had
+    // not started, which is the one mistake this function must not make.
+    remaining:
+      ring.clock_remaining == null ? Number(ring.round_seconds) || 120 : Number(ring.clock_remaining),
     currentRound: Number(ring.current_round) || 1,
     rounds: Number(ring.rounds) || 1,
   });
