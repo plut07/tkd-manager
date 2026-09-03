@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { messageFrom, rethrowControlFlow } from "@/lib/controlFlow";
 import { requirePermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -146,7 +147,7 @@ export async function saveTeam(input: {
     revalidatePath(`/events/${input.eventId}`);
     return { ok: true, registrationId };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "That team could not be saved." };
+    return { error: messageFrom(e, "That team could not be saved.") };
   }
 }
 
@@ -177,7 +178,7 @@ export async function deleteTeam(input: {
     revalidatePath(`/events/${input.eventId}`);
     return { ok: true };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "That team could not be removed." };
+    return { error: messageFrom(e, "That team could not be removed.") };
   }
 }
 
@@ -197,6 +198,6 @@ export async function setTeamStatus(input: {
     revalidatePath(`/events/${input.eventId}`);
     return { ok: true };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "That could not be changed." };
+    return { error: messageFrom(e, "That could not be changed.") };
   }
 }

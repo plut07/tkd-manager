@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { messageFrom, rethrowControlFlow } from "@/lib/controlFlow";
 import { requirePermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -137,7 +138,7 @@ export async function setMeasuredSetup(input: {
     revalidatePath(`/events/${(category as any).event_id}`);
     return { ok: true };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "That could not be saved." };
+    return { error: messageFrom(e, "That could not be saved.") };
   }
 }
 
@@ -204,7 +205,7 @@ export async function recordAttempt(input: {
     revalidatePath(`/events/${(category as any).event_id}`);
     return { ok: true };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "That attempt didn't save." };
+    return { error: messageFrom(e, "That attempt didn't save.") };
   }
 }
 
@@ -228,6 +229,6 @@ export async function clearAttempt(input: {
     if (error) return { error: "That could not be cleared." };
     return { ok: true };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "That could not be cleared." };
+    return { error: messageFrom(e, "That could not be cleared.") };
   }
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { messageFrom, rethrowControlFlow } from "@/lib/controlFlow";
 import { requirePermission, requireSession } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -61,13 +62,10 @@ export type ExamRowDto = {
 
 export type ExamSaveResult = { ok: true; row: ExamRowDto } | { error: string };
 
-/**
- * A signed-out user's save throws Next's internal redirect, which must travel
- * up rather than be reported as "couldn't save".
- */
-function isRedirect(e: unknown): boolean {
-  return typeof e === "object" && e !== null && typeof (e as any).digest === "string" && (e as any).digest.startsWith("NEXT_REDIRECT");
-}
+// A signed-out user's save throws Next's internal redirect, which must travel
+// up rather than be reported as "couldn't save". That was worked out here
+// first and is now in @/lib/controlFlow, because every other action file had
+// the same swallow and none of them had the guard.
 
 /**
  * Marking stays open while the event is running and closes when it finishes,
@@ -273,8 +271,8 @@ export async function saveExamRow(input: ExamSaveInput): Promise<ExamSaveResult>
     revalidatePath(`/events/${input.eventId}`);
     return { ok: true, row };
   } catch (e) {
-    if (isRedirect(e)) throw e;
-    return { error: e instanceof Error ? e.message : "Could not save this sheet." };
+    rethrowControlFlow(e);
+    return { error: messageFrom(e, "Could not save this sheet.") };
   }
 }
 
@@ -325,8 +323,8 @@ export async function setExamLock(input: {
     revalidatePath(`/events/${input.eventId}`);
     return { ok: true, row };
   } catch (e) {
-    if (isRedirect(e)) throw e;
-    return { error: e instanceof Error ? e.message : "Could not change the lock." };
+    rethrowControlFlow(e);
+    return { error: messageFrom(e, "Could not change the lock.") };
   }
 }
 
@@ -369,8 +367,8 @@ export async function setCategoryEvents(input: {
     revalidatePath(`/events/${input.eventId}`);
     return { ok: true };
   } catch (e) {
-    if (isRedirect(e)) throw e;
-    return { error: e instanceof Error ? e.message : "Could not save the components." };
+    rethrowControlFlow(e);
+    return { error: messageFrom(e, "Could not save the components.") };
   }
 }
 
@@ -415,8 +413,8 @@ export async function saveSyllabus(input: {
     revalidatePath(`/events/${input.eventId}`);
     return { ok: true };
   } catch (e) {
-    if (isRedirect(e)) throw e;
-    return { error: e instanceof Error ? e.message : "The syllabus could not be saved." };
+    rethrowControlFlow(e);
+    return { error: messageFrom(e, "The syllabus could not be saved.") };
   }
 }
 

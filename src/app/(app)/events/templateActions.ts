@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { messageFrom, rethrowControlFlow } from "@/lib/controlFlow";
 import { requirePermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -175,7 +176,7 @@ export async function setTemplateGrades(input: {
     revalidatePath(`/events/${input.eventId}`);
     return { ok: true };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Those grades could not be saved." };
+    return { error: messageFrom(e, "Those grades could not be saved.") };
   }
 }
 

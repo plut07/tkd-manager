@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { messageFrom, rethrowControlFlow } from "@/lib/controlFlow";
 import { requirePermission, requireSuperAdmin } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -268,7 +269,7 @@ export async function createClubForCandidate(input: {
     revalidatePath(`/events/${input.eventId}`);
     return { ok: true };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "That club could not be created." };
+    return { error: messageFrom(e, "That club could not be created.") };
   }
 }
 

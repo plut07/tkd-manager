@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { messageFrom, rethrowControlFlow } from "@/lib/controlFlow";
 import { requirePermission, requireSession } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -335,7 +336,7 @@ export async function updateRing(input: {
     if (!ring) return { error: "Ring not found." };
     return { ok: true, ring };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "That change could not be saved." };
+    return { error: messageFrom(e, "That change could not be saved.") };
   }
 }
 
@@ -399,7 +400,7 @@ export async function setClock(input: {
     const ring = await readRing({ id: input.ringId });
     return ring ? { ok: true, ring } : { error: "Ring not found." };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "The clock could not be changed." };
+    return { error: messageFrom(e, "The clock could not be changed.") };
   }
 }
 
@@ -465,7 +466,7 @@ export async function judgePress(input: {
     const updated = await readRing({ id: ring.id });
     return updated ? { ok: true, ring: updated } : { error: "Ring not found." };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "That score didn't register." };
+    return { error: messageFrom(e, "That score didn't register.") };
   }
 }
 
@@ -514,7 +515,7 @@ export async function judgeUndo(input: {
     const updated = await readRing({ id: ring.id });
     return updated ? { ok: true, ring: updated } : { error: "Ring not found." };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "That could not be undone." };
+    return { error: messageFrom(e, "That could not be undone.") };
   }
 }
 
@@ -559,7 +560,7 @@ export async function refereePress(input: {
     const updated = await readRing({ id: ring.id });
     return updated ? { ok: true, ring: updated } : { error: "Ring not found." };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "That didn't register." };
+    return { error: messageFrom(e, "That didn't register.") };
   }
 }
 
@@ -592,7 +593,7 @@ export async function refereeUndo(input: {
     const ring = await readRing({ id: input.ringId });
     return ring ? { ok: true, ring } : { error: "Ring not found." };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "That could not be undone." };
+    return { error: messageFrom(e, "That could not be undone.") };
   }
 }
 
@@ -624,7 +625,7 @@ export async function clearDecision(input: { ringId: string }): Promise<{ ok: tr
     const ring = await readRing({ id: input.ringId });
     return ring ? { ok: true, ring } : { error: "Ring not found." };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "That could not be withdrawn." };
+    return { error: messageFrom(e, "That could not be withdrawn.") };
   }
 }
 
@@ -660,7 +661,7 @@ export async function clearRing(input: { ringId: string }): Promise<{ ok: true; 
     const ring = await readRing({ id: input.ringId });
     return ring ? { ok: true, ring } : { error: "Ring not found." };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "The ring could not be cleared." };
+    return { error: messageFrom(e, "The ring could not be cleared.") };
   }
 }
 
@@ -763,7 +764,7 @@ export async function confirmResult(input: { ringId: string }): Promise<{ ok: tr
       : `wins ${result.red}–${result.blue}`;
     return { ok: true, message: `${name ?? result.winner.toUpperCase()} ${how}. Saved to the draw.` };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "The result could not be saved." };
+    return { error: messageFrom(e, "The result could not be saved.") };
   }
 }
 

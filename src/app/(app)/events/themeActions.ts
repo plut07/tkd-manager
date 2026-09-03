@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { messageFrom, rethrowControlFlow } from "@/lib/controlFlow";
 import { requirePermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -59,7 +60,7 @@ export async function saveTheme(input: {
     revalidatePath(`/events/${input.eventId}/scoreboard`);
     return { ok: true, theme: clean };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "That look could not be saved." };
+    return { error: messageFrom(e, "That look could not be saved.") };
   }
 }
 
@@ -72,6 +73,6 @@ export async function resetTheme(input: { eventId: string }): Promise<{ ok: true
     revalidatePath(`/events/${input.eventId}/scoreboard`);
     return { ok: true };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "That could not be reset." };
+    return { error: messageFrom(e, "That could not be reset.") };
   }
 }
