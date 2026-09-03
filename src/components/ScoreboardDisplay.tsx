@@ -83,7 +83,11 @@ export default function ScoreboardDisplay({ initial }: { initial: RingDto }) {
     statusIsResult: over,
     status: over
       ? result.winner
-        ? `WINNER — ${winnerName ?? result.winner.toUpperCase()} (${result.red}–${result.blue})`
+        ? result.byDecision
+          ? // A bout the judges left level reads as a draw if only the votes are
+            // shown, so the hall is told how it was won.
+            `WINNER — ${winnerName ?? result.winner.toUpperCase()} · REFEREE'S DECISION`
+          : `WINNER — ${winnerName ?? result.winner.toUpperCase()} (${result.red}–${result.blue})`
         : `Judges tied ${result.red}–${result.blue} — referee to decide`
       : ring.state === "running"
         ? `Round ${ring.currentRound} of ${ring.rounds}`

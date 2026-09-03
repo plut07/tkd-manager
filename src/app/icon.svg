@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="TKD Manager">
+  <!--
+    The two corners, which is what this app is about at every level: red and
+    blue either side of a dividing line. Deliberately shape-only, no lettering
+    -- three characters are unreadable in a 16px browser tab, and a tab strip
+    is where this is seen most.
+  -->
+  <rect width="64" height="64" rx="14" fill="#09090b"/>
+  <path d="M32 12a20 20 0 0 0 0 40z" fill="#b91c1c"/>
+  <path d="M32 12a20 20 0 0 1 0 40z" fill="#1d4ed8"/>
+  <rect x="30" y="10" width="4" height="44" rx="2" fill="#09090b"/>
+</svg>

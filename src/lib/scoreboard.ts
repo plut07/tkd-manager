@@ -27,9 +27,50 @@ export const MODES: { value: ScoreMode; label: string; note: string }[] = [
   { value: "flag", label: "Flag", note: "Judges pick a winner. No points." },
 ];
 
-/** The buttons a judge sees, per mode. */
-export const SPARRING_BUTTONS = [3, 2, 1, -1, -2, -3];
-export const PATTERN_BUTTONS = [-0.2, -0.5, -1];
+/**
+ * The buttons a judge sees, per mode.
+ *
+ * An award carries the technique it is for, because a judge under pressure is
+ * reading a button, not remembering a table. The values are the ITF ones:
+ *
+ *   1  hand attack to mid or high section; foot attack to mid section
+ *   2  hand attack in the air to high section; jumping or flying kick to mid
+ *      section; foot attack to high section
+ *   3  jumping or flying kick to high section
+ *
+ * A correction is the same button with the sign turned round. ITF judges only
+ * ever award, and Undo is the proper way to take a press back — but Undo only
+ * reaches the *last* press, and a judge who notices a mistake three exchanges
+ * later has nothing else. They are kept, and kept visibly apart from the
+ * awards, so nobody mistakes one for an ITF deduction: a deduction is the
+ * referee's call and is pressed on the operator's screen.
+ */
+export type ScoreButton = {
+  value: number;
+  /** What the button says. */
+  label: string;
+  /** What it is for, in the judge's words. */
+  note: string;
+};
+
+export const SPARRING_AWARDS: ScoreButton[] = [
+  { value: 1, label: "+1", note: "Hand to mid or high · foot to mid" },
+  { value: 2, label: "+2", note: "Foot to high · jumping hand high · jumping kick to mid" },
+  { value: 3, label: "+3", note: "Jumping or flying kick to high" },
+];
+
+export const SPARRING_CORRECTIONS: ScoreButton[] = [
+  { value: -1, label: "−1", note: "Take back a 1" },
+  { value: -2, label: "−2", note: "Take back a 2" },
+  { value: -3, label: "−3", note: "Take back a 3" },
+];
+
+/** A pattern is marked down from the set base, fault by fault. */
+export const PATTERN_DEDUCTIONS: ScoreButton[] = [
+  { value: -0.2, label: "−0.2", note: "Minor fault" },
+  { value: -0.5, label: "−0.5", note: "Clear fault" },
+  { value: -1, label: "−1", note: "Major fault" },
+];
 
 /**
  * The twenty-four ITF patterns, in syllabus order.
@@ -54,13 +95,23 @@ export const PATTERNS = [
 export const WARNINGS_PER_POINT = 3;
 
 export type Entry = {
-  /** 1..judgeCount for a judge; 0 for the referee's warnings and deductions. */
+  /** 1..judgeCount for a judge; 0 for the referee's warnings, deductions and decision. */
   judge_slot: number;
   side: Side;
-  kind: "point" | "deduction" | "flag" | "warning" | "penalty";
+  kind: "point" | "deduction" | "flag" | "warning" | "penalty" | "decision";
   value: number;
   round?: number;
   voided?: boolean;
+  /**
+   * The name the device gave this press, when it gave one.
+   *
+   * A pad that scored while the wifi was down holds its presses in a queue and
+   * sends them when it comes back. Until the server confirms one it is drawn
+   * from the queue, and once it is confirmed it arrives back here with the same
+   * name — which is how the pad knows to stop drawing its own copy rather than
+   * showing the press twice.
+   */
+  clientId?: string | null;
 };
 
 const live = (entries: Entry[]) => entries.filter((e) => !e.voided);
@@ -105,13 +156,25 @@ export function judgeVerdict(entries: Entry[], judge: number, mode: ScoreMode, b
   return red > blue ? "red" : "blue";
 }
 
+/**
+ * The referee's superiority decision, if one has been given.
+ *
+ * ITF breaks a level bout with an extra round, and a bout still level after
+ * that with a decision on superiority. This is that decision: the last one
+ * given stands, so a referee can correct themselves.
+ */
+export function decisionFor(entries: Entry[]): Side | null {
+  const calls = live(entries).filter((e) => e.judge_slot === 0 && e.kind === "decision");
+  return calls.length > 0 ? calls[calls.length - 1].side : null;
+}
+
 /** How many judges favour each side, and who that makes the winner. */
 export function tally(
   entries: Entry[],
   judgeCount: number,
   mode: ScoreMode,
   base: number,
-): { red: number; blue: number; undecided: number; winner: Side | null } {
+): { red: number; blue: number; undecided: number; winner: Side | null; byDecision: boolean } {
   let red = 0;
   let blue = 0;
   let undecided = 0;
@@ -121,10 +184,13 @@ export function tally(
     else if (verdict === "blue") blue++;
     else undecided++;
   }
-  // A tie is a tie: it stays undecided rather than being broken silently, so a
-  // referee has to make the call.
-  const winner = red === blue ? null : red > blue ? "red" : "blue";
-  return { red, blue, undecided, winner };
+  if (red !== blue) return { red, blue, undecided, winner: red > blue ? "red" : "blue", byDecision: false };
+
+  // Level. A tie is never broken silently — but once the referee has given a
+  // superiority decision, that *is* the answer, and the result can be saved
+  // without anybody editing a score to force it through.
+  const decision = decisionFor(entries);
+  return { red, blue, undecided, winner: decision, byDecision: decision !== null };
 }
 
 /**
@@ -188,6 +254,31 @@ export function secondsLeftExact(clock: Clock, now: number = Date.now()): number
   // Never above what was on the clock when it started: a device whose clock is
   // behind the server's would otherwise show more time than the round has.
   return Math.max(0, Math.min(clock.remaining, clock.remaining - elapsed));
+}
+
+/**
+ * Whether the bout is over, worked out rather than looked up.
+ *
+ * "Finished" is a state somebody presses, and for a while nobody did: the last
+ * round's time ran out, the display painted a winner, and the ring row still
+ * said `running` — so a judge's pad kept taking presses and could move a result
+ * the hall had already seen called.
+ *
+ * Time up on the final round is the end of the bout whether or not the operator
+ * has got to the button yet, so both the display and the server derive it from
+ * the same three facts: the clock, which round it is, and how many there are.
+ *
+ * `now` must be the server's idea of the time — see secondsLeftExact.
+ */
+export type BoutClock = Clock & { currentRound: number; rounds: number };
+
+export function boutOver(bout: BoutClock, now: number = Date.now()): boolean {
+  if (bout.state === "finished") return true;
+  // Between rounds the clock reads 0:00 with the state back to idle. That is a
+  // pause in the bout, not the end of it.
+  if (bout.state === "idle") return false;
+  if (bout.currentRound < bout.rounds) return false;
+  return secondsLeftExact(bout, now) <= 0;
 }
 
 /**

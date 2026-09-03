@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission, requireSession } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
-import { makeJoinCode, tally, sideTotal, secondsLeft, type Entry, type ScoreMode, type Side } from "@/lib/scoreboard";
+import { makeJoinCode, tally, boutOver, secondsLeft, type Entry, type ScoreMode, type Side } from "@/lib/scoreboard";
 import { parseTheme, DEFAULT_THEME, type ScoreboardTheme } from "@/lib/scoreboardTheme";
 
 /**
@@ -123,6 +123,79 @@ async function themeFor(supabase: any, eventId: string): Promise<ScoreboardTheme
   return house ? parseTheme(house.settings) : DEFAULT_THEME;
 }
 
+/**
+ * Just enough of a ring to check a code and place a press against it.
+ *
+ * One query, and none of the parts a screen needs: no entries, no theme, no
+ * category name. A press used to cost a full read to authenticate and another
+ * to answer with, which on a busy mat was five queries a button.
+ */
+const RING_GUARD_SELECT =
+  "id, event_id, match_id, judge_count, current_round, rounds, state, clock_started_at, clock_remaining";
+
+type RingGuard = {
+  id: string;
+  eventId: string;
+  matchId: string | null;
+  judgeCount: number;
+  currentRound: number;
+  over: boolean;
+};
+
+async function readRingGuard(joinCode: string): Promise<RingGuard | null> {
+  const supabase = supabaseAdmin();
+  const { data: ring } = await supabase
+    .from("scoreboard_rings")
+    .select(RING_GUARD_SELECT)
+    .eq("join_code", String(joinCode ?? "").toUpperCase())
+    .maybeSingle();
+  if (!ring) return null;
+
+  const over = await settleIfOver(supabase, ring);
+  return {
+    id: (ring as any).id,
+    eventId: (ring as any).event_id,
+    matchId: (ring as any).match_id,
+    judgeCount: Number((ring as any).judge_count) || 5,
+    currentRound: Number((ring as any).current_round) || 1,
+    over,
+  };
+}
+
+/**
+ * End the bout if its time is up, and say whether it has ended.
+ *
+ * "Finished" was only ever a state somebody pressed. The last round's clock
+ * would run out, the display would paint a winner, and the ring row still said
+ * `running` — so the judges' pads kept taking presses and could move a result
+ * the hall had already seen called.
+ *
+ * Time up on the final round ends the bout whether or not the operator has got
+ * to the button, so it is settled here, on the server, once: the write is
+ * guarded on the old state, so the many screens polling at the same moment
+ * produce one update between them and every later read simply sees `finished`.
+ */
+async function settleIfOver(supabase: any, ring: any): Promise<boolean> {
+  const over = boutOver({
+    state: ring.state,
+    startedAt: ring.clock_started_at,
+    remaining: ring.clock_remaining == null ? 0 : Number(ring.clock_remaining),
+    currentRound: Number(ring.current_round) || 1,
+    rounds: Number(ring.rounds) || 1,
+  });
+  if (!over || ring.state === "finished") return over;
+
+  await supabase
+    .from("scoreboard_rings")
+    .update({ state: "finished", clock_started_at: null, clock_remaining: 0, updated_at: new Date().toISOString() })
+    .eq("id", ring.id)
+    .neq("state", "finished");
+  ring.state = "finished";
+  ring.clock_started_at = null;
+  ring.clock_remaining = 0;
+  return true;
+}
+
 async function readRing(where: { id?: string; joinCode?: string }): Promise<RingDto | null> {
   const supabase = supabaseAdmin();
   const query = supabase.from("scoreboard_rings").select(RING_SELECT);
@@ -130,6 +203,8 @@ async function readRing(where: { id?: string; joinCode?: string }): Promise<Ring
     ? await query.eq("id", where.id).maybeSingle()
     : await query.eq("join_code", String(where.joinCode ?? "").toUpperCase()).maybeSingle();
   if (!ring) return null;
+
+  await settleIfOver(supabase, ring);
 
   // The whole bout, not just the round on the clock. A sparring score carries
   // from round one into round two, and a warning given in the first round is
@@ -243,7 +318,7 @@ export async function updateRing(input: {
 /** Start, pause or reset the clock, or move on to the next round. */
 export async function setClock(input: {
   ringId: string;
-  action: "start" | "pause" | "reset" | "finish" | "nextRound";
+  action: "start" | "pause" | "reset" | "finish" | "nextRound" | "extraRound";
 }): Promise<{ ok: true; ring: RingDto } | { error: string }> {
   try {
     await requirePermission(PERMISSIONS.EVENT_EDIT);
@@ -275,6 +350,17 @@ export async function setClock(input: {
       // A fresh clock, but the same score: rounds add up, they don't start over.
       if (current.currentRound >= current.rounds) return { error: "That was the last round." };
       row.current_round = current.currentRound + 1;
+      row.state = "idle";
+      row.clock_started_at = null;
+      row.clock_remaining = current.roundSeconds;
+    } else if (input.action === "extraRound") {
+      // ITF breaks a level bout with an extra round before anyone decides it on
+      // superiority. The bout gains a round rather than restarting: the score
+      // carries, so what the extra round settles is the difference.
+      const level = tally(current.entries, current.judgeCount, current.mode, current.patternBase);
+      if (level.red !== level.blue) return { error: "The judges have separated them — no extra round is needed." };
+      row.rounds = current.rounds + 1;
+      row.current_round = current.rounds + 1;
       row.state = "idle";
       row.clock_started_at = null;
       row.clock_remaining = current.roundSeconds;
@@ -320,10 +406,13 @@ export async function judgePress(input: {
   expectedMatchId?: string | null;
 }): Promise<{ ok: true; ring: RingDto } | { error: string; stale?: boolean }> {
   try {
-    const ring = await readRing({ joinCode: input.joinCode });
+    const ring = await readRingGuard(input.joinCode);
     if (!ring) return { error: "That code doesn't match a ring." };
     if (input.judgeSlot < 1 || input.judgeSlot > ring.judgeCount) return { error: "That judge number isn't on this ring." };
-    if (ring.state === "finished") return { error: "This bout is finished.", stale: true };
+    // Time up on the final round ends the bout, whether or not anybody has
+    // pressed the button — a press after that would move a result the hall has
+    // already seen called.
+    if (ring.over) return { error: "This bout is finished.", stale: true };
 
     if (input.expectedMatchId !== undefined && (input.expectedMatchId ?? null) !== ring.matchId) {
       return { error: "The ring has moved on to another bout, so that press was dropped.", stale: true };
@@ -362,10 +451,27 @@ export async function judgeUndo(input: {
   judgeSlot: number;
 }): Promise<{ ok: true; ring: RingDto } | { error: string }> {
   try {
-    const ring = await readRing({ joinCode: input.joinCode });
+    const ring = await readRingGuard(input.joinCode);
     if (!ring) return { error: "That code doesn't match a ring." };
 
     const supabase = supabaseAdmin();
+
+    // Unlike a press, an undo is still allowed after the bell — a judge who
+    // mis-pressed at 0:02 has no other way to withdraw it, and the alternative
+    // is clearing the bout and losing every judge's marks with it. What closes
+    // the door is the result being confirmed: after that the bout belongs to
+    // the draw, and changing it is the jury's business rather than a judge's.
+    // Nothing is lost either way, since an undo voids the row rather than
+    // deleting it.
+    if (ring.matchId) {
+      const { data: confirmed } = await supabase
+        .from("scoreboard_results")
+        .select("match_id")
+        .eq("match_id", ring.matchId)
+        .maybeSingle();
+      if (confirmed) return { error: "This result has been confirmed — ask the ring official." };
+    }
+
     // Narrowed to this bout as well as this round: a ring keeps every press it
     // has ever taken, so without it an undo at the start of a bout would reach
     // back into the last one.
@@ -399,7 +505,13 @@ export async function judgeUndo(input: {
 export async function refereePress(input: {
   ringId: string;
   side: Side;
-  kind: "warning" | "penalty";
+  /**
+   * `decision` is the superiority call that settles a bout the judges have left
+   * level — ITF's last resort, after the extra round. It carries no points and
+   * only counts when the judges are tied, so giving one on a bout that already
+   * has a winner changes nothing.
+   */
+  kind: "warning" | "penalty" | "decision";
 }): Promise<{ ok: true; ring: RingDto } | { error: string }> {
   try {
     await requirePermission(PERMISSIONS.EVENT_EDIT);
@@ -437,12 +549,16 @@ export async function refereeUndo(input: {
     const supabase = supabaseAdmin();
     const current = await readRing({ id: input.ringId });
     if (!current) return { error: "Ring not found." };
+    // Warnings and deductions only. A superiority decision is taken back by
+    // giving the other one, or by clearing it outright — undoing it as though
+    // it were the last warning would be a surprising way to change a result.
     let recent = supabase
       .from("scoreboard_entries")
       .select("id")
       .eq("ring_id", input.ringId)
       .eq("judge_slot", 0)
       .eq("side", input.side)
+      .neq("kind", "decision")
       .eq("voided", false);
     recent = current.matchId ? recent.eq("match_id", current.matchId) : recent.is("match_id", null);
     const { data: last } = await recent.order("created_at", { ascending: false }).limit(1).maybeSingle();
@@ -453,6 +569,38 @@ export async function refereeUndo(input: {
     return ring ? { ok: true, ring } : { error: "Ring not found." };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "That could not be undone." };
+  }
+}
+
+/**
+ * Withdraw the superiority decision.
+ *
+ * Its own action rather than part of the undo, because it is the one referee
+ * press that decides a bout on its own. Every decision ever given on this bout
+ * is voided, so the bout goes back to being level rather than falling back to
+ * whichever one was given first.
+ */
+export async function clearDecision(input: { ringId: string }): Promise<{ ok: true; ring: RingDto } | { error: string }> {
+  try {
+    await requirePermission(PERMISSIONS.EVENT_EDIT);
+    const supabase = supabaseAdmin();
+    const current = await readRing({ id: input.ringId });
+    if (!current) return { error: "Ring not found." };
+
+    let calls = supabase
+      .from("scoreboard_entries")
+      .update({ voided: true })
+      .eq("ring_id", input.ringId)
+      .eq("judge_slot", 0)
+      .eq("kind", "decision")
+      .eq("voided", false);
+    const { error } = current.matchId ? await calls.eq("match_id", current.matchId) : await calls.is("match_id", null);
+    if (error) return { error: "That could not be withdrawn." };
+
+    const ring = await readRing({ id: input.ringId });
+    return ring ? { ok: true, ring } : { error: "Ring not found." };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "That could not be withdrawn." };
   }
 }
 
@@ -507,7 +655,12 @@ export async function confirmResult(input: { ringId: string }): Promise<{ ok: tr
     if (!ring) return { error: "Ring not found." };
 
     const result = tally(ring.entries, ring.judgeCount, ring.mode, ring.patternBase);
-    if (!result.winner) return { error: "The judges are tied — the referee has to separate them before this can be saved." };
+    if (!result.winner) {
+      return {
+        error:
+          "The judges are level. Fight an extra round, or give a superiority decision — either one settles it and this can then be saved.",
+      };
+    }
     if (!ring.matchId) {
       return { error: "This ring isn't attached to a bout in the draw, so there is nowhere to save it." };
     }
@@ -559,6 +712,10 @@ export async function confirmResult(input: { ringId: string }): Promise<{ ok: tr
         pattern_name: ring.patternName,
         red_votes: result.red,
         blue_votes: result.blue,
+        // A bout the judges left level and the referee settled reads as a draw
+        // in the votes alone. Recorded so the result sheet can say how it was
+        // won rather than showing 2–2 next to a winner's name.
+        by_decision: result.byDecision,
         winner_registration_id: winnerId,
         confirmed_at: new Date().toISOString(),
       },
@@ -577,7 +734,10 @@ export async function confirmResult(input: { ringId: string }): Promise<{ ok: tr
     }
 
     const name = result.winner === "red" ? ring.redName : ring.blueName;
-    return { ok: true, message: `${name ?? result.winner.toUpperCase()} wins ${result.red}–${result.blue}. Saved to the draw.` };
+    const how = result.byDecision
+      ? `wins on the referee's decision (judges level ${result.red}–${result.blue})`
+      : `wins ${result.red}–${result.blue}`;
+    return { ok: true, message: `${name ?? result.winner.toUpperCase()} ${how}. Saved to the draw.` };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "The result could not be saved." };
   }

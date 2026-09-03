@@ -117,12 +117,18 @@ export function useRingLive(initial: RingDto, by: { ringId?: string; joinCode?: 
   // Ten times a second. The clock is drawn from arithmetic, not from anything
   // arriving over the network, so this costs nothing but makes the last
   // seconds of a round move the way a scoreboard should.
+  //
+  // Only the three clock fields belong in the dependencies. Listing `ring`
+  // itself as well tore the interval down and built it again on every reply —
+  // once a second during a bout, which is exactly when the countdown should be
+  // left alone to run.
+  const { state, clockStartedAt, clockRemaining } = ring;
   useEffect(() => {
     const tick = setInterval(() => {
-      setLeft(secondsLeftExact(clockOf(ring), serverTime(offset.current)));
+      setLeft(secondsLeftExact({ state, startedAt: clockStartedAt, remaining: clockRemaining }, serverTime(offset.current)));
     }, 100);
     return () => clearInterval(tick);
-  }, [ring.state, ring.clockStartedAt, ring.clockRemaining, ring]);
+  }, [state, clockStartedAt, clockRemaining]);
 
   const announce = useCallback(() => {
     channelRef.current?.send({ type: "broadcast", event: "changed", payload: {} });

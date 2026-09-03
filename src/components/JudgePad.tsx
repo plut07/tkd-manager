@@ -7,8 +7,9 @@ import {
   judgeHistory,
   penaltyTally,
   formatClock,
-  SPARRING_BUTTONS,
-  PATTERN_BUTTONS,
+  SPARRING_AWARDS,
+  SPARRING_CORRECTIONS,
+  PATTERN_DEDUCTIONS,
   type Side,
 } from "@/lib/scoreboard";
 import { judgePress, judgeUndo, type RingDto } from "@/app/(app)/events/scoreboardActions";
@@ -155,21 +156,53 @@ export default function JudgePad({ initial, joinCode, judgeSlot }: { initial: Ri
               >
                 {s.label} WINS
               </button>
-            ) : (
-              <div className="grid grid-cols-3 gap-2">
-                {(ring.mode === "sparring" ? SPARRING_BUTTONS : PATTERN_BUTTONS).map((v) => (
+            ) : ring.mode === "sparring" ? (
+              /* Awards first and full width, because that is what a judge
+                 presses hundreds of times a day; corrections underneath in
+                 grey, smaller, and labelled as corrections so nobody mistakes
+                 one for a referee's deduction. */
+              <div className="space-y-2">
+                {SPARRING_AWARDS.map((b) => (
                   <button
-                    key={v}
+                    key={b.value}
                     type="button"
                     disabled={busy || finished}
-                    onClick={() => { void press(s.side, v, ring.mode === "sparring" ? "point" : "deduction"); }}
-                    className="h-16 rounded-md text-lg font-bold disabled:opacity-40"
-                    style={{
-                      backgroundColor: v < 0 ? "#3f3f46" : s.colour,
-                      color: contrastText(v < 0 ? "#3f3f46" : s.colour),
-                    }}
+                    onClick={() => { void press(s.side, b.value, "point"); }}
+                    className="flex h-20 w-full flex-col items-center justify-center rounded-md px-2 disabled:opacity-40"
+                    style={{ backgroundColor: s.colour, color: contrastText(s.colour) }}
                   >
-                    {v > 0 ? `+${v}` : v}
+                    <span className="text-2xl font-bold leading-none">{b.label}</span>
+                    <span className="mt-1 text-[10px] leading-tight opacity-80">{b.note}</span>
+                  </button>
+                ))}
+                <div className="grid grid-cols-3 gap-2 border-t border-current/20 pt-2">
+                  {SPARRING_CORRECTIONS.map((b) => (
+                    <button
+                      key={b.value}
+                      type="button"
+                      disabled={busy || finished}
+                      title={b.note}
+                      onClick={() => { void press(s.side, b.value, "point"); }}
+                      className="h-11 rounded-md bg-zinc-700 text-base font-semibold text-white disabled:opacity-40"
+                    >
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-center text-[10px] opacity-60">Corrections — a referee&apos;s deduction is called on the ring screen</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                {PATTERN_DEDUCTIONS.map((b) => (
+                  <button
+                    key={b.value}
+                    type="button"
+                    disabled={busy || finished}
+                    onClick={() => { void press(s.side, b.value, "deduction"); }}
+                    className="flex h-16 flex-col items-center justify-center rounded-md bg-zinc-700 text-white disabled:opacity-40"
+                  >
+                    <span className="text-lg font-bold leading-none">{b.label}</span>
+                    <span className="mt-0.5 text-[10px] leading-tight opacity-80">{b.note}</span>
                   </button>
                 ))}
               </div>

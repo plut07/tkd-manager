@@ -12,6 +12,7 @@ import {
   judgeVerdict,
   judgeScore,
   penaltyTally,
+  decisionFor,
   type ScoreMode,
   type Side,
 } from "@/lib/scoreboard";
@@ -22,6 +23,7 @@ import {
   confirmResult,
   refereePress,
   refereeUndo,
+  clearDecision,
   type RingDto,
 } from "@/app/(app)/events/scoreboardActions";
 import { useRingLive } from "@/components/useRingLive";
@@ -112,7 +114,7 @@ export default function ScoreboardControl({
     setSavedNote("");
   }
 
-  async function clock(action: "start" | "pause" | "reset" | "finish" | "nextRound") {
+  async function clock(action: "start" | "pause" | "reset" | "finish" | "nextRound" | "extraRound") {
     setBusy(true);
     setError("");
     const result = await setClock({ ringId: ring.id, action });
@@ -122,7 +124,7 @@ export default function ScoreboardControl({
     announce();
   }
 
-  async function callPenalty(side: Side, kind: "warning" | "penalty") {
+  async function callPenalty(side: Side, kind: "warning" | "penalty" | "decision") {
     setBusy(true);
     setError("");
     const result = await refereePress({ ringId: ring.id, side, kind });
@@ -155,6 +157,16 @@ export default function ScoreboardControl({
     router.refresh();
   }
 
+  async function withdrawDecision() {
+    setBusy(true);
+    setError("");
+    const result = await clearDecision({ ringId: ring.id });
+    setBusy(false);
+    if ("error" in result) { setError(result.error); return; }
+    put(result.ring);
+    announce();
+  }
+
   async function clearAll() {
     if (!window.confirm("Clear this bout? Every press, warning and deduction for it is removed.")) return;
     setBusy(true);
@@ -180,6 +192,10 @@ export default function ScoreboardControl({
   }
 
   const result = tally(ring.entries, ring.judgeCount, ring.mode, ring.patternBase);
+  // Level on the judges' verdicts, before any referee decision is taken into
+  // account — that is the state the tie-break tools exist for.
+  const level = result.red === result.blue;
+  const decision = decisionFor(ring.entries);
   const judgeLink = `${baseUrl}/public/judge?code=${ring.joinCode}`;
   const displayLink = `${baseUrl}/events/${ring.eventId}/scoreboard/display?ring=${ring.id}`;
 
@@ -383,6 +399,12 @@ export default function ScoreboardControl({
             <button type="button" className="btn-secondary" disabled={busy} onClick={() => { void clock("reset"); }}>Reset clock</button>
             <button type="button" className="btn-secondary" disabled={busy || ring.currentRound >= ring.rounds}
               onClick={() => { void clock("nextRound"); }}>Next round</button>
+            {/* Only offered when it is actually the answer: the judges are
+                level and there is nothing left to fight. */}
+            {level && ring.currentRound >= ring.rounds && (
+              <button type="button" className="btn-secondary" disabled={busy}
+                onClick={() => { void clock("extraRound"); }}>Extra round</button>
+            )}
             <button type="button" className="btn-secondary" disabled={busy} onClick={() => { void clock("finish"); }}>End bout</button>
           </div>
         </div>
@@ -470,12 +492,54 @@ export default function ScoreboardControl({
           </table>
         </div>
 
+        {/* The tie-break, and only when there is a tie to break. ITF settles a
+            level bout with an extra round first and a decision on superiority
+            after it — so both are offered here, in that order, rather than
+            leaving the operator to nudge somebody's score until the numbers
+            come out right. */}
+        {level && (
+          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3">
+            <p className="text-sm font-semibold text-amber-900">
+              The judges are level {result.red}–{result.blue}.
+            </p>
+            <p className="mt-0.5 text-xs text-amber-800">
+              Fight an extra round first. If they are still level after it, the referee gives the bout to whoever showed
+              superiority — the presses all stay on the record either way.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {(["red", "blue"] as Side[]).map((side) => (
+                <button
+                  key={side}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => { void callPenalty(side, "decision"); }}
+                  className={`rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-40 ${
+                    side === "red" ? "bg-red-700 hover:bg-red-800" : "bg-blue-700 hover:bg-blue-800"
+                  } ${decision === side ? "ring-2 ring-offset-1 ring-amber-500" : ""}`}
+                >
+                  Decision to {side}
+                </button>
+              ))}
+              {decision && (
+                <>
+                  <span className="text-xs font-medium text-amber-900">
+                    {decision.toUpperCase()} wins on the referee&apos;s decision.
+                  </span>
+                  <button type="button" className="text-xs font-medium text-gray-600 hover:underline disabled:opacity-40"
+                    disabled={busy} onClick={() => { void withdrawDecision(); }}>
+                    Withdraw
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-gray-100 pt-3">
           <button type="button" className="btn-primary" disabled={busy || !result.winner} onClick={() => { void confirm(); }}>
             Confirm result and save to the draw
           </button>
           <button type="button" className="btn-secondary" disabled={busy} onClick={() => { void clearAll(); }}>Clear bout</button>
-          {!result.winner && <span className="text-xs text-amber-700">Judges are level — the referee has to separate them first.</span>}
           {message && <span className="text-sm text-green-700">{message}</span>}
           {error && <span className="text-sm text-red-600">{error}</span>}
         </div>

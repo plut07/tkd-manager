@@ -1,5 +1,7 @@
+import { headers } from "next/headers";
 import { loadRing } from "@/app/(app)/events/scoreboardActions";
 import JudgePad from "@/components/JudgePad";
+import { callerIp, checkJoinCodeAttempts, recordJoinCodeMiss, clearJoinCodeMisses } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +20,31 @@ export default async function JudgePage({
 }) {
   const code = (searchParams.code ?? "").trim().toUpperCase();
   const judgeSlot = Number(searchParams.judge ?? 0);
-  const ring = code ? await loadRing({ joinCode: code }) : null;
+
+  // This page takes a code in the address, so it can be guessed at exactly like
+  // the endpoint the app uses, and is throttled the same way. Only misses count
+  // — a judge already on their ring reloads freely.
+  const ip = callerIp(headers());
+  const verdict = await checkJoinCodeAttempts(ip);
+  const blocked = !verdict.allowed;
+
+  const ring = code && !blocked ? await loadRing({ joinCode: code }) : null;
+  if (code && !blocked) {
+    if (!ring) await recordJoinCodeMiss(ip);
+    else if (verdict.allowed && verdict.hadMisses) await clearJoinCodeMisses(ip);
+  }
+
+  if (blocked) {
+    return (
+      <div className="mx-auto max-w-sm p-6">
+        <h1 className="text-lg font-semibold text-gray-900">Too many attempts</h1>
+        <p className="mt-2 text-sm text-gray-600">
+          That was ten wrong codes in a row. Wait a few minutes, then try again — and check the code with the ring
+          official rather than guessing at it.
+        </p>
+      </div>
+    );
+  }
 
   // Step one: the code.
   if (!ring) {

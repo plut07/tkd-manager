@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { loadRing, judgePress, judgeUndo } from "@/app/(app)/events/scoreboardActions";
 import { type Side } from "@/lib/scoreboard";
+import { callerIp, checkJoinCodeAttempts, recordJoinCodeMiss, clearJoinCodeMisses } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -34,13 +35,36 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS });
 }
 
+/**
+ * Turn an address away that has been guessing.
+ *
+ * Ten wrong codes inside fifteen minutes and it waits. A judge holding a good
+ * code never sees this — only misses are counted.
+ */
+function tooManyTries(retryAfterSeconds: number) {
+  return NextResponse.json(
+    { error: "Too many attempts with a wrong code. Wait a few minutes and try again." },
+    { status: 429, headers: { ...CORS, "Retry-After": String(retryAfterSeconds) } },
+  );
+}
+
 /** GET /api/public/judge?code=ABCDE — everything the pad needs to draw itself. */
 export async function GET(request: NextRequest) {
   const code = (request.nextUrl.searchParams.get("code") ?? "").trim().toUpperCase();
   if (!code) return reply({ error: "Pass a join code." }, 400);
 
+  const ip = callerIp(request.headers);
+  const verdict = await checkJoinCodeAttempts(ip);
+  if (!verdict.allowed) return tooManyTries(verdict.retryAfterSeconds);
+
   const ring = await loadRing({ joinCode: code });
-  if (!ring) return reply({ error: "That code doesn't match a ring." }, 404);
+  if (!ring) {
+    await recordJoinCodeMiss(ip);
+    return reply({ error: "That code doesn't match a ring." }, 404);
+  }
+  // Only when there is something to clear: this is the call a judge's pad makes
+  // every second of every bout.
+  if (verdict.hadMisses) await clearJoinCodeMisses(ip);
 
   // The join code is deliberately not echoed back, and neither is the ring id:
   // the device already has the code, and nothing else needs an internal id.
@@ -66,6 +90,12 @@ export async function POST(request: NextRequest) {
   const judgeSlot = Number(body?.judgeSlot);
   if (!code) return reply({ error: "Pass a join code." }, 400);
   if (!Number.isInteger(judgeSlot) || judgeSlot < 1) return reply({ error: "Pass a judge number." }, 400);
+
+  // Scoring takes a code too, so it is guessable the same way and throttled the
+  // same way.
+  const ip = callerIp(request.headers);
+  const verdict = await checkJoinCodeAttempts(ip);
+  if (!verdict.allowed) return tooManyTries(verdict.retryAfterSeconds);
 
   if (body?.action === "undo") {
     const result = await judgeUndo({ joinCode: code, judgeSlot });
@@ -98,10 +128,14 @@ export async function POST(request: NextRequest) {
   });
 
   if ("error" in result) {
+    // A press with an unknown code is a guess like any other, and counts
+    // towards the same limit as one made on the sign-in screen.
+    if (result.error.includes("doesn't match a ring")) await recordJoinCodeMiss(ip);
     // "stale" tells the app to drop the press rather than keep retrying it:
     // the bout it belonged to is over, and no amount of retrying will help.
     return reply({ error: result.error, stale: result.stale === true }, result.stale ? 409 : 400);
   }
+  if (verdict.hadMisses) await clearJoinCodeMisses(ip);
   return reply({ ring: strip(result.ring) });
 }
 
