@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { messageFrom, rethrowControlFlow } from "@/lib/controlFlow";
+import { isUuid, messageFrom, rethrowControlFlow } from "@/lib/controlFlow";
 import { requirePermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -158,6 +158,12 @@ export async function deleteTeam(input: {
   try {
     await requirePermission(PERMISSIONS.EVENT_EDIT);
     const supabase = supabaseAdmin();
+
+    // This id is about to be substituted into a PostgREST filter expression
+    // rather than passed as a parameter, so unlike every `.eq()` in this file
+    // its shape matters: anything that isn't an id could change what the filter
+    // means. Checked before it gets near one.
+    if (!isUuid(input.registrationId)) return { error: "That isn't a team on this event." };
 
     // A team already in a draw would leave the bracket pointing at nothing.
     const { data: inDraw } = await supabase

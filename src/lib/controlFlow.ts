@@ -39,3 +39,22 @@ export function messageFrom(error: unknown, fallback: string): string {
   rethrowControlFlow(error);
   return error instanceof Error ? error.message : fallback;
 }
+
+/**
+ * An id we are willing to put into a query.
+ *
+ * Almost every id reaching a server action goes through `.eq()`, which the
+ * Supabase client sends as a parameter — the value cannot change the shape of
+ * the query however strange it is. A PostgREST *filter expression* is the
+ * exception: `.or("a.eq.X,b.eq.Y")` is a string, and whatever is substituted
+ * into it is read as part of the expression rather than as a value.
+ *
+ * So an id that ends up in one has to be checked first. This is that check,
+ * kept next to the other "things a caller sent us" guards rather than inside
+ * any one action, because the next `.or()` somebody writes will want it too.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(value: unknown): value is string {
+  return typeof value === "string" && UUID.test(value);
+}
