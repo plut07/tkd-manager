@@ -162,8 +162,27 @@ only meet a compatriot when there is no other option, and only meet a
 clubmate as a last resort. Pairs are then distributed across the bracket so
 that large clubs are spread over different quarters rather than stacked.
 
-Byes are assigned automatically when the entry count isn't a power of two,
-and a third-place match is created whenever there are two semi-finals.
+Byes are assigned automatically when the entry count isn't a power of two.
+
+There is **no third-place match**: both beaten semi-finalists take a bronze,
+which is how Taekwon-Do is medalled, so there is nothing left for them to
+fight over. (An earlier version of this file claimed the opposite. The code
+has always done it this way.)
+
+## Results
+
+Once the day is done, **Results** on a competition shows every division's
+podium and the medal table, by club and by country. It is gathered from the
+draws and the score sheets rather than stored, so correcting a bout corrects
+the medal table and there is no second copy to drift out of step.
+
+Medal tables are ordered by golds first, then silvers, then bronzes — one gold
+outranks any number of silvers. Clubs level on all three share a rank.
+
+Results stay private until **Publish results** is pressed, which puts them on
+the event's public page. Divisions still being fought are shown to organisers
+(so they can see what is left) but left off the public page, where a half
+podium would read as a result rather than as an absence.
 
 ## Grading setup
 
@@ -294,9 +313,11 @@ variables carry over; only the deploy mechanism changes.
   penalties, the tie-break, and the measured-discipline standings — which is
   the part where being quietly wrong matters more than being broken. Nothing
   else has tests yet.
-- Results/medal tables and officials management from the sportdata.org
-  reference aren't built yet. Everything else on that reference is: draws,
-  the scoreboard, all five disciplines, and grading registration.
+- Officials management from the sportdata.org reference isn't built yet.
+  Everything else on that reference is: draws, the scoreboard, all five
+  disciplines, results and medal tables, and grading registration.
+- Deleting a category doesn't delete its entries — they survive with no
+  category and disappear from every category-filtered screen. Worth fixing.
 - Waivers are per-person, so a team registration has no waiver of its own. Team
   members should be registered individually as well if you need their signed
   forms.

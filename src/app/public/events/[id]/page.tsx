@@ -9,6 +9,8 @@ import { effectiveEventStatus, STATUS_STYLES, STATUS_LABELS, formatEventRange, f
 import CountryFlag from "@/components/CountryFlag";
 import VenueMap from "@/components/VenueMap";
 import { competitorName } from "@/lib/competitors";
+import CompetitionResults from "@/components/CompetitionResults";
+import { loadEventResults } from "@/app/(app)/events/resultsData";
 
 // These pages read live data but never touch cookies, so Next would otherwise
 // prerender them at build time and keep serving that snapshot — edits and
@@ -79,6 +81,15 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
   // Published grading results, for anyone with the link. Names and outcomes
   // only — the marks behind them stay with the organisers.
   const resultsPublished = isGrading && Boolean((event as any).results_published_at);
+
+  // A competition's published results are podiums and a medal table, not a
+  // pass list, so they are gathered separately and drawn by their own
+  // component. Divisions still being fought are left out: the public page is
+  // read as final, and half a podium reads as a result rather than as an
+  // absence.
+  const competitionResultsPublished =
+    event.event_type === "competition" && Boolean((event as any).results_published_at);
+  const competitionResults = competitionResultsPublished ? await loadEventResults(event.id) : null;
   let results: any[] = [];
   if (resultsPublished) {
     const { data: regs } = await supabase
@@ -183,6 +194,8 @@ export default async function PublicEventDetailPage({ params }: { params: { id: 
 
         {event.description && <p className="mt-4 whitespace-pre-line text-sm text-gray-700">{event.description}</p>}
       </div>
+
+      {competitionResults && <CompetitionResults results={competitionResults} showIncomplete={false} />}
 
       {resultsPublished && (
         <div className="card p-6">

@@ -17,6 +17,7 @@ import ScoreboardTab from "../ScoreboardTab";
 import AppearanceTab from "../AppearanceTab";
 import ExamTab from "../ExamTab";
 import ResultTab from "../ResultTab";
+import CompetitionResultsTab from "../CompetitionResultsTab";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
 import { measuredKindOf } from "@/lib/measured";
 import { describeCriteria, type CategoryCriteria } from "@/lib/eligibility";
@@ -38,7 +39,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const tab =
     rawTab in legacy || rawTab === "registration"
       ? "registration"
-      : isCompetition && (rawTab === "categories" || rawTab === "draws")
+      : isCompetition && (rawTab === "categories" || rawTab === "draws" || rawTab === "results")
         ? rawTab
         : isGrading && (rawTab === "exam" || rawTab === "results")
           ? rawTab
@@ -180,7 +181,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
         {isCompetition && (<Link href={`/events/${event.id}?tab=draws`} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "draws" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Draw &amp; Scoreboard</Link>)}
         <Link href={registrationHref({ sub: "students" })} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "registration" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Registration Page</Link>
         {isGrading && (<Link href={`/events/${event.id}?tab=exam`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "exam" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Exam</Link>)}
-        {isGrading && (<Link href={`/events/${event.id}?tab=results`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "results" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Results</Link>)}
+        {(isGrading || isCompetition) && (<Link href={`/events/${event.id}?tab=results`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "results" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Results</Link>)}
       </div>
       {tab === "info" ? (
         <>
@@ -373,12 +374,23 @@ export default async function EventDetailPage({ params, searchParams }: { params
           templateId={searchParams.template}
         />
       ) : tab === "results" ? (
-        <ResultTab
-          eventId={event.id}
-          publishedAt={(event as any).results_published_at ?? null}
-          canPublish={canOverride}
-          canPreview={canEdit}
-        />
+        // Both kinds of event end in results, but they are different documents:
+        // a grading produces pass/fail and promotions, a competition produces
+        // podiums and a medal table.
+        isCompetition ? (
+          <CompetitionResultsTab
+            eventId={event.id}
+            publishedAt={(event as any).results_published_at ?? null}
+            canPublish={canOverride}
+          />
+        ) : (
+          <ResultTab
+            eventId={event.id}
+            publishedAt={(event as any).results_published_at ?? null}
+            canPublish={canOverride}
+            canPreview={canEdit}
+          />
+        )
       ) : null}
     </div>
   );
