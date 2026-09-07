@@ -242,6 +242,25 @@ export async function addCategory(formData: FormData) {
   revalidatePath(`/events/${d.eventId}`);
 }
 
+/**
+ * Remove a category — but only an empty one.
+ *
+ * Deleting a category used to take its draw, its brackets and its attempts
+ * with it by cascade, and leave every competitor who had entered it floating
+ * with no category at all: `event_registrations.category_id` is `on delete set
+ * null`, so the entries survived, vanished from every category-filtered screen,
+ * and were not obviously anywhere. A mis-click on the wrong row of a list of
+ * forty divisions did that silently.
+ *
+ * So a category with anybody in it is refused. Moving or removing the entries
+ * first is a deliberate act; losing them to a stray click is not.
+ *
+ * The Categories screen also shows each division's entry count and won't offer
+ * Remove where there is one — which is the guard people actually meet, because
+ * Next redacts a thrown message from a server action in production and this one
+ * would arrive as "Something went wrong". This is the backstop for a direct
+ * call, not the explanation.
+ */
 export async function deleteCategory(formData: FormData) {
   const session = await requirePermission(PERMISSIONS.EVENT_EDIT);
   await assertEventEditable(session, String(formData.get("eventId") || ""));
@@ -249,6 +268,17 @@ export async function deleteCategory(formData: FormData) {
   const eventId = String(formData.get("eventId") || "");
   if (!categoryId) return;
   const supabase = supabaseAdmin();
+
+  const { count } = await supabase
+    .from("event_registrations")
+    .select("id", { count: "exact", head: true })
+    .eq("category_id", categoryId);
+  if ((count ?? 0) > 0) {
+    throw new Error(
+      `This category still has ${count} ${count === 1 ? "entry" : "entries"}. Move them to another category or remove them first.`,
+    );
+  }
+
   await supabase.from("event_categories").delete().eq("id", categoryId);
   revalidatePath(`/events/${eventId}`);
 }

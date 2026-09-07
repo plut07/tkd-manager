@@ -23,6 +23,10 @@ Built with Next.js 14 (App Router), TypeScript, Tailwind CSS, and Supabase
 - **Events** page inspired by sportdata.org's event-info layout: header
   (dates, venue, organizer, registration deadline, status), categories /
   divisions, registered clubs & athletes, and a documents/downloads list.
+  The categories list shows each division's entry count, and only offers
+  **Remove** on an empty one — deleting a category takes its draw with it and
+  leaves its entries with no category at all, which is not something a stray
+  click on one row of forty should be able to do.
 - **Registration & approval** — entries land in a pending list until an
   organizer confirms them; confirmed competitors are auto-assigned a
   competition number, and each club can export its confirmed list as CSV.
@@ -169,6 +173,34 @@ which is how Taekwon-Do is medalled, so there is nothing left for them to
 fight over. (An earlier version of this file claimed the opposite. The code
 has always done it this way.)
 
+## Officials
+
+**Officials** lists everyone umpiring a competition, and seats them on rings.
+
+They are their own list rather than students, because most of a panel isn't on
+the system — an international umpire flies in, judges for two days and goes
+home. Linking one to a member is offered, not required; picking a member fills
+in their name and club.
+
+Seat numbers are the scoreboard's own: **slot 0 is the referee**, 1–9 are the
+corner judges, so a press and the person who made it line up without a
+translation step. Seating somebody already sitting elsewhere moves them rather
+than listing them twice.
+
+What this buys you:
+
+- a judge's pad says **their name** rather than "Judge 3", so they can see at a
+  glance they're on the right seat
+- the ring screen names the referee and each judge beside their marks
+- **every confirmed result carries a copy of the panel that called it** — not a
+  reference to it. Panels rotate through the day, so by evening the ring says
+  who is sitting there *now*; a bout questioned a week later needs to know who
+  sat there *then*. Removing an official afterwards doesn't take the record
+  with them.
+
+None of it is required. A club competition can leave the list empty and judges
+just take a seat number, exactly as before.
+
 ## Results
 
 Once the day is done, **Results** on a competition shows every division's
@@ -313,11 +345,9 @@ variables carry over; only the deploy mechanism changes.
   penalties, the tie-break, and the measured-discipline standings — which is
   the part where being quietly wrong matters more than being broken. Nothing
   else has tests yet.
-- Officials management from the sportdata.org reference isn't built yet.
-  Everything else on that reference is: draws, the scoreboard, all five
-  disciplines, results and medal tables, and grading registration.
-- Deleting a category doesn't delete its entries — they survive with no
-  category and disappear from every category-filtered screen. Worth fixing.
+- Everything on the sportdata.org reference is now built: draws, the
+  scoreboard, all five disciplines, officials, results and medal tables, and
+  grading registration.
 - Waivers are per-person, so a team registration has no waiver of its own. Team
   members should be registered individually as well if you need their signed
   forms.

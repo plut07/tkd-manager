@@ -196,6 +196,8 @@ export default function ScoreboardControl({
   // account — that is the state the tie-break tools exist for.
   const level = result.red === result.blue;
   const decision = decisionFor(ring.entries);
+  const seatedName = (slot: number) => ring.officials.find((o) => o.slot === slot)?.name ?? null;
+  const referee = seatedName(0);
   const judgeLink = `${baseUrl}/public/judge?code=${ring.joinCode}`;
   const displayLink = `${baseUrl}/events/${ring.eventId}/scoreboard/display?ring=${ring.id}`;
 
@@ -411,7 +413,10 @@ export default function ScoreboardControl({
       </div>
 
       <div className="card p-4">
-        <h3 className="text-sm font-semibold text-gray-900">Score</h3>
+        <h3 className="text-sm font-semibold text-gray-900">
+          Score
+          {referee && <span className="ml-2 text-xs font-normal text-gray-500">Referee: {referee}</span>}
+        </h3>
         <p className="mt-0.5 text-xs text-gray-500">
           Warnings and deductions are the referee&apos;s call, so they are pressed here rather than by the judges. A
           deduction takes a point off every judge&apos;s mark straight away; every {WARNINGS_PER_POINT} warnings does the
@@ -473,7 +478,15 @@ export default function ScoreboardControl({
                 const scored = ring.entries.some((e) => e.judge_slot === judge && !e.voided);
                 return (
                   <tr key={judge}>
-                    <td className="font-medium text-gray-900">Judge {judge}</td>
+                    <td className="font-medium text-gray-900">
+                      Judge {judge}
+                      {/* Named when the event is running a panel; the seat
+                          number stays either way, because that is what the
+                          presses are recorded against. */}
+                      {seatedName(judge) && (
+                        <span className="block text-xs font-normal text-gray-500">{seatedName(judge)}</span>
+                      )}
+                    </td>
                     <td className="text-center">{judgeScore(ring.entries, judge, "red", ring.mode, ring.patternBase)}</td>
                     <td className="text-center">{judgeScore(ring.entries, judge, "blue", ring.mode, ring.patternBase)}</td>
                     <td>

@@ -7,6 +7,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { makeJoinCode, tally, boutOver, secondsLeft, type Entry, type ScoreMode, type Side } from "@/lib/scoreboard";
 import { parseTheme, DEFAULT_THEME, type ScoreboardTheme } from "@/lib/scoreboardTheme";
+import { panelSnapshot, type SeatedOfficial } from "@/lib/officials";
 
 /**
  * Running a ring.
@@ -64,6 +65,15 @@ export type RingDto = {
    * their next refresh, without anybody reloading anything.
    */
   theme: ScoreboardTheme;
+  /**
+   * Who is sitting where on this ring.
+   *
+   * Sent with the ring so a judge's pad can say their own name rather than
+   * "Judge 3", and so the operator's screen can see at a glance which seats are
+   * still empty. Empty when the event isn't running a named panel, which is the
+   * ordinary case at a club competition.
+   */
+  officials: SeatedOfficial[];
 };
 
 const RING_SELECT =
@@ -91,7 +101,12 @@ function clockLeftOn(ring: any): number {
   return ring.clock_remaining == null ? full : Number(ring.clock_remaining);
 }
 
-function toDto(ring: any, entries: any[], theme: ScoreboardTheme = DEFAULT_THEME): RingDto {
+function toDto(
+  ring: any,
+  entries: any[],
+  theme: ScoreboardTheme = DEFAULT_THEME,
+  officials: SeatedOfficial[] = [],
+): RingDto {
   return {
     id: ring.id,
     name: ring.name,
@@ -125,7 +140,26 @@ function toDto(ring: any, entries: any[], theme: ScoreboardTheme = DEFAULT_THEME
       clientId: e.client_id ?? null,
     })),
     theme,
+    officials,
   };
+}
+
+/** Who is sitting on this ring, if the event is running a named panel. */
+async function seatedOn(supabase: any, ringId: string): Promise<SeatedOfficial[]> {
+  const { data } = await supabase
+    .from("ring_officials")
+    .select("judge_slot, official_id, event_officials(full_name, country, qualification)")
+    .eq("ring_id", ringId)
+    .order("judge_slot");
+  return ((data ?? []) as any[])
+    .filter((row) => row.event_officials)
+    .map((row) => ({
+      slot: Number(row.judge_slot),
+      officialId: row.official_id,
+      name: row.event_officials.full_name ?? "",
+      country: row.event_officials.country ?? null,
+      qualification: row.event_officials.qualification ?? null,
+    }));
 }
 
 /** This event's look, or the house style, or the built-in one. */
@@ -248,7 +282,11 @@ async function readRing(where: { id?: string; joinCode?: string }): Promise<Ring
     ? await pressed.eq("match_id", (ring as any).match_id).order("created_at")
     : await pressed.is("match_id", null).order("created_at");
 
-  return toDto(ring, entries ?? [], await themeFor(supabase, (ring as any).event_id));
+  const [theme, officials] = await Promise.all([
+    themeFor(supabase, (ring as any).event_id),
+    seatedOn(supabase, (ring as any).id),
+  ]);
+  return toDto(ring, entries ?? [], theme, officials);
 }
 
 /**
@@ -741,6 +779,11 @@ export async function confirmResult(input: { ringId: string }): Promise<{ ok: tr
         // in the votes alone. Recorded so the result sheet can say how it was
         // won rather than showing 2–2 next to a winner's name.
         by_decision: result.byDecision,
+        // Who judged it, copied rather than referenced. Panels rotate through
+        // the day, so by the evening the ring says who is sitting there now
+        // rather than who sat there for this bout — and an official removed
+        // from the event afterwards must not take the record with them.
+        panel: panelSnapshot(ring.officials),
         winner_registration_id: winnerId,
         confirmed_at: new Date().toISOString(),
       },

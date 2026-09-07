@@ -18,6 +18,7 @@ import AppearanceTab from "../AppearanceTab";
 import ExamTab from "../ExamTab";
 import ResultTab from "../ResultTab";
 import CompetitionResultsTab from "../CompetitionResultsTab";
+import OfficialsTab from "../OfficialsTab";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
 import { measuredKindOf } from "@/lib/measured";
 import { describeCriteria, type CategoryCriteria } from "@/lib/eligibility";
@@ -39,7 +40,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const tab =
     rawTab in legacy || rawTab === "registration"
       ? "registration"
-      : isCompetition && (rawTab === "categories" || rawTab === "draws" || rawTab === "results")
+      : isCompetition && (rawTab === "categories" || rawTab === "draws" || rawTab === "officials" || rawTab === "results")
         ? rawTab
         : isGrading && (rawTab === "exam" || rawTab === "results")
           ? rawTab
@@ -131,6 +132,24 @@ export default async function EventDetailPage({ params, searchParams }: { params
     templates[0] ??
     null;
 
+  // How many people are in each category, whatever their status.
+  //
+  // Shown on the Categories screen, and the reason Remove is not offered where
+  // there are any: deleting a category takes its draw with it by cascade and
+  // leaves its entries with no category at all, which is not something a stray
+  // click on one row of forty should be able to do.
+  const entryCountMap = new Map<string, number>();
+  if (tab === "categories" && (categories ?? []).length > 0) {
+    const { data: entries } = await supabase
+      .from("event_registrations")
+      .select("category_id")
+      .eq("event_id", event.id)
+      .in("category_id", (categories ?? []).map((c) => c.id));
+    (entries ?? []).forEach((r) => {
+      if (r.category_id) entryCountMap.set(r.category_id, (entryCountMap.get(r.category_id) ?? 0) + 1);
+    });
+  }
+
   const bracketStatusMap = new Map<string, string>();
   const confirmedCountMap = new Map<string, number>();
   if (tab === "draws" && (categories ?? []).length > 0) {
@@ -181,6 +200,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
         {isCompetition && (<Link href={`/events/${event.id}?tab=draws`} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "draws" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Draw &amp; Scoreboard</Link>)}
         <Link href={registrationHref({ sub: "students" })} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "registration" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Registration Page</Link>
         {isGrading && (<Link href={`/events/${event.id}?tab=exam`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "exam" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Exam</Link>)}
+        {isCompetition && (<Link href={`/events/${event.id}?tab=officials`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "officials" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Officials</Link>)}
         {(isGrading || isCompetition) && (<Link href={`/events/${event.id}?tab=results`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "results" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Results</Link>)}
       </div>
       {tab === "info" ? (
@@ -249,18 +269,33 @@ export default async function EventDetailPage({ params, searchParams }: { params
 
                 <div className="mt-4 overflow-x-auto">
                   <table className="table-base">
-                    <thead><tr><th>Name</th><th>Type</th><th>Eligibility</th><th></th>{canEditNow && <th></th>}</tr></thead>
+                    <thead><tr><th>Name</th><th>Type</th><th>Eligibility</th><th className="text-center">Entries</th><th></th>{canEditNow && <th></th>}</tr></thead>
                     <tbody>
-                      {shown.map((c) => (
+                      {shown.map((c) => {
+                        const entries = entryCountMap.get(c.id) ?? 0;
+                        return (
                         <tr key={c.id}>
                           <td className="font-medium text-gray-900">{c.name}</td>
                           <td>{CATEGORY_TYPES[c.type as CategoryTypeCode]?.label ?? c.type ?? "—"}</td>
                           <td className="text-gray-600">{describeCriteria(c as CategoryCriteria)}</td>
+                          <td className="text-center tabular-nums text-gray-600">{entries || "—"}</td>
                           <td className="text-right"><Link href={`/events/${event.id}?tab=draws&category=${c.id}`} className="text-sm font-medium text-brand-700 hover:underline">Draw</Link></td>
-                          {canEditNow && (<td className="text-right"><DeleteButton action={deleteCategory} fieldName="categoryId" fieldValue={c.id} confirmLabel={`Remove category "${c.name}"?`} label="Remove" extraFields={{ eventId: event.id }} /></td>)}
+                          {canEditNow && (<td className="text-right">
+                            {/* Removing a category takes its draw with it and
+                                leaves its entries with no category, so it is
+                                only offered on an empty one. */}
+                            {entries > 0 ? (
+                              <span className="text-sm text-gray-400" title={`Move or remove its ${entries} ${entries === 1 ? "entry" : "entries"} first.`}>
+                                In use
+                              </span>
+                            ) : (
+                              <DeleteButton action={deleteCategory} fieldName="categoryId" fieldValue={c.id} confirmLabel={`Remove category "${c.name}"?`} label="Remove" extraFields={{ eventId: event.id }} />
+                            )}
+                          </td>)}
                         </tr>
-                      ))}
-                      {all.length === 0 && (<tr><td colSpan={5} className="py-4 text-center text-gray-400">No categories added yet.</td></tr>)}
+                        );
+                      })}
+                      {all.length === 0 && (<tr><td colSpan={6} className="py-4 text-center text-gray-400">No categories added yet.</td></tr>)}
                     </tbody>
                   </table>
                 </div>
@@ -373,6 +408,8 @@ export default async function EventDetailPage({ params, searchParams }: { params
           hrefFor={(next) => `/events/${params.id}?tab=exam&sub=${next}`}
           templateId={searchParams.template}
         />
+      ) : tab === "officials" ? (
+        <OfficialsTab eventId={event.id} canEdit={canEditNow} />
       ) : tab === "results" ? (
         // Both kinds of event end in results, but they are different documents:
         // a grading produces pass/fail and promotions, a competition produces

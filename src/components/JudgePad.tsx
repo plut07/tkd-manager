@@ -202,6 +202,7 @@ export default function JudgePad({ initial, joinCode, judgeSlot }: { initial: Ri
   const entries: Entry[] = unsent.length > 0 ? [...ring.entries, ...unsent] : ring.entries;
   const queuedCount = unsent.length;
 
+  const seated = ring.officials.find((o) => o.slot === judgeSlot) ?? null;
   const mine = judgeHistory(entries, judgeSlot);
   const scoreFor = (side: Side) => judgeScore(entries, judgeSlot, side, ring.mode, ring.patternBase);
   // In flag mode a judge can change their mind, and only their latest press
@@ -225,7 +226,11 @@ export default function JudgePad({ initial, joinCode, judgeSlot }: { initial: Ri
       className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-gray-900 px-3 py-2 text-white"
       key="header"
     >
-      <span className="text-sm font-semibold">{ring.name} · Judge {judgeSlot}</span>
+      {/* Their own name when the event is running a named panel, so a judge
+          can see at a glance that they are on the right seat. */}
+      <span className="text-sm font-semibold">
+        {ring.name} · {seated?.name ? `${seated.name} (J${judgeSlot})` : `Judge ${judgeSlot}`}
+      </span>
       <span className="text-sm">
         {[ring.categoryName, ring.mode === "pattern" ? ring.patternName : null, `R${ring.currentRound}/${ring.rounds}`]
           .filter(Boolean)
