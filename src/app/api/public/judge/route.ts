@@ -38,8 +38,10 @@ export async function OPTIONS() {
 /**
  * Turn an address away that has been guessing.
  *
- * Ten wrong codes inside fifteen minutes and it waits. A judge holding a good
- * code never sees this — only misses are counted.
+ * A dozen *different* wrong codes inside fifteen minutes and it waits. Distinct
+ * codes rather than attempts, because a venue is one address for the whole
+ * hall: retyping the same fumbled code is a person, and a run of different ones
+ * is a script. A judge holding a good code never sees this at all.
  */
 function tooManyTries(retryAfterSeconds: number) {
   return NextResponse.json(
@@ -59,7 +61,7 @@ export async function GET(request: NextRequest) {
 
   const ring = await loadRing({ joinCode: code });
   if (!ring) {
-    await recordJoinCodeMiss(ip);
+    await recordJoinCodeMiss(ip, code);
     return reply({ error: "That code doesn't match a ring." }, 404);
   }
   // Only when there is something to clear: this is the call a judge's pad makes
@@ -130,7 +132,7 @@ export async function POST(request: NextRequest) {
   if ("error" in result) {
     // A press with an unknown code is a guess like any other, and counts
     // towards the same limit as one made on the sign-in screen.
-    if (result.error.includes("doesn't match a ring")) await recordJoinCodeMiss(ip);
+    if (result.error.includes("doesn't match a ring")) await recordJoinCodeMiss(ip, code);
     // "stale" tells the app to drop the press rather than keep retrying it:
     // the bout it belonged to is over, and no amount of retrying will help.
     return reply({ error: result.error, stale: result.stale === true }, result.stale ? 409 : 400);

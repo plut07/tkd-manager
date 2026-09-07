@@ -36,17 +36,41 @@ export type MeasuredCategory = {
   /** The techniques this category is running, in order. */
   techniques: string[];
   attemptsPerTechnique: number;
+  /**
+   * Whether the hall can watch this happening.
+   *
+   * A fought division's bracket goes public when it is published and everyone
+   * follows along; a power test had no equivalent, so nothing was visible until
+   * the whole event's results went out, usually the following week.
+   */
+  standingsPublic: boolean;
   entrants: MeasuredEntrant[];
   attempts: Attempt[];
 };
 
 export async function loadMeasured(input: { categoryId: string }): Promise<MeasuredCategory | null> {
   await requirePermission(PERMISSIONS.EVENT_VIEW);
+  return loadMeasuredUnchecked(input.categoryId);
+}
+
+/**
+ * The same read, without the permission check.
+ *
+ * Two callers want this data under different rules: the organiser's sheet,
+ * which needs a session, and the public standings page, which needs the
+ * category to have been opened up instead. Keeping the check in the callers
+ * rather than here means neither can accidentally inherit the other's.
+ *
+ * Not exported: a "use server" module's exports are callable from a browser,
+ * and an unchecked read is not something to put on that surface.
+ */
+async function loadMeasuredUnchecked(categoryId: string): Promise<MeasuredCategory | null> {
+  const input = { categoryId };
   const supabase = supabaseAdmin();
 
   const { data: category } = await supabase
     .from("event_categories")
-    .select("id, event_id, name, type, measured_techniques, attempts_per_technique")
+    .select("id, event_id, name, type, measured_techniques, attempts_per_technique, standings_public")
     .eq("id", input.categoryId)
     .maybeSingle();
   if (!category) return null;
@@ -95,6 +119,7 @@ export async function loadMeasured(input: { categoryId: string }): Promise<Measu
     kind,
     techniques,
     attemptsPerTechnique: Number((category as any).attempts_per_technique) || 3,
+    standingsPublic: (category as any).standings_public === true,
     entrants,
     attempts,
   };
@@ -140,6 +165,63 @@ export async function setMeasuredSetup(input: {
   } catch (e) {
     return { error: messageFrom(e, "That could not be saved.") };
   }
+}
+
+/**
+ * Let the hall watch, or stop it watching.
+ *
+ * Separate from the setup because it is a different kind of decision: which
+ * techniques a category runs is settled before the event, and whether the
+ * standings are on the wall is settled during it.
+ */
+export async function setStandingsPublic(input: {
+  categoryId: string;
+  isPublic: boolean;
+}): Promise<{ ok: true } | { error: string }> {
+  try {
+    await requirePermission(PERMISSIONS.EVENT_EDIT);
+    const supabase = supabaseAdmin();
+
+    const { data: category } = await supabase
+      .from("event_categories")
+      .select("id, event_id, type")
+      .eq("id", input.categoryId)
+      .maybeSingle();
+    if (!category) return { error: "Category not found." };
+    if (!measuredKindOf((category as any).type)) {
+      return { error: "That category isn't a power test or a special technique." };
+    }
+
+    const { error } = await supabase
+      .from("event_categories")
+      .update({ standings_public: input.isPublic })
+      .eq("id", input.categoryId);
+    if (error) return { error: `That could not be changed: ${error.message}` };
+
+    revalidatePath(`/events/${(category as any).event_id}`);
+    revalidatePath(`/public/events/${(category as any).event_id}/categories/${input.categoryId}/standings`);
+    return { ok: true };
+  } catch (e) {
+    return { error: messageFrom(e, "That could not be changed.") };
+  }
+}
+
+/**
+ * The standings as anybody may see them.
+ *
+ * No session: this backs the public page, and is gated on the category having
+ * been opened up rather than on who is asking. Returns null when it hasn't
+ * been, so the page 404s rather than leaking a division still being scored.
+ */
+export async function loadPublicStandings(input: { categoryId: string }): Promise<MeasuredCategory | null> {
+  const supabase = supabaseAdmin();
+  const { data } = await supabase
+    .from("event_categories")
+    .select("standings_public")
+    .eq("id", input.categoryId)
+    .maybeSingle();
+  if (!data || (data as any).standings_public !== true) return null;
+  return loadMeasuredUnchecked(input.categoryId);
 }
 
 /**

@@ -210,15 +210,19 @@ export async function approveCandidate(formData: FormData) {
   // Carry their signature across, so the entry shows as signed rather than
   // asking somebody who already signed on the public form to sign again.
   if (registration && candidate.signature_png) {
-    await supabase.from("waiver_signatures").upsert(
-      {
-        registration_id: registration.id,
-        signed_name: candidate.signed_name || candidate.full_name,
-        signature_png: candidate.signature_png,
-        signed_at: candidate.signed_at ?? new Date().toISOString(),
-      },
-      { onConflict: "registration_id" },
-    );
+    // A plain insert rather than an upsert: the registration was created two
+    // statements ago and cannot already have a signature. The upsert this
+    // replaces named `registration_id` as its conflict target, which stopped
+    // being a unique constraint when team entries began collecting one
+    // signature per member — it is a partial index now, and ON CONFLICT can no
+    // longer name it.
+    await supabase.from("waiver_signatures").insert({
+      registration_id: registration.id,
+      student_id: null,
+      signed_name: candidate.signed_name || candidate.full_name,
+      signature_png: candidate.signature_png,
+      signed_at: candidate.signed_at ?? new Date().toISOString(),
+    });
   }
 
   await supabase.from("grading_candidates").update({ status: "approved", reviewed_by: session.sub, reviewed_at: new Date().toISOString(), created_student_id: student.id, created_registration_id: registration?.id ?? null }).eq("id", candidateId);

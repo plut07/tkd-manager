@@ -24,11 +24,20 @@ export default function SignaturePad({
   action,
   defaultName,
   alreadySigned,
+  studentId,
 }: {
   token: string;
   action: (prev: SignState, formData: FormData) => Promise<SignState>;
   defaultName: string;
   alreadySigned: boolean;
+  /**
+   * Which team member is signing, when the entry is a team.
+   *
+   * A team collects one signature per member, and one link is shared between
+   * them, so the form has to say who this one is for. Absent on an individual
+   * entry, where the registration already identifies the person.
+   */
+  studentId?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [hasInk, setHasInk] = useState(false);
@@ -104,6 +113,7 @@ export default function SignaturePad({
       className="card space-y-4 p-6"
     >
       <input type="hidden" name="token" value={token} />
+      {studentId && <input type="hidden" name="studentId" value={studentId} />}
 
       {alreadySigned && (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">

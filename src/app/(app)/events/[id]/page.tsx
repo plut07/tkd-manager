@@ -40,11 +40,16 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const tab =
     rawTab in legacy || rawTab === "registration"
       ? "registration"
-      : isCompetition && (rawTab === "categories" || rawTab === "draws" || rawTab === "officials" || rawTab === "results")
+      // Officials belong to both: a competition seats a panel on rings, and a
+      // grading has examiners, who are the same kind of record without the
+      // seating.
+      : (isCompetition || isGrading) && rawTab === "officials"
         ? rawTab
-        : isGrading && (rawTab === "exam" || rawTab === "results")
+        : isCompetition && (rawTab === "categories" || rawTab === "draws" || rawTab === "results")
           ? rawTab
-          : "info";
+          : isGrading && (rawTab === "exam" || rawTab === "results")
+            ? rawTab
+            : "info";
 
   const subOptions = ["students", "approval", "template"];
   const requestedSub = legacy[rawTab] ?? searchParams.sub ?? "students";
@@ -200,7 +205,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
         {isCompetition && (<Link href={`/events/${event.id}?tab=draws`} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "draws" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Draw &amp; Scoreboard</Link>)}
         <Link href={registrationHref({ sub: "students" })} className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium ${tab === "registration" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Registration Page</Link>
         {isGrading && (<Link href={`/events/${event.id}?tab=exam`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "exam" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Exam</Link>)}
-        {isCompetition && (<Link href={`/events/${event.id}?tab=officials`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "officials" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Officials</Link>)}
+        {(isCompetition || isGrading) && (<Link href={`/events/${event.id}?tab=officials`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "officials" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Officials</Link>)}
         {(isGrading || isCompetition) && (<Link href={`/events/${event.id}?tab=results`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "results" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Results</Link>)}
       </div>
       {tab === "info" ? (

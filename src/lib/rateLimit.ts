@@ -21,8 +21,24 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
  * nothing at all thereafter.
  */
 
-/** Misses allowed before an address is turned away. */
-const ALLOWED_MISSES = 10;
+/**
+ * How many *different* wrong codes an address may try.
+ *
+ * Distinct codes, not attempts, and that distinction is the whole design. A
+ * venue is one address for the whole hall: counting attempts meant a handful of
+ * judges fumbling between them could lock out every phone on the wifi, with the
+ * limit punishing exactly the people it exists to serve.
+ *
+ * Enumeration looks nothing like that. Somebody working through the code space
+ * tries many different codes; a hall full of judges mistyping tries a few, over
+ * and over. So an honest venue can retype as often as it likes and still never
+ * approach this, while a script reaches it almost immediately.
+ */
+const ALLOWED_MISSES = 12;
+
+/** Kept per address so the count is of distinct codes; bounded so a run of
+ *  guesses cannot grow the row without limit. */
+const MAX_REMEMBERED = 40;
 
 /** How long a run of misses is remembered, and how long a block lasts. */
 const WINDOW_MS = 15 * 60 * 1000;
@@ -75,26 +91,34 @@ export async function checkJoinCodeAttempts(ip: string): Promise<LimitVerdict> {
  * who fumbles the code twice a week is never blocked — it takes ten misses
  * inside fifteen minutes.
  */
-export async function recordJoinCodeMiss(ip: string): Promise<void> {
+export async function recordJoinCodeMiss(ip: string, code: string): Promise<void> {
   const supabase = supabaseAdmin();
   const now = Date.now();
 
   const { data } = await supabase
     .from("join_code_attempts")
-    .select("failures, first_failure_at")
+    .select("failures, first_failure_at, codes")
     .eq("ip", ip)
     .maybeSingle();
 
   const startedAt = data?.first_failure_at ? new Date(data.first_failure_at).getTime() : 0;
   const stale = !data || now - startedAt > WINDOW_MS;
-  const failures = stale ? 1 : Number(data.failures) + 1;
+
+  const seen: string[] = stale ? [] : ((data?.codes as string[]) ?? []);
+  const tried = String(code ?? "").trim().toUpperCase();
+  // The same wrong code again is the same guess again, and tells us nothing new
+  // about whether this is a person or a script.
+  const codes = seen.includes(tried) ? seen : [...seen, tried].slice(-MAX_REMEMBERED);
 
   await supabase.from("join_code_attempts").upsert(
     {
       ip,
-      failures,
+      // Attempts are still counted, for anybody looking at the row later, but
+      // they are not what decides the block.
+      failures: stale ? 1 : Number(data?.failures ?? 0) + 1,
+      codes,
       first_failure_at: new Date(stale ? now : startedAt).toISOString(),
-      blocked_until: failures >= ALLOWED_MISSES ? new Date(now + WINDOW_MS).toISOString() : null,
+      blocked_until: codes.length >= ALLOWED_MISSES ? new Date(now + WINDOW_MS).toISOString() : null,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "ip" },

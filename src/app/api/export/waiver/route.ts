@@ -5,6 +5,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { buildWaiverPdf, type WaiverParticipant } from "@/lib/waiverPdf";
 import { downloadTemplate, fillTemplate } from "@/lib/pdfTemplates";
 import { type TemplateData } from "@/lib/templateFields";
+import { individualSignature } from "@/lib/waivers";
 
 /**
  * Waiver form as a PDF.
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = supabaseAdmin();
   const select =
-    "id, event_id, waiver_token, clubs(name, instructor_name), students(full_name, birthday, gender, gup, dan, national_id, email, nationality, weight_kg, height_cm), waiver_signatures(signed_name, signature_png, signed_at)";
+    "id, event_id, waiver_token, clubs(name, instructor_name), students(full_name, birthday, gender, gup, dan, national_id, email, nationality, weight_kg, height_cm), waiver_signatures(student_id, signed_name, signature_png, signed_at)";
 
   let rows: any[] = [];
   let eventId = eventIdParam;
@@ -48,9 +49,9 @@ export async function GET(request: NextRequest) {
 
   const participants: WaiverParticipant[] = rows.map((r) => ({
     fullName: r.students?.full_name ?? null,
-    signaturePng: r.waiver_signatures?.signature_png ?? null,
-    signedName: r.waiver_signatures?.signed_name ?? null,
-    signedAt: r.waiver_signatures?.signed_at ?? null,
+    signaturePng: individualSignature(r.waiver_signatures)?.signature_png ?? null,
+    signedName: individualSignature(r.waiver_signatures)?.signed_name ?? null,
+    signedAt: individualSignature(r.waiver_signatures)?.signed_at ?? null,
     nationalId: r.students?.national_id ?? null,
     birthday: r.students?.birthday ?? null,
     gender: r.students?.gender ?? null,
@@ -104,9 +105,9 @@ export async function GET(request: NextRequest) {
           nationality: r.students?.nationality ?? null,
           weightKg: r.students?.weight_kg ?? null,
           heightCm: r.students?.height_cm ?? null,
-          signaturePng: r.waiver_signatures?.signature_png ?? null,
-          signedName: r.waiver_signatures?.signed_name ?? null,
-          signedAt: r.waiver_signatures?.signed_at ?? null,
+          signaturePng: individualSignature(r.waiver_signatures)?.signature_png ?? null,
+          signedName: individualSignature(r.waiver_signatures)?.signed_name ?? null,
+          signedAt: individualSignature(r.waiver_signatures)?.signed_at ?? null,
         },
         event: eventInfo,
       }));

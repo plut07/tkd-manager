@@ -13,6 +13,7 @@ import {
   recordAttempt,
   clearAttempt,
   setMeasuredSetup,
+  setStandingsPublic,
   type MeasuredCategory,
 } from "@/app/(app)/events/measuredActions";
 
@@ -105,6 +106,17 @@ export default function MeasuredSheet({ initial }: { initial: MeasuredCategory }
     return found.scored ? String(found.result) : "x";
   }
 
+  async function togglePublic() {
+    setError("");
+    const next = !data.standingsPublic;
+    setData({ ...data, standingsPublic: next });
+    const result = await setStandingsPublic({ categoryId: data.categoryId, isPublic: next });
+    if ("error" in result) {
+      setError(result.error);
+      setData({ ...data, standingsPublic: !next });
+    }
+  }
+
   async function saveSetup(techniques: string[], attempts: number) {
     const result = await setMeasuredSetup({ categoryId: data.categoryId, techniques, attemptsPerTechnique: attempts });
     if ("error" in result) { setError(result.error); return; }
@@ -128,10 +140,35 @@ export default function MeasuredSheet({ initial }: { initial: MeasuredCategory }
               {unit.short}
             </p>
           </div>
-          <button type="button" className={showSetup ? "btn-primary" : "btn-secondary"} onClick={() => setShowSetup((o) => !o)}>
-            {showSetup ? "Hide setup" : "Techniques & attempts"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* A fought division can be followed from outside while it happens;
+                this is that, for a division nobody can see a bracket for. */}
+            <button
+              type="button"
+              className={data.standingsPublic ? "btn-primary" : "btn-secondary"}
+              onClick={() => { void togglePublic(); }}
+            >
+              {data.standingsPublic ? "Standings are public" : "Show standings publicly"}
+            </button>
+            <button type="button" className={showSetup ? "btn-primary" : "btn-secondary"} onClick={() => setShowSetup((o) => !o)}>
+              {showSetup ? "Hide setup" : "Techniques & attempts"}
+            </button>
+          </div>
         </div>
+
+        {data.standingsPublic && (
+          <p className="mt-2 text-xs text-gray-500">
+            Anyone with the link can watch these standings:{" "}
+            <a
+              className="font-medium text-brand-700 hover:underline"
+              href={`/public/events/${data.eventId}/categories/${data.categoryId}/standings`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              /public/events/{data.eventId}/categories/{data.categoryId}/standings
+            </a>
+          </p>
+        )}
 
         {showSetup && <Setup data={data} onSave={saveSetup} />}
       </div>

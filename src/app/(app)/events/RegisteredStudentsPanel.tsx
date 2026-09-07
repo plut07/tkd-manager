@@ -8,6 +8,7 @@ import { gradeValue, gradeLabel, GRADE_OPTIONS } from "@/lib/belts";
 import { waiverAge, formatDob, computeAge } from "@/lib/eligibility";
 import { unregisterStudent } from "./actions";
 import { competitorName, competitorNameOr } from "@/lib/competitors";
+import { isSigned, signatureSummary } from "@/lib/waivers";
 
 /**
  * Everyone entered for an event, with a breakdown of who they are.
@@ -70,12 +71,30 @@ export default async function RegisteredStudentsPanel({
   const { data: entries } = await supabase
     .from("event_registrations")
     .select(
-      "id, status, competition_number, registered_at, waiver_token, is_team, team_name, clubs(id, name), students(full_name, birthday, gender, gup, dan, national_id, club_number), event_categories(name), waiver_signatures(signed_name, signed_at)"
+      "id, status, competition_number, registered_at, waiver_token, is_team, team_name, clubs(id, name), students(full_name, birthday, gender, gup, dan, national_id, club_number), event_categories(name), waiver_signatures(student_id, signed_name, signed_at)"
     )
     .eq("event_id", eventId)
     .order("registered_at");
 
   const all = (entries ?? []) as any[];
+
+  // How many people are on each team sheet, because a team's waiver is complete
+  // only when every one of them has signed. One query for all of them; teams are
+  // a handful of entries at most.
+  const teamIds = all.filter((r) => r.is_team).map((r) => r.id);
+  const memberCounts = new Map<string, number>();
+  if (teamIds.length > 0) {
+    const { data: members } = await supabase
+      .from("event_team_members")
+      .select("registration_id")
+      .in("registration_id", teamIds);
+    for (const m of (members ?? []) as any[]) {
+      memberCounts.set(m.registration_id, (memberCounts.get(m.registration_id) ?? 0) + 1);
+    }
+  }
+
+  /** Whether this entry's waiver is done — one signature, or one per member. */
+  const signedOf = (r: any) => isSigned(r.waiver_signatures, r.is_team === true, memberCounts.get(r.id) ?? 0);
 
   const matching = all.filter((r) => {
     if (filters.club && (r.clubs?.id ?? "") !== filters.club) return false;
@@ -189,24 +208,26 @@ export default async function RegisteredStudentsPanel({
                     )}
                   </td>
                   <td>
-                    {r.waiver_signatures ? (
-                      <span className="badge bg-green-100 text-green-700" title={`Signed by ${r.waiver_signatures.signed_name}`}>Signed</span>
+                    {signedOf(r) ? (
+                      <span className="badge bg-green-100 text-green-700" title={signatureSummary(r.waiver_signatures, r.is_team === true, memberCounts.get(r.id) ?? 0)}>Signed</span>
                     ) : (
-                      <span className="badge bg-gray-100 text-gray-500">Not signed</span>
+                      <span className="badge bg-gray-100 text-gray-500" title={signatureSummary(r.waiver_signatures, r.is_team === true, memberCounts.get(r.id) ?? 0)}>
+                        {r.is_team ? signatureSummary(r.waiver_signatures, true, memberCounts.get(r.id) ?? 0) : "Not signed"}
+                      </span>
                     )}
                   </td>
                   <td><span className={`badge ${r.status === "confirmed" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{r.status}</span></td>
                   <td className="whitespace-nowrap text-right">
                     {/* Somebody who signed on the public form has nothing left to
                         sign, so the signing link makes way for their copy. */}
-                    {!r.waiver_signatures && (
+                    {!signedOf(r) && (
                       <>
                         <a href={`/public/waiver/${r.waiver_token}`} target="_blank" rel="noopener noreferrer" className="mr-3 text-sm font-medium text-brand-700 hover:underline">Sign</a>
                         <span className="mr-3"><CopyLinkButton url={`${baseUrl}/public/waiver/${r.waiver_token}`} /></span>
                       </>
                     )}
                     <a href={`/api/export/waiver?registrationId=${r.id}`} target="_blank" rel="noopener noreferrer" className="mr-3 text-sm font-medium text-brand-700 hover:underline">Preview PDF</a>
-                    {r.waiver_signatures && (
+                    {signedOf(r) && (
                       <a href={`/api/export/waiver?registrationId=${r.id}&download=1`} className="mr-3 text-sm font-medium text-brand-700 hover:underline">Download PDF</a>
                     )}
                     {canEdit && (

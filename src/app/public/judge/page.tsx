@@ -31,7 +31,7 @@ export default async function JudgePage({
 
   const ring = code && !blocked ? await loadRing({ joinCode: code }) : null;
   if (code && !blocked) {
-    if (!ring) await recordJoinCodeMiss(ip);
+    if (!ring) await recordJoinCodeMiss(ip, code);
     else if (verdict.allowed && verdict.hadMisses) await clearJoinCodeMisses(ip);
   }
 

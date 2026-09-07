@@ -88,6 +88,17 @@ the totals.
 Each category picks its own techniques and attempt count, under **Techniques &
 attempts** — a junior power test is not the senior one.
 
+**Show standings publicly** puts the running order on a public link so the hall
+can follow along, which is what a published bracket does for a fought division.
+Nothing is final until the event's results are published.
+
+### Waivers
+
+An individual entry collects one signature. **A team collects one per member** —
+the signing link is shared, and the page is a checklist the coach hands round,
+showing who has signed and who hasn't. An entry counts as signed only when
+everyone on its sheet has.
+
 ## Scoring a bout
 
 Three modes, one shape: judges each reach their own verdict and the majority
@@ -124,7 +135,12 @@ result sheet never shows "2–2" beside a winner's name.
 Judges score on their own phones at `/public/judge` with the code the ring
 official gives them. There is no account: the code grants exactly one thing,
 pressing a scoring button on that ring, so it is safe to say out loud in a hall.
-Ten wrong codes in fifteen minutes and that phone waits a while.
+
+Guessing at codes is throttled by counting **different** wrong codes, not
+attempts — a dozen inside fifteen minutes and that address waits. The
+distinction matters because a venue is one address for the whole hall:
+retyping the same fumbled code as often as you like is a person, and a run of
+different ones is a script.
 
 The pad is installable. On the sign-in screen, **Add to home screen** puts it
 on the phone properly, where it opens full-screen with no address bar to
@@ -348,6 +364,5 @@ variables carry over; only the deploy mechanism changes.
 - Everything on the sportdata.org reference is now built: draws, the
   scoreboard, all five disciplines, officials, results and medal tables, and
   grading registration.
-- Waivers are per-person, so a team registration has no waiver of its own. Team
-  members should be registered individually as well if you need their signed
-  forms.
+- No automated tests outside `npm test`'s scoring, standings, medal and waiver
+  arithmetic — the parts where being quietly wrong is worse than being broken.
