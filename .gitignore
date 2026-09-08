@@ -19,3 +19,6 @@ android/build/
 android/*.apk
 android/*.aab
 android/android.keystore.*
+
+# Database dumps: personal data and signature images. Never commit these.
+backups/

@@ -19,6 +19,7 @@ import ExamTab from "../ExamTab";
 import ResultTab from "../ResultTab";
 import CompetitionResultsTab from "../CompetitionResultsTab";
 import OfficialsTab from "../OfficialsTab";
+import EventLockNotice from "@/components/EventLockNotice";
 import { EVENT_TYPE_LABELS, CATEGORY_TYPES, type CategoryTypeCode } from "@/lib/eventCategories";
 import { measuredKindOf } from "@/lib/measured";
 import { describeCriteria, type CategoryCriteria } from "@/lib/eligibility";
@@ -100,15 +101,20 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const canDelete = hasPermission(session, PERMISSIONS.EVENT_DELETE);
   // Signing links are shared outside the app, so they need the full address.
   const baseUrl = (process.env.APP_BASE_URL ?? "").replace(/\/$/, "");
-  // Once an event has finished it is read-only for everyone but a Super Admin,
-  // so entries and results can't be altered after the fact.
+  // Once an event has finished it is read-only, so entries and results can't be
+  // altered after the fact — except by a Super Admin or whoever created it.
+  //
+  // That "or whoever created it" is canOverrideLocks, which is what the server
+  // actually enforces. This page used to test only for super_admin, so an
+  // event manager looking at their own finished event was shown no buttons for
+  // something the server would have let them do. Both now ask the same
+  // question.
   const isFinished = effectiveEventStatus(event) === "completed";
-  const locked = isFinished && session.role !== "super_admin";
+  const canOverride = canOverrideLocks({ sub: session.sub, role: session.role }, event as any);
+  const locked = isFinished && !canOverride;
   const canEditNow = canEdit && !locked;
   const canDeleteNow = canDelete && !locked;
-  // Marking and publishing outlive the event itself: a Super Admin or whoever
-  // created the event can still correct a result once the day is over.
-  const canOverride = canOverrideLocks({ sub: session.sub, role: session.role }, event as any);
+  // Marking and publishing outlive the event itself.
   const canMarkNow = canEdit && (!isFinished || canOverride);
   // Every form for this event, plus how many boxes each one carries, so the
   // list can say which are ready to print without a query per row.
@@ -208,6 +214,11 @@ export default async function EventDetailPage({ params, searchParams }: { params
         {(isCompetition || isGrading) && (<Link href={`/events/${event.id}?tab=officials`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "officials" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Officials</Link>)}
         {(isGrading || isCompetition) && (<Link href={`/events/${event.id}?tab=results`} className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === "results" ? "border-brand-600 text-brand-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Results</Link>)}
       </div>
+
+      {/* Said once, at the top, on every tab: a finished event hides its Add
+          and Remove buttons, and without this nothing explains why. */}
+      {locked && <EventLockNotice endDate={event.end_date ?? null} isCreatorOrAdmin={false} />}
+
       {tab === "info" ? (
         <>
           <div className="card p-6">
