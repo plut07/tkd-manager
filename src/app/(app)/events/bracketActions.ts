@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requirePermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { fail } from "@/lib/flash";
 import { PERMISSIONS } from "@/lib/permissions";
 import { buildBracket, type BracketCompetitor } from "@/lib/bracket";
 import { competitorName } from "@/lib/competitors";
@@ -22,7 +23,7 @@ export async function generateBracket(formData: FormData) {
     .eq("event_category_id", categoryId)
     .maybeSingle();
   if (existingBracket?.status === "published") {
-    throw new Error("This bracket is already published. Unpublish it first if you need to regenerate the draw.");
+    fail("This bracket is already published. Unpublish it first if you need to regenerate the draw.");
   }
 
   const { data: regs } = await supabase
@@ -41,14 +42,14 @@ export async function generateBracket(formData: FormData) {
   }));
 
   if (competitors.length < 2) {
-    throw new Error("Need at least 2 confirmed competitors in this category to generate a bracket.");
+    fail("Need at least 2 confirmed competitors in this category to generate a bracket.");
   }
 
   const { matches } = buildBracket(eventId, categoryId, competitors);
 
   await supabase.from("event_matches").delete().eq("category_id", categoryId);
   const { error } = await supabase.from("event_matches").insert(matches);
-  if (error) throw new Error("Could not generate bracket.");
+  if (error) fail("Could not generate bracket.");
 
   await supabase.from("event_category_brackets").upsert(
     { event_category_id: categoryId, status: "draft", generated_at: new Date().toISOString() },
@@ -67,15 +68,15 @@ export async function submitMatchResult(formData: FormData) {
   const p2 = Number(formData.get("points2"));
   if (!matchId) return;
   if (!Number.isInteger(p1) || !Number.isInteger(p2) || p1 < 0 || p1 > 5 || p2 < 0 || p2 > 5) {
-    throw new Error("Points must be whole numbers between 0 and 5.");
+    fail("Points must be whole numbers between 0 and 5.");
   }
-  if (p1 === p2) throw new Error("Points can't be tied — enter a clear winner.");
+  if (p1 === p2) fail("Points can't be tied — enter a clear winner.");
 
   const supabase = supabaseAdmin();
   const { data: match } = await supabase.from("event_matches").select("*").eq("id", matchId).maybeSingle();
-  if (!match) throw new Error("Match not found.");
+  if (!match) fail("Match not found.");
   if (!match.competitor1_registration_id || !match.competitor2_registration_id) {
-    throw new Error("Both competitors must be set before entering a result.");
+    fail("Both competitors must be set before entering a result.");
   }
 
   const winnerId = p1 > p2 ? match.competitor1_registration_id : match.competitor2_registration_id;
@@ -117,7 +118,7 @@ export async function swapBracketSlots(formData: FormData) {
     .select("status")
     .eq("event_category_id", categoryId)
     .maybeSingle();
-  if (bracket?.status === "published") throw new Error("Unpublish the bracket before editing the draw.");
+  if (bracket?.status === "published") fail("Unpublish the bracket before editing the draw.");
 
   const fieldA = slotA === 1 ? "competitor1_registration_id" : "competitor2_registration_id";
   const fieldB = slotB === 1 ? "competitor1_registration_id" : "competitor2_registration_id";
@@ -178,7 +179,7 @@ export async function clearMatchResult(formData: FormData) {
 
   const supabase = supabaseAdmin();
   const { data: match } = await supabase.from("event_matches").select("*").eq("id", matchId).maybeSingle();
-  if (!match) throw new Error("Match not found.");
+  if (!match) fail("Match not found.");
   if (!match.winner_registration_id) return;
 
   const { data: bracket } = await supabase
@@ -187,7 +188,7 @@ export async function clearMatchResult(formData: FormData) {
     .eq("event_category_id", match.category_id)
     .maybeSingle();
   if (bracket?.status === "published") {
-    throw new Error("This draw is published. Unpublish it before changing a result.");
+    fail("This draw is published. Unpublish it before changing a result.");
   }
 
   const winnerId = match.winner_registration_id;
@@ -199,7 +200,7 @@ export async function clearMatchResult(formData: FormData) {
     const { data: next } = await supabase.from("event_matches").select("*").eq("id", match.next_match_id).maybeSingle();
     if (next && next[field] === winnerId) {
       if (next.winner_registration_id) {
-        throw new Error("The next round has already been scored. Clear that result first.");
+        fail("The next round has already been scored. Clear that result first.");
       }
       await supabase.from("event_matches").update({ [field]: null }).eq("id", match.next_match_id);
     }
@@ -216,7 +217,7 @@ export async function clearMatchResult(formData: FormData) {
     .from("event_matches")
     .update({ competitor1_points: null, competitor2_points: null, winner_registration_id: null })
     .eq("id", matchId);
-  if (error) throw new Error(`The result could not be cleared: ${error.message}`);
+  if (error) fail(`The result could not be cleared: ${error.message}`);
 
   revalidatePath(`/events/${eventId}?tab=draws`);
   revalidatePath(`/events/${eventId}/categories/${categoryId}/bracket`);
@@ -239,7 +240,7 @@ export async function sendMatchToRing(formData: FormData) {
 
   const supabase = supabaseAdmin();
   const { data: match } = await supabase.from("event_matches").select("*").eq("id", matchId).maybeSingle();
-  if (!match) throw new Error("Match not found.");
+  if (!match) fail("Match not found.");
 
   const ids = [match.competitor1_registration_id, match.competitor2_registration_id].filter(Boolean) as string[];
   let regs: any[] = [];
@@ -274,7 +275,7 @@ export async function sendMatchToRing(formData: FormData) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", ringId);
-  if (error) throw new Error(`That bout could not be loaded onto the ring: ${error.message}`);
+  if (error) fail(`That bout could not be loaded onto the ring: ${error.message}`);
 
   redirect(`/events/${eventId}/scoreboard?ring=${ringId}`);
 }

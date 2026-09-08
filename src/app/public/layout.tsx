@@ -1,4 +1,5 @@
 import Link from "next/link";
+import FlashBanner from "@/components/FlashBanner";
 
 /**
  * The public shell.
@@ -33,7 +34,10 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8">{children}</main>
+      <main className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8">
+        <FlashBanner />
+        {children}
+      </main>
 
       <footer className="mt-12 border-t border-slate-200 py-8 text-center text-xs text-slate-400">
         <p>TKD Manager — event &amp; student management for ITF Taekwon-Do.</p>

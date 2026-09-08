@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requirePermission, requireSuperAdmin, requireSession } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { fail } from "@/lib/flash";
 import { PERMISSIONS } from "@/lib/permissions";
 
 export type FormState = { error?: string } | undefined;
@@ -120,7 +121,7 @@ export async function deleteUser(formData: FormData) {
   if (!userId) return;
 
   if (userId === session.sub) {
-    throw new Error("You can't delete your own account.");
+    fail("You can't delete your own account.");
   }
 
   const supabase = supabaseAdmin();
@@ -138,7 +139,7 @@ export async function deleteUser(formData: FormData) {
       .eq("roles.code", "super_admin")
       .eq("active", true);
     if ((count ?? 0) <= 1) {
-      throw new Error("Can't delete the last active Super Admin.");
+      fail("Can't delete the last active Super Admin.");
     }
   }
 
@@ -173,15 +174,15 @@ export async function approveAccessRequest(formData: FormData) {
   const requestId = String(formData.get("requestId") || "");
   const roleId = String(formData.get("roleId") || "");
   const clubId = String(formData.get("clubId") || "");
-  if (!requestId || !roleId) throw new Error("Choose a role before approving.");
+  if (!requestId || !roleId) fail("Choose a role before approving.");
 
   const supabase = supabaseAdmin();
   const { data: request } = await supabase.from("access_requests").select("*").eq("id", requestId).maybeSingle();
-  if (!request || request.status !== "pending") throw new Error("This request is no longer pending.");
+  if (!request || request.status !== "pending") fail("This request is no longer pending.");
 
   const { data: role } = await supabase.from("roles").select("code").eq("id", roleId).maybeSingle();
   if (role?.code === "club_admin" && !clubId && !request.club_id) {
-    throw new Error("Club Users must be assigned a club.");
+    fail("Club Users must be assigned a club.");
   }
 
   const { data: created, error } = await supabase
@@ -199,7 +200,7 @@ export async function approveAccessRequest(formData: FormData) {
     .single();
 
   if (error || !created) {
-    throw new Error(error?.code === "23505" ? "That User ID has been taken since the request was made." : "Could not create the account.");
+    fail(error?.code === "23505" ? "That User ID has been taken since the request was made." : "Could not create the account.");
   }
 
   await supabase

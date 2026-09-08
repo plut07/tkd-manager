@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { messageFrom, rethrowControlFlow } from "@/lib/controlFlow";
 import { requirePermission, requireSuperAdmin } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { fail } from "@/lib/flash";
 import { PERMISSIONS } from "@/lib/permissions";
 import { createGradingTallyForm, updateGradingTallyFormOptions, listTallySubmissions, type FormOptions, type ParsedGradingRow } from "@/lib/tallyForms";
 import { COUNTRIES } from "@/lib/countries";
@@ -27,12 +28,12 @@ export async function createGradingForm(formData: FormData) {
   if (!eventId) return;
   const supabase = supabaseAdmin();
   const { data: existing } = await supabase.from("grading_forms").select("id").eq("event_id", eventId).maybeSingle();
-  if (existing) throw new Error("A registration form has already been created for this event.");
+  if (existing) fail("A registration form has already been created for this event.");
   const { data: event } = await supabase.from("events").select("name").eq("id", eventId).maybeSingle();
-  if (!event) throw new Error("Event not found.");
+  if (!event) fail("Event not found.");
   const created = await createGradingTallyForm(eventId, `${event.name} — Grading Registration`, await currentFormOptions(supabase));
   const { error } = await supabase.from("grading_forms").insert({ event_id: eventId, tally_form_id: created.formId, form_url: created.formUrl, edit_url: created.editUrl, signing_secret: created.signingSecret, created_by: session.sub });
-  if (error) throw new Error("The Tally form was created, but saving it to the event failed. Please try again.");
+  if (error) fail("The Tally form was created, but saving it to the event failed. Please try again.");
   revalidatePath(`/events/${eventId}`);
 }
 /** Compare names ignoring case, spacing and punctuation: "KIN HOU.MA" = "kin hou ma". */
@@ -152,7 +153,7 @@ async function stageRows(supabase: ReturnType<typeof supabaseAdmin>, eventId: st
     alreadyStaged.add(normalize(idValue));
   }
   const { data: batch, error: batchError } = await supabase.from("grading_import_batches").insert({ event_id: eventId, imported_by: importedBy, row_count: rows.length, matched_count: matchedCount, new_count: newCount }).select("id").single();
-  if (batchError || !batch) throw new Error("Could not record the import batch.");
+  if (batchError || !batch) fail("Could not record the import batch.");
   if (newCandidateRows.length > 0) await supabase.from("grading_candidates").insert(newCandidateRows.map((c) => ({ ...c, batch_id: batch.id })));
   return { matchedCount, newCount };
 }
@@ -167,9 +168,9 @@ export async function refreshGradingFormOptions(formData: FormData) {
   if (!eventId) return;
   const supabase = supabaseAdmin();
   const { data: gform } = await supabase.from("grading_forms").select("tally_form_id").eq("event_id", eventId).maybeSingle();
-  if (!gform) throw new Error("No registration form has been created for this event yet.");
+  if (!gform) fail("No registration form has been created for this event yet.");
   const { data: event } = await supabase.from("events").select("name").eq("id", eventId).maybeSingle();
-  if (!event) throw new Error("Event not found.");
+  if (!event) fail("Event not found.");
   await updateGradingTallyFormOptions(gform.tally_form_id, `${event.name} — Grading Registration`, await currentFormOptions(supabase));
   revalidatePath(`/events/${eventId}`);
 }
@@ -179,7 +180,7 @@ export async function syncGradingResponses(formData: FormData) {
   if (!eventId) return;
   const supabase = supabaseAdmin();
   const { data: gform } = await supabase.from("grading_forms").select("*").eq("event_id", eventId).maybeSingle();
-  if (!gform) throw new Error("No registration form has been created for this event yet.");
+  if (!gform) fail("No registration form has been created for this event yet.");
   const rows = await listTallySubmissions(gform.tally_form_id);
   await stageRows(supabase, eventId, rows, session.sub);
   revalidatePath(`/events/${eventId}`);
@@ -190,12 +191,12 @@ export async function approveCandidate(formData: FormData) {
   const candidateId = String(formData.get("candidateId") || "");
   const clubId = String(formData.get("clubId") || "");
   const eventId = String(formData.get("eventId") || "");
-  if (!candidateId || !clubId) throw new Error("Choose a club before approving.");
+  if (!candidateId || !clubId) fail("Choose a club before approving.");
   const supabase = supabaseAdmin();
   const { data: candidate } = await supabase.from("grading_candidates").select("*").eq("id", candidateId).maybeSingle();
-  if (!candidate || candidate.status !== "pending") throw new Error("This candidate is no longer pending.");
+  if (!candidate || candidate.status !== "pending") fail("This candidate is no longer pending.");
   const { data: student, error: studentError } = await supabase.from("students").insert({ club_id: clubId, club_number: await nextClubNumber(supabase, clubId), full_name: candidate.full_name, email: candidate.email, birthday: candidate.birthday, gender: candidate.gender, weight_kg: candidate.weight_kg, height_cm: candidate.height_cm, gup: candidate.gup, dan: candidate.dan, nationality: candidate.nationality, national_id: candidate.national_id, active: true }).select("id").single();
-  if (studentError || !student) throw new Error("Could not create the student record.");
+  if (studentError || !student) fail("Could not create the student record.");
   const categoryId = await gradingCategoryIdFor(supabase, candidate.event_id, candidate.gup, candidate.dan);
 
   // Approving here is the whole approval. Somebody has already read the

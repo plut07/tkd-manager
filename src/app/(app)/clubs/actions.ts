@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireSuperAdmin } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { fail } from "@/lib/flash";
 
 const clubSchema = z.object({
   name: z.string().trim().min(2, "Club name is required."),
@@ -25,18 +26,23 @@ export async function createClub(formData: FormData) {
     instructorName: formData.get("instructorName"), contactEmail: formData.get("contactEmail"),
     contactPhone: formData.get("contactPhone"),
   });
-  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid club.");
+  if (!parsed.success) fail(parsed.error.issues[0]?.message ?? "Invalid club.");
   const d = parsed.data;
 
   const supabase = supabaseAdmin();
   const { error } = await supabase.from("clubs").insert({
     name: d.name,
+    // The form has always had an instructor field and the table has always had
+    // a column, but the insert never carried it across: every club added
+    // through this form arrived with no instructor, and the only way to set one
+    // was to add the club and then immediately edit it.
+    instructor_name: d.instructorName || null,
     city: d.city || null,
     country: d.country || null,
     contact_email: d.contactEmail || null,
     contact_phone: d.contactPhone || null,
   });
-  if (error) throw new Error(error.code === "23505" ? "A club with that name already exists." : "Could not create club.");
+  if (error) fail(error.code === "23505" ? "A club with that name already exists." : "Could not create club.");
   revalidatePath("/clubs");
 }
 
@@ -49,7 +55,7 @@ export async function updateClub(formData: FormData) {
     instructorName: formData.get("instructorName"),
     contactEmail: formData.get("contactEmail"), contactPhone: formData.get("contactPhone"),
   });
-  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid club.");
+  if (!parsed.success) fail(parsed.error.issues[0]?.message ?? "Invalid club.");
   const d = parsed.data;
   // An unticked checkbox sends nothing, so absence means inactive.
   const active = formData.get("active") === "on";
@@ -58,7 +64,7 @@ export async function updateClub(formData: FormData) {
     country: d.country || null, contact_email: d.contactEmail || null, contact_phone: d.contactPhone || null,
     active,
   }).eq("id", clubId);
-  if (error) throw new Error(error.code === "23505" ? "A club with that name already exists." : "Could not update club.");
+  if (error) fail(error.code === "23505" ? "A club with that name already exists." : "Could not update club.");
   revalidatePath("/clubs");
 }
 
@@ -97,14 +103,14 @@ export async function deleteClub(formData: FormData) {
   if (entryEvents.length > 0) blockers.push(`entries in: ${entryEvents.join(", ")}`);
 
   if (blockers.length > 0) {
-    throw new Error(
+    fail(
       `This club can't be deleted — ${blockers.join("; ")}. ` +
         "Move or remove those first, or mark the club Inactive instead.",
     );
   }
 
   const { error } = await supabase.from("clubs").delete().eq("id", clubId);
-  if (error) throw new Error("This club could not be deleted because other records still refer to it.");
+  if (error) fail("This club could not be deleted because other records still refer to it.");
   revalidatePath("/clubs");
 }
 

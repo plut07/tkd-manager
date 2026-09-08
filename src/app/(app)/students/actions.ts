@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requirePermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { fail } from "@/lib/flash";
 import { PERMISSIONS } from "@/lib/permissions";
 import { parseGradeValue } from "@/lib/belts";
 
@@ -106,7 +107,10 @@ export async function updateStudent(studentId: string, _prev: FormState, formDat
   if (session.role === "club_admin") {
     const { data: existing } = await supabase.from("students").select("club_id").eq("id", studentId).maybeSingle();
     if (!existing || existing.club_id !== session.clubId) {
-      throw new Error("You can only edit students from your own club.");
+      // This one returns rather than redirects: the caller is a useFormState
+      // form that shows the message next to the fields, which is better than a
+      // banner. The rest of this file has no such form to return to.
+      return { error: "You can only edit students from your own club." };
     }
   }
 
@@ -126,7 +130,7 @@ export async function deleteStudent(formData: FormData) {
 
   if (session.role === "club_admin") {
     const { data: existing } = await supabase.from("students").select("club_id").eq("id", studentId).maybeSingle();
-    if (!existing || existing.club_id !== session.clubId) throw new Error("You can only delete students from your own club.");
+    if (!existing || existing.club_id !== session.clubId) fail("You can only delete students from your own club.");
   }
 
   // A student tied to an event must not vanish — their entries are part of that
@@ -137,7 +141,7 @@ export async function deleteStudent(formData: FormData) {
     .eq("student_id", studentId);
   if ((regs ?? []).length > 0) {
     const names = Array.from(new Set((regs ?? []).map((r: any) => r.events?.name).filter(Boolean)));
-    throw new Error(
+    fail(
       `This student is registered for ${names.length} event${names.length === 1 ? "" : "s"}: ${names.join(", ")}. ` +
         "Remove them from those events first, or set the student to Inactive instead of deleting.",
     );
@@ -147,7 +151,7 @@ export async function deleteStudent(formData: FormData) {
   // releases its link (see migration 0017), so it no longer blocks deletion.
 
   const { error } = await supabase.from("students").delete().eq("id", studentId);
-  if (error) throw new Error("This student could not be deleted because other records still refer to them.");
+  if (error) fail("This student could not be deleted because other records still refer to them.");
   revalidatePath("/students");
 }
 

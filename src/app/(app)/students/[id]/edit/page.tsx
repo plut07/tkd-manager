@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { updateStudent } from "../../actions";
 import StudentForm from "../../StudentForm";
+import NotAllowed from "@/components/NotAllowed";
 import { gradeValue } from "@/lib/belts";
 
 export default async function EditStudentPage({ params }: { params: { id: string } }) {
@@ -14,7 +15,14 @@ export default async function EditStudentPage({ params }: { params: { id: string
   if (!student) notFound();
 
   if (session.role === "club_admin" && student.club_id !== session.clubId) {
-    throw new Error("You can only edit students from your own club.");
+    return (
+      <NotAllowed
+        title="That student belongs to another club"
+        message="You can only edit students from your own club."
+        backHref="/students"
+        backLabel="Back to students"
+      />
+    );
   }
 
   let clubs: { id: string; name: string }[] = [];

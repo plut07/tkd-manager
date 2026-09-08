@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { fail } from "@/lib/flash";
 import { canOverrideLocks } from "@/lib/eventStatus";
 
 /**
@@ -22,12 +23,12 @@ async function assertCanPublish(eventId: string) {
   const session = await requireSession();
   const supabase = supabaseAdmin();
   const { data: event } = await supabase.from("events").select("id, created_by, event_type").eq("id", eventId).maybeSingle();
-  if (!event) throw new Error("Event not found.");
+  if (!event) fail("Event not found.");
   if ((event as any).event_type !== "competition") {
-    throw new Error("This is not a competition — publish it from its own Results tab.");
+    fail("This is not a competition — publish it from its own Results tab.");
   }
   if (!canOverrideLocks({ sub: session.sub, role: session.role }, event as any)) {
-    throw new Error("Only a Super Admin or the person who created this event can publish its results.");
+    fail("Only a Super Admin or the person who created this event can publish its results.");
   }
   return { session, supabase };
 }

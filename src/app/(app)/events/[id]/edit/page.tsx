@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PERMISSIONS } from "@/lib/permissions";
 import { updateEvent } from "../../actions";
 import EventForm from "../../EventForm";
+import NotAllowed from "@/components/NotAllowed";
 import { effectiveEventStatus, canOverrideLocks, toLocalInputValue } from "@/lib/eventStatus";
 
 export default async function EditEventPage({ params }: { params: { id: string } }) {
@@ -15,7 +16,14 @@ export default async function EditEventPage({ params }: { params: { id: string }
 
   // Mirrors the server-side guard so the form isn't even offered.
   if (effectiveEventStatus(event) === "completed" && !canOverrideLocks({ sub: session.sub, role: session.role }, event)) {
-    throw new Error("This event has finished. Only a Super Admin or the person who created it can change it now.");
+    return (
+      <NotAllowed
+        title="This event has finished"
+        message="Only a Super Admin, or the person who created it, can change an event once it has finished."
+        backHref={`/events/${event.id}`}
+        backLabel="Back to the event"
+      />
+    );
   }
 
   const { data: clubs } = await supabase.from("clubs").select("id, name").eq("active", true).order("name");

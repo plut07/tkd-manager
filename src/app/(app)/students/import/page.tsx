@@ -1,12 +1,20 @@
 import { requirePermission } from "@/lib/authz";
 import { PERMISSIONS } from "@/lib/permissions";
 import ImportWizard from "@/components/ImportWizard";
+import NotAllowed from "@/components/NotAllowed";
 import { previewStudentImport, commitStudentImport } from "../../importActions";
 
 export default async function ImportStudentsPage() {
   const session = await requirePermission(PERMISSIONS.STUDENT_CREATE);
   if (session.role === "club_admin") {
-    throw new Error("Bulk import is available to Super Admins and Event Managers. Add students individually from the Students page.");
+    return (
+      <NotAllowed
+        title="Bulk import isn't available to Club Users"
+        message="Bulk import is available to Super Admins and Event Managers. You can still add students individually from the Students page."
+        backHref="/students"
+        backLabel="Back to students"
+      />
+    );
   }
   return (
     <div className="max-w-4xl">

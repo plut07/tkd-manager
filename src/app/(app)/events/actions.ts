@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requirePermission, requireSession } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { fail } from "@/lib/flash";
 import { PERMISSIONS } from "@/lib/permissions";
 import { checkEligibility, checkCountryEligibility, type CategoryCriteria, type StudentLite } from "@/lib/eligibility";
 import { renumberEvent } from "@/lib/numbering";
@@ -45,7 +46,7 @@ async function assertEventEditable(session: { role: string; sub: string }, event
   if (!event) return;
   if (canOverrideLocks({ sub: session.sub, role: session.role }, event)) return;
   if (effectiveEventStatus(event) === "completed") {
-    throw new Error("This event has finished. Only a Super Admin or the person who created it can change it now.");
+    fail("This event has finished. Only a Super Admin or the person who created it can change it now.");
   }
 }
 
@@ -62,7 +63,7 @@ async function assertRegistrationOpen(session: { role: string; sub: string }, ev
   if (!event) return;
   if (canOverrideLocks({ sub: session.sub, role: session.role }, event)) return;
   if (!isRegistrationOpen(event)) {
-    throw new Error("Registration for this event has closed. Contact the organizer if an entry still needs changing.");
+    fail("Registration for this event has closed. Contact the organizer if an entry still needs changing.");
   }
 }
 
@@ -220,7 +221,7 @@ export async function addCategory(formData: FormData) {
     weightMin: formData.get("weightMin"),
     weightMax: formData.get("weightMax"),
   });
-  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid category.");
+  if (!parsed.success) fail(parsed.error.issues[0]?.message ?? "Invalid category.");
   const d = parsed.data;
 
   const supabase = supabaseAdmin();
@@ -238,7 +239,7 @@ export async function addCategory(formData: FormData) {
     weight_min: d.weightMin ? Number(d.weightMin) : null,
     weight_max: d.weightMax ? Number(d.weightMax) : null,
   });
-  if (error) throw new Error("Could not add category. Please check the values and try again.");
+  if (error) fail("Could not add category. Please check the values and try again.");
   revalidatePath(`/events/${d.eventId}`);
 }
 
@@ -274,7 +275,7 @@ export async function deleteCategory(formData: FormData) {
     .select("id", { count: "exact", head: true })
     .eq("category_id", categoryId);
   if ((count ?? 0) > 0) {
-    throw new Error(
+    fail(
       `This category still has ${count} ${count === 1 ? "entry" : "entries"}. Move them to another category or remove them first.`,
     );
   }
@@ -291,7 +292,7 @@ export async function addDocument(formData: FormData) {
   const eventId = String(formData.get("eventId") || "");
   const title = String(formData.get("title") || "").trim();
   const url = String(formData.get("url") || "").trim();
-  if (!eventId || !title || !url) throw new Error("Title and URL are required.");
+  if (!eventId || !title || !url) fail("Title and URL are required.");
   const supabase = supabaseAdmin();
   await supabase.from("event_documents").insert({ event_id: eventId, title, url });
   revalidatePath(`/events/${eventId}`);
@@ -324,10 +325,10 @@ export async function registerStudent(formData: FormData) {
     .select("club_id, gup, dan, gender, birthday, weight_kg, nationality, clubs(country)")
     .eq("id", studentId)
     .maybeSingle();
-  if (!student) throw new Error("Student not found.");
+  if (!student) fail("Student not found.");
 
   if (session.role === "club_admin" && student.club_id !== session.clubId) {
-    throw new Error("You can only register students from your own club.");
+    fail("You can only register students from your own club.");
   }
 
   // Hard-block registration if the event restricts participation to specific
@@ -337,13 +338,13 @@ export async function registerStudent(formData: FormData) {
   const clubCountry = (student as any).clubs?.country ?? null;
   const countryResult = checkCountryEligibility(clubCountry, student.nationality, eventRow?.allowed_countries);
   if (!countryResult.eligible) {
-    throw new Error("This student's club/country isn't eligible to take part in this event.");
+    fail("This student's club/country isn't eligible to take part in this event.");
   }
 
   // A grading candidate is always examined for the grade above the one they
   // hold, so their category is worked out here rather than chosen on the form.
   if (eventRow?.event_type === "grading") {
-    if (isTopGrade(student.gup, student.dan)) throw new Error(TOP_GRADE_MESSAGE);
+    if (isTopGrade(student.gup, student.dan)) fail(TOP_GRADE_MESSAGE);
     categoryId = await gradingCategoryIdFor(supabase, eventId, student.gup, student.dan);
   }
 
@@ -367,7 +368,7 @@ export async function registerStudent(formData: FormData) {
       };
       const result = checkEligibility(studentLite, category as CategoryCriteria);
       if (!result.eligible) {
-        throw new Error(`This student doesn't meet the category requirements (${result.reasons.join(", ")}).`);
+        fail(`This student doesn't meet the category requirements (${result.reasons.join(", ")}).`);
       }
     }
   }
@@ -379,7 +380,7 @@ export async function registerStudent(formData: FormData) {
     club_id: student.club_id,
     status: "pending",
   });
-  if (error && error.code !== "23505") throw new Error("Could not register student.");
+  if (error && error.code !== "23505") fail("Could not register student.");
   revalidatePath(`/events/${eventId}`);
   revalidatePath(`/events/${eventId}/register`);
 }
@@ -397,7 +398,7 @@ export async function unregisterStudent(formData: FormData) {
 
   const canManageAll = session.role === "super_admin" || session.role === "event_manager";
   if (!canManageAll && reg.club_id !== session.clubId) {
-    throw new Error("You can only remove your own club's registrations.");
+    fail("You can only remove your own club's registrations.");
   }
 
   const wasConfirmed = await supabase

@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { messageFrom, rethrowControlFlow } from "@/lib/controlFlow";
 import { requirePermission } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { fail } from "@/lib/flash";
 import { PERMISSIONS } from "@/lib/permissions";
 import { inspectPdf, TEMPLATE_BUCKET } from "@/lib/pdfTemplates";
 import { GRADE_OPTIONS } from "@/lib/belts";
@@ -86,7 +87,7 @@ export async function saveTemplateFields(formData: FormData) {
   try {
     fields = JSON.parse(String(formData.get("fields") || "[]"));
   } catch {
-    throw new Error("The field layout could not be read. Please try saving again.");
+    fail("The field layout could not be read. Please try saving again.");
   }
 
   const clean = fields
@@ -105,7 +106,7 @@ export async function saveTemplateFields(formData: FormData) {
   await supabase.from("event_form_fields").delete().eq("template_id", templateId);
   if (clean.length > 0) {
     const { error } = await supabase.from("event_form_fields").insert(clean);
-    if (error) throw new Error("The field layout could not be saved.");
+    if (error) fail("The field layout could not be saved.");
   }
   revalidatePath(`/events/${eventId}`);
 }

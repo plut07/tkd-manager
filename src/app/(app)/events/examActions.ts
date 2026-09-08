@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { messageFrom, rethrowControlFlow } from "@/lib/controlFlow";
 import { requirePermission, requireSession } from "@/lib/authz";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { fail } from "@/lib/flash";
 import { PERMISSIONS } from "@/lib/permissions";
 import { gradeLabel, nextGrade, gradeRank, gradeValue, parseGradeText, GRADE_OPTIONS } from "@/lib/belts";
 import { computeAge } from "@/lib/eligibility";
@@ -86,6 +87,24 @@ async function assertCanMark(eventId: string) {
     throw new Error("This event has finished, so its marks can no longer be changed.");
   }
   return { session, supabase, event };
+}
+
+/**
+ * The same check, for the plain `<form action={...}>` callers.
+ *
+ * `assertCanMark` throws, and that is right for the marking sheet: those actions
+ * are called from the client and wrapped in a catch that returns the message,
+ * which the sheet then shows in place without losing anything the examiner has
+ * typed. The syllabus buttons below have no such catch, so a throw there reaches
+ * Next's boundary and becomes a blank "Something went wrong". They get the
+ * banner instead.
+ */
+async function assertCanMarkOrFail(eventId: string) {
+  try {
+    return await assertCanMark(eventId);
+  } catch (e) {
+    fail(messageFrom(e, "This event's marks can no longer be changed."));
+  }
 }
 
 /**
@@ -423,7 +442,7 @@ export async function resetSyllabus(formData: FormData) {
   const eventId = String(formData.get("eventId") || "");
   const grade = String(formData.get("gradeValue") || "");
   if (!eventId) return;
-  const { supabase } = await assertCanMark(eventId);
+  const { supabase } = await assertCanMarkOrFail(eventId);
   let query = supabase.from("exam_syllabus").delete().eq("event_id", eventId);
   query = grade ? query.eq("grade_value", grade) : query.is("grade_value", null);
   await query;
@@ -434,7 +453,7 @@ export async function resetSyllabus(formData: FormData) {
 export async function addAllGradingCategories(formData: FormData) {
   const eventId = String(formData.get("eventId") || "");
   if (!eventId) return;
-  await assertCanMark(eventId);
+  await assertCanMarkOrFail(eventId);
   const supabase = supabaseAdmin();
   for (const grade of GRADE_OPTIONS.slice(1)) {
     await ensureCategoryForTarget(supabase, eventId, grade.value);
@@ -449,7 +468,7 @@ export async function addAllGradingCategories(formData: FormData) {
 export async function syncAllGradingCategories(formData: FormData) {
   const eventId = String(formData.get("eventId") || "");
   if (!eventId) return;
-  const { supabase } = await assertCanMark(eventId);
+  const { supabase } = await assertCanMarkOrFail(eventId);
 
   const { data: regs } = await supabase
     .from("event_registrations")
@@ -471,9 +490,9 @@ async function assertCanPublish(eventId: string) {
   const session = await requireSession();
   const supabase = supabaseAdmin();
   const { data: event } = await supabase.from("events").select("id, created_by").eq("id", eventId).maybeSingle();
-  if (!event) throw new Error("Event not found.");
+  if (!event) fail("Event not found.");
   if (!canOverrideLocks({ sub: session.sub, role: session.role }, event as any)) {
-    throw new Error("Only a Super Admin or the person who created this event can publish its results.");
+    fail("Only a Super Admin or the person who created this event can publish its results.");
   }
   return { session, supabase };
 }
