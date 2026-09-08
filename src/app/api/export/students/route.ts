@@ -33,6 +33,6 @@ export async function GET() {
     s.active ? "yes" : "no",
   ]);
 
-  const file = buildWorkbook(STUDENT_COLUMNS.map((c) => c.header), rows, "Students");
+  const file = await buildWorkbook(STUDENT_COLUMNS.map((c) => c.header), rows, "Students");
   return new NextResponse(new Uint8Array(file), { headers: xlsxHeaders(`students-${new Date().toISOString().slice(0, 10)}.xlsx`) });
 }

@@ -34,7 +34,7 @@ export async function previewStudentImport(_prev: PreviewState, formData: FormDa
 
   let parsed;
   try {
-    parsed = readSheet(buffer);
+    parsed = await readSheet(buffer);
   } catch {
     return { ok: false, error: "That file couldn't be read. Save it as .xlsx and try again." };
   }
@@ -68,7 +68,7 @@ export async function previewClubImport(_prev: PreviewState, formData: FormData)
 
   let parsed;
   try {
-    parsed = readSheet(buffer);
+    parsed = await readSheet(buffer);
   } catch {
     return { ok: false, error: "That file couldn't be read. Save it as .xlsx and try again." };
   }

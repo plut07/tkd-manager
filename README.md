@@ -364,5 +364,14 @@ variables carry over; only the deploy mechanism changes.
 - Everything on the sportdata.org reference is now built: draws, the
   scoreboard, all five disciplines, officials, results and medal tables, and
   grading registration.
-- No automated tests outside `npm test`'s scoring, standings, medal and waiver
-  arithmetic — the parts where being quietly wrong is worse than being broken.
+- No automated tests outside `npm test`'s scoring, standings, medal, waiver and
+  spreadsheet round-trip checks — the parts where being quietly wrong is worse
+  than being broken.
+- **Next.js is on 14.2.35.** The critical middleware-authorization-bypass
+  advisory is fixed, but ~21 advisories still apply to the 14 line and all of
+  them need Next 16 — two majors away. They are mostly DoS, cache poisoning and
+  SSRF in features this app doesn't use (no image optimizer, no rewrites, no
+  custom server, no i18n). The migration is a real piece of work: `cookies()`
+  and `headers()` become async, `params`/`searchParams` become promises across
+  31 files, and React 19 renames `useFormState` to `useActionState` across 21.
+  Worth doing deliberately, not near an event.

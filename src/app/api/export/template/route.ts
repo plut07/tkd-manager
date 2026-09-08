@@ -16,6 +16,6 @@ export async function GET(request: NextRequest) {
   const example = columns.map((c) => c.example);
   const notes = columns.map((c) => (c.required ? `Required. ${c.note ?? ""}`.trim() : c.note ?? ""));
 
-  const file = buildWorkbook(columns.map((c) => c.header), [example, notes], kind === "clubs" ? "Clubs" : "Students");
+  const file = await buildWorkbook(columns.map((c) => c.header), [example, notes], kind === "clubs" ? "Clubs" : "Students");
   return new NextResponse(new Uint8Array(file), { headers: xlsxHeaders(`${kind}-import-template.xlsx`) });
 }

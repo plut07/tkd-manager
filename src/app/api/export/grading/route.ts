@@ -50,6 +50,6 @@ export async function GET(request: NextRequest) {
   ]);
 
   const safeName = (event?.name ?? "event").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
-  const file = buildWorkbook(headers, rows, "Registrants");
+  const file = await buildWorkbook(headers, rows, "Registrants");
   return new NextResponse(new Uint8Array(file), { headers: xlsxHeaders(`${safeName}-registrants.xlsx`) });
 }

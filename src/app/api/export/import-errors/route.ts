@@ -17,6 +17,6 @@ export async function POST(request: NextRequest) {
     errors = [];
   }
   const rows = errors.map((e) => [e.row, e.column, e.value, e.problem]);
-  const file = buildWorkbook(["Spreadsheet row", "Column", "Value", "Problem"], rows, "Errors");
+  const file = await buildWorkbook(["Spreadsheet row", "Column", "Value", "Problem"], rows, "Errors");
   return new NextResponse(new Uint8Array(file), { headers: xlsxHeaders("import-errors.xlsx") });
 }
