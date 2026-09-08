@@ -11,6 +11,11 @@ const config: Config = {
         brand: {
           50: "#eef2ff",
           100: "#e0e7ff",
+          // 300 and 400 fill a gap the scale always had: everything between
+          // "barely tinted" and "dark enough for white text" was missing, which
+          // is exactly the range an accent on a dark background needs.
+          300: "#a5b4fc",
+          400: "#818cf8",
           500: "#4338ca",
           600: "#3730a3",
           700: "#312e81",
